@@ -5,10 +5,10 @@
 set -eu
 
 export PGPASSWORD="$POSTGRES_PASSWORD"
-PSQL="psql -v ON_ERROR_STOP=1 -h postgres -U $POSTGRES_USER"
+PSQL="psql -v ON_ERROR_STOP=1 -h n8n_postgres -U $POSTGRES_USER"
 
 echo "[db-init] waiting for postgres..."
-until pg_isready -h postgres -U "$POSTGRES_USER" -d postgres >/dev/null 2>&1; do
+until pg_isready -h n8n_postgres -U "$POSTGRES_USER" -d postgres >/dev/null 2>&1; do
     sleep 1
 done
 
