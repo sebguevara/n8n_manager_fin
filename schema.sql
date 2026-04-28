@@ -1,5 +1,5 @@
-﻿-- =====================================================================
--- Expense Bot Schema â€” runs against the `expenses` database
+-- =====================================================================
+-- Expense Bot Schema — runs against the `expenses` database
 -- PostgreSQL 18.x
 -- =====================================================================
 
@@ -28,7 +28,7 @@ $$ LANGUAGE SQL IMMUTABLE;
 -- =====================================================================
 -- 1. users
 -- =====================================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     phone_number    TEXT UNIQUE NOT NULL,
     name            TEXT,
@@ -40,13 +40,13 @@ CREATE TABLE users (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE TRIGGER users_updated_at BEFORE UPDATE ON users
+CREATE OR REPLACE TRIGGER users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 
 -- =====================================================================
 -- 2. categories
 -- =====================================================================
-CREATE TABLE categories (
+CREATE TABLE IF NOT EXISTS categories (
     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name              TEXT NOT NULL,
@@ -62,16 +62,16 @@ CREATE TABLE categories (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, normalized_name, type)
 );
-CREATE INDEX idx_categories_user ON categories(user_id) WHERE is_active;
-CREATE INDEX idx_categories_trgm ON categories USING GIN (normalized_name gin_trgm_ops);
-CREATE INDEX idx_categories_keywords ON categories USING GIN (keywords);
-CREATE TRIGGER categories_updated_at BEFORE UPDATE ON categories
+CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id) WHERE is_active;
+CREATE INDEX IF NOT EXISTS idx_categories_trgm ON categories USING GIN (normalized_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_categories_keywords ON categories USING GIN (keywords);
+CREATE OR REPLACE TRIGGER categories_updated_at BEFORE UPDATE ON categories
     FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 
 -- =====================================================================
 -- 3. payment_methods
 -- =====================================================================
-CREATE TABLE payment_methods (
+CREATE TABLE IF NOT EXISTS payment_methods (
     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name              TEXT NOT NULL,
@@ -85,14 +85,14 @@ CREATE TABLE payment_methods (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, normalized_name)
 );
-CREATE INDEX idx_pm_user ON payment_methods(user_id) WHERE is_active;
-CREATE TRIGGER pm_updated_at BEFORE UPDATE ON payment_methods
+CREATE INDEX IF NOT EXISTS idx_pm_user ON payment_methods(user_id) WHERE is_active;
+CREATE OR REPLACE TRIGGER pm_updated_at BEFORE UPDATE ON payment_methods
     FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 
 -- =====================================================================
--- 4. messages (conversation log â€” used for debug + idempotency)
+-- 4. messages (conversation log — used for debug + idempotency)
 -- =====================================================================
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id                  UUID REFERENCES users(id) ON DELETE SET NULL,
     direction                TEXT NOT NULL CHECK (direction IN ('inbound','outbound')),
@@ -105,13 +105,13 @@ CREATE TABLE messages (
     raw_payload              JSONB,
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_messages_user_time ON messages(user_id, created_at DESC);
-CREATE INDEX idx_messages_wamid ON messages(whatsapp_message_id) WHERE whatsapp_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_messages_user_time ON messages(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_wamid ON messages(whatsapp_message_id) WHERE whatsapp_message_id IS NOT NULL;
 
 -- =====================================================================
 -- 5. transactions (the central table)
 -- =====================================================================
-CREATE TABLE transactions (
+CREATE TABLE IF NOT EXISTS transactions (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     category_id         UUID REFERENCES categories(id) ON DELETE SET NULL,
@@ -135,18 +135,18 @@ CREATE TABLE transactions (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_tx_user_date ON transactions(user_id, transaction_date DESC);
-CREATE INDEX idx_tx_user_cat ON transactions(user_id, category_id);
-CREATE INDEX idx_tx_user_type_date ON transactions(user_id, type, transaction_date DESC);
-CREATE INDEX idx_tx_review ON transactions(user_id) WHERE needs_review;
-CREATE INDEX idx_tx_with_receipt ON transactions(user_id) WHERE receipt_data IS NOT NULL;
-CREATE TRIGGER tx_updated_at BEFORE UPDATE ON transactions
+CREATE INDEX IF NOT EXISTS idx_tx_user_date ON transactions(user_id, transaction_date DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_user_cat ON transactions(user_id, category_id);
+CREATE INDEX IF NOT EXISTS idx_tx_user_type_date ON transactions(user_id, type, transaction_date DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_review ON transactions(user_id) WHERE needs_review;
+CREATE INDEX IF NOT EXISTS idx_tx_with_receipt ON transactions(user_id) WHERE receipt_data IS NOT NULL;
+CREATE OR REPLACE TRIGGER tx_updated_at BEFORE UPDATE ON transactions
     FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 
 -- =====================================================================
 -- 6. budgets
 -- =====================================================================
-CREATE TABLE budgets (
+CREATE TABLE IF NOT EXISTS budgets (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     category_id         UUID REFERENCES categories(id) ON DELETE CASCADE, -- NULL = global
@@ -163,14 +163,14 @@ CREATE TABLE budgets (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_budgets_user ON budgets(user_id) WHERE is_active;
-CREATE TRIGGER budgets_updated_at BEFORE UPDATE ON budgets
+CREATE INDEX IF NOT EXISTS idx_budgets_user ON budgets(user_id) WHERE is_active;
+CREATE OR REPLACE TRIGGER budgets_updated_at BEFORE UPDATE ON budgets
     FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 
 -- =====================================================================
 -- 7. recurring_transactions
 -- =====================================================================
-CREATE TABLE recurring_transactions (
+CREATE TABLE IF NOT EXISTS recurring_transactions (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     category_id         UUID REFERENCES categories(id) ON DELETE SET NULL,
@@ -189,15 +189,15 @@ CREATE TABLE recurring_transactions (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_recur_user ON recurring_transactions(user_id) WHERE is_active;
-CREATE INDEX idx_recur_next ON recurring_transactions(next_occurrence) WHERE is_active;
-CREATE TRIGGER recur_updated_at BEFORE UPDATE ON recurring_transactions
+CREATE INDEX IF NOT EXISTS idx_recur_user ON recurring_transactions(user_id) WHERE is_active;
+CREATE INDEX IF NOT EXISTS idx_recur_next ON recurring_transactions(next_occurrence) WHERE is_active;
+CREATE OR REPLACE TRIGGER recur_updated_at BEFORE UPDATE ON recurring_transactions
     FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 
 -- =====================================================================
 -- 8. tags + 9. transaction_tags
 -- =====================================================================
-CREATE TABLE tags (
+CREATE TABLE IF NOT EXISTS tags (
     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name              TEXT NOT NULL,
@@ -206,19 +206,19 @@ CREATE TABLE tags (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, normalized_name)
 );
-CREATE INDEX idx_tags_user ON tags(user_id);
+CREATE INDEX IF NOT EXISTS idx_tags_user ON tags(user_id);
 
-CREATE TABLE transaction_tags (
+CREATE TABLE IF NOT EXISTS transaction_tags (
     transaction_id    UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
     tag_id            UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
     PRIMARY KEY (transaction_id, tag_id)
 );
-CREATE INDEX idx_txtags_tag ON transaction_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_txtags_tag ON transaction_tags(tag_id);
 
 -- =====================================================================
 -- 10. category_learning (improve matching over time)
 -- =====================================================================
-CREATE TABLE category_learning (
+CREATE TABLE IF NOT EXISTS category_learning (
     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id               UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     input_text            TEXT NOT NULL,
@@ -229,8 +229,8 @@ CREATE TABLE category_learning (
     confidence_score      NUMERIC(3,2),
     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_learn_user ON category_learning(user_id);
-CREATE INDEX idx_learn_input_trgm ON category_learning
+CREATE INDEX IF NOT EXISTS idx_learn_user ON category_learning(user_id);
+CREATE INDEX IF NOT EXISTS idx_learn_input_trgm ON category_learning
     USING GIN (normalized_input gin_trgm_ops);
 
 -- =====================================================================
@@ -342,11 +342,11 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- =====================================================================
--- Seed: default category template (system categories â€” copied per new user)
+-- Seed: default category template (system categories — copied per new user)
 -- We don't insert per-user here; the n8n workflow's onboarding step
 -- copies these for each new user_id from this template.
 -- =====================================================================
-CREATE TABLE category_templates (
+CREATE TABLE IF NOT EXISTS category_templates (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     emoji           TEXT,
@@ -356,73 +356,73 @@ CREATE TABLE category_templates (
 );
 
 INSERT INTO category_templates (name, emoji, color, keywords, type) VALUES
-    ('Comida',         'ðŸ½ï¸', '#FF6B6B',
+    ('Comida',         '🍽️', '#FF6B6B',
         ARRAY['comida','almuerzo','cena','desayuno','merienda','restaurant',
               'restaurante','delivery','pedidos','rappi','pedidosya','mcdonald',
               'burger','pizza','sushi','parrilla','choripan','milanesa','asado'],
         'expense'),
-    ('CafÃ©',           'â˜•', '#A0522D',
+    ('Café',           '☕', '#A0522D',
         ARRAY['cafe','starbucks','havanna','barista','espresso','capuchino','latte'],
         'expense'),
-    ('Supermercado',   'ðŸ›’', '#4CAF50',
+    ('Supermercado',   '🛒', '#4CAF50',
         ARRAY['super','supermercado','mercado','coto','disco','jumbo','carrefour',
               'dia','vea','changomas','almacen','kiosco','verduleria','carniceria'],
         'expense'),
-    ('Transporte',     'ðŸš—', '#2196F3',
+    ('Transporte',     '🚗', '#2196F3',
         ARRAY['uber','cabify','didi','taxi','sube','colectivo','tren','subte',
               'nafta','combustible','ypf','shell','axion','peaje','estacionamiento'],
         'expense'),
-    ('Servicios',      'ðŸ’¡', '#FFC107',
+    ('Servicios',      '💡', '#FFC107',
         ARRAY['luz','gas','agua','internet','wifi','telefono','celular','cable',
               'edesur','edenor','metrogas','aysa','telecentro','fibertel','movistar',
               'claro','personal','expensas','abl','arba','rentas'],
         'expense'),
-    ('Suscripciones',  'ðŸ“º', '#9C27B0',
+    ('Suscripciones',  '📺', '#9C27B0',
         ARRAY['netflix','spotify','disney','hbo','max','prime','youtube','apple',
               'icloud','dropbox','chatgpt','suscripcion','membership'],
         'expense'),
-    ('Salud',          'ðŸ¥', '#E91E63',
+    ('Salud',          '🏥', '#E91E63',
         ARRAY['farmacia','medicamento','remedio','medico','consulta','clinica',
               'hospital','obra social','prepaga','osde','swiss','galeno','dentista',
               'oculista','laboratorio','analisis'],
         'expense'),
-    ('EducaciÃ³n',      'ðŸ“š', '#3F51B5',
+    ('Educación',      '📚', '#3F51B5',
         ARRAY['curso','libro','universidad','colegio','escuela','clase','clases',
               'profesor','udemy','coursera','platzi'],
         'expense'),
-    ('Ocio',           'ðŸŽ¬', '#FF9800',
+    ('Ocio',           '🎬', '#FF9800',
         ARRAY['cine','teatro','recital','concierto','salida','bar','boliche',
-              'cumpleaÃ±os','fiesta','hobby','juego','steam','playstation'],
+              'cumpleaños','fiesta','hobby','juego','steam','playstation'],
         'expense'),
-    ('Ropa',           'ðŸ‘•', '#795548',
+    ('Ropa',           '👕', '#795548',
         ARRAY['ropa','remera','pantalon','zapatillas','zapatos','campera',
               'vestido','indumentaria','adidas','nike'],
         'expense'),
-    ('Hogar',          'ðŸ ', '#607D8B',
+    ('Hogar',          '🏠', '#607D8B',
         ARRAY['hogar','muebles','easy','sodimac','hipertehuelche','ferreteria',
               'decoracion','limpieza','toallas','sabanas'],
         'expense'),
-    ('Mascotas',       'ðŸ¾', '#8BC34A',
+    ('Mascotas',       '🐾', '#8BC34A',
         ARRAY['mascota','perro','gato','veterinaria','alimento balanceado','pipeta'],
         'expense'),
-    ('Viajes',         'âœˆï¸', '#00BCD4',
+    ('Viajes',         '✈️', '#00BCD4',
         ARRAY['viaje','vacaciones','hotel','airbnb','vuelo','pasaje','aerolineas',
               'turismo'],
         'expense'),
-    ('Regalos',        'ðŸŽ', '#F06292',
+    ('Regalos',        '🎁', '#F06292',
         ARRAY['regalo','obsequio','navidad','cumple'],
         'expense'),
-    ('Impuestos',      'ðŸ§¾', '#455A64',
+    ('Impuestos',      '🧾', '#455A64',
         ARRAY['impuesto','afip','monotributo','iibb','ganancias','bienes personales'],
         'expense'),
-    ('Otros',          'ðŸ“¦', '#9E9E9E',
+    ('Otros',          '📦', '#9E9E9E',
         ARRAY['otros','varios','misc'],
         'expense'),
     -- income side
-    ('Sueldo',         'ðŸ’¼', '#4CAF50', ARRAY['sueldo','salario','haber'], 'income'),
-    ('Freelance',      'ðŸ’»', '#03A9F4', ARRAY['freelance','proyecto','cliente','factura'], 'income'),
-    ('Inversiones',    'ðŸ“ˆ', '#009688', ARRAY['dividendo','interes','renta','plazo fijo'], 'income'),
-    ('Otros ingresos', 'ðŸ’°', '#9E9E9E', ARRAY['regalo','reintegro','venta'], 'income');
+    ('Sueldo',         '💼', '#4CAF50', ARRAY['sueldo','salario','haber'], 'income'),
+    ('Freelance',      '💻', '#03A9F4', ARRAY['freelance','proyecto','cliente','factura'], 'income'),
+    ('Inversiones',    '📈', '#009688', ARRAY['dividendo','interes','renta','plazo fijo'], 'income'),
+    ('Otros ingresos', '💰', '#9E9E9E', ARRAY['regalo','reintegro','venta'], 'income');
 
 -- =====================================================================
 -- Function: bootstrap a new user (creates default categories + payment methods)
@@ -451,8 +451,8 @@ BEGIN
     INSERT INTO payment_methods (user_id, name, normalized_name, type, is_default)
     VALUES
         (v_user_id, 'Efectivo',     normalize_text('Efectivo'),     'cash',           TRUE),
-        (v_user_id, 'DÃ©bito',       normalize_text('DÃ©bito'),       'debit_card',     FALSE),
-        (v_user_id, 'CrÃ©dito',      normalize_text('CrÃ©dito'),      'credit_card',    FALSE),
+        (v_user_id, 'Débito',       normalize_text('Débito'),       'debit_card',     FALSE),
+        (v_user_id, 'Crédito',      normalize_text('Crédito'),      'credit_card',    FALSE),
         (v_user_id, 'Transferencia',normalize_text('Transferencia'),'transfer',       FALSE),
         (v_user_id, 'Mercado Pago', normalize_text('Mercado Pago'), 'digital_wallet', FALSE)
     ON CONFLICT (user_id, normalized_name) DO NOTHING;
@@ -470,11 +470,11 @@ $$ LANGUAGE plpgsql;
 -- Migration 001: Expense groups, onboarding, exclusion flags, conversation state
 -- =====================================================================
 -- =====================================================================
--- Migration 001: Expense groups (envoltorio genÃ©rico â€” viajes, eventos,
+-- Migration 001: Expense groups (envoltorio genérico — viajes, eventos,
 -- emergencias, etc.), onboarding, exclusion flags, conversation state.
 -- Idempotent.
 -- =====================================================================
--- ---------- 1. Expense groups (genÃ©rico) ----------
+-- ---------- 1. Expense groups (genérico) ----------
 CREATE TABLE IF NOT EXISTS expense_groups (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -505,7 +505,7 @@ ALTER TABLE transactions
 
 CREATE INDEX IF NOT EXISTS idx_tx_group ON transactions(group_id) WHERE group_id IS NOT NULL;
 
--- ---------- 3. ExclusiÃ³n de reportes ----------
+-- ---------- 3. Exclusión de reportes ----------
 ALTER TABLE transactions
     ADD COLUMN IF NOT EXISTS excluded_from_reports BOOLEAN NOT NULL DEFAULT FALSE;
 
@@ -547,35 +547,35 @@ CREATE TABLE IF NOT EXISTS reply_templates (
 CREATE INDEX IF NOT EXISTS idx_replytmpl_kind ON reply_templates(kind);
 
 INSERT INTO reply_templates (kind, template) VALUES
-    ('expense_logged', 'âœ… Anotado: ${amount} en {category}{description}\nðŸ“… {date}'),
-    ('expense_logged', 'ðŸ‘Œ Listo, ${amount} en {category}{description} Â· {date}'),
-    ('expense_logged', 'âœï¸ Va: ${amount} â€¢ {category}{description} â€¢ {date}'),
-    ('expense_logged', 'ðŸ“ QuedÃ³: ${amount} en {category}{description}, {date}'),
-    ('expense_logged', 'âœ… RegistrÃ© ${amount} de {category}{description} ({date})'),
-    ('expense_logged', 'Listo ðŸ‘Œ ${amount} en {category}{description}, {date}'),
-    ('expense_logged_group', 'âœ… Anotado en {group}: ${amount} â€¢ {category}{description} Â· {date}'),
-    ('expense_logged_group', 'ðŸ§³ SumÃ© ${amount} a {group}: {category}{description} ({date})'),
-    ('income_logged', 'ðŸ’° BuenÃ­simo, entrÃ³ ${amount} de {category}{description}\nðŸ“… {date}'),
-    ('income_logged', 'ðŸ¤‘ Ingreso anotado: ${amount} en {category}{description} Â· {date}'),
-    ('income_logged', 'ðŸ’¸ Plata adentro: ${amount} â€¢ {category} Â· {date}'),
-    ('deleted', 'ðŸ—‘ï¸ BorrÃ© el Ãºltimo: ${amount}{description} del {date}.'),
-    ('deleted', 'ðŸ‘ Listo, eliminÃ© ${amount}{description} ({date}).'),
-    ('deleted', 'âœ‹ Borrado: ${amount}{description}, {date}.'),
-    ('no_data', 'ðŸ“­ No tengo registros para {period} todavÃ­a.'),
-    ('no_data', 'ðŸ«¥ Nada cargado en {period}. Mandame un gasto y arrancamos.'),
-    ('error', 'ðŸ˜… Se me trabÃ³ algo, mandÃ¡melo de vuelta porfa.'),
-    ('error', 'ðŸ«  Tuve un problemita, Â¿lo intentamos otra vez?'),
-    ('error', 'Uh, se me cruzaron los cables. RepetÃ­melo en un toque ðŸ™'),
-    ('greeting', 'ðŸ‘‹ Â¡Hola{name}! Listo para anotar gastos.'),
-    ('greeting', 'Buenas{name} ðŸ™Œ mandame lo que gastaste y lo registro.'),
-    ('confirm_otros', 'ðŸ¤” No me quedÃ³ claro a quÃ© categorÃ­a va. Â¿QuerÃ©s que lo guarde en *Otros* o preferÃ­s especificar (ej: comida, transporte, servicios)?'),
-    ('confirm_otros', 'ðŸ‘€ Esto lo voy a guardar en *Otros*. Si querÃ©s afinar la categorÃ­a, decÃ­mela; si estÃ¡ bien asÃ­, mandame "ok".'),
-    ('clarify_amount', 'ðŸ§ No agarrÃ© bien el monto. Â¿CuÃ¡nto fue?'),
-    ('clarify_amount', 'Â¿Me pasÃ¡s el monto? No lo pesquÃ©.'),
-    ('over_budget', 'âš ï¸ Te pasaste del presupuesto de *{category}* este mes: ${total} de ${budget}.'),
-    ('near_budget', 'ðŸŸ¡ Vas por ${total} en *{category}* este mes (presupuesto ${budget}).'),
-    ('daily_summary_zero', 'ðŸ§˜ Hoy no registraste gastos. Buen dÃ­a para la billetera.'),
-    ('daily_summary_zero', 'ðŸŽ‰ DÃ­a sin gastos registrados.')
+    ('expense_logged', '✅ Anotado: ${amount} en {category}{description}\n📅 {date}'),
+    ('expense_logged', '👌 Listo, ${amount} en {category}{description} · {date}'),
+    ('expense_logged', '✍️ Va: ${amount} • {category}{description} • {date}'),
+    ('expense_logged', '📝 Quedó: ${amount} en {category}{description}, {date}'),
+    ('expense_logged', '✅ Registré ${amount} de {category}{description} ({date})'),
+    ('expense_logged', 'Listo 👌 ${amount} en {category}{description}, {date}'),
+    ('expense_logged_group', '✅ Anotado en {group}: ${amount} • {category}{description} · {date}'),
+    ('expense_logged_group', '🧳 Sumé ${amount} a {group}: {category}{description} ({date})'),
+    ('income_logged', '💰 Buenísimo, entró ${amount} de {category}{description}\n📅 {date}'),
+    ('income_logged', '🤑 Ingreso anotado: ${amount} en {category}{description} · {date}'),
+    ('income_logged', '💸 Plata adentro: ${amount} • {category} · {date}'),
+    ('deleted', '🗑️ Borré el último: ${amount}{description} del {date}.'),
+    ('deleted', '👍 Listo, eliminé ${amount}{description} ({date}).'),
+    ('deleted', '✋ Borrado: ${amount}{description}, {date}.'),
+    ('no_data', '📭 No tengo registros para {period} todavía.'),
+    ('no_data', '🫥 Nada cargado en {period}. Mandame un gasto y arrancamos.'),
+    ('error', '😅 Se me trabó algo, mandámelo de vuelta porfa.'),
+    ('error', '🫠 Tuve un problemita, ¿lo intentamos otra vez?'),
+    ('error', 'Uh, se me cruzaron los cables. Repetímelo en un toque 🙏'),
+    ('greeting', '👋 ¡Hola{name}! Listo para anotar gastos.'),
+    ('greeting', 'Buenas{name} 🙌 mandame lo que gastaste y lo registro.'),
+    ('confirm_otros', '🤔 No me quedó claro a qué categoría va. ¿Querés que lo guarde en *Otros* o preferís especificar (ej: comida, transporte, servicios)?'),
+    ('confirm_otros', '👀 Esto lo voy a guardar en *Otros*. Si querés afinar la categoría, decímela; si está bien así, mandame "ok".'),
+    ('clarify_amount', '🧐 No agarré bien el monto. ¿Cuánto fue?'),
+    ('clarify_amount', '¿Me pasás el monto? No lo pesqué.'),
+    ('over_budget', '⚠️ Te pasaste del presupuesto de *{category}* este mes: ${total} de ${budget}.'),
+    ('near_budget', '🟡 Vas por ${total} en *{category}* este mes (presupuesto ${budget}).'),
+    ('daily_summary_zero', '🧘 Hoy no registraste gastos. Buen día para la billetera.'),
+    ('daily_summary_zero', '🎉 Día sin gastos registrados.')
 ON CONFLICT DO NOTHING;
 
 CREATE OR REPLACE FUNCTION pick_reply(p_kind TEXT)
@@ -608,13 +608,15 @@ DECLARE
     date_part TEXT;
 BEGIN
     tpl := pick_reply(p_kind);
-    desc_part := CASE WHEN COALESCE(p_description, '') = '' THEN '' ELSE ' â€” ' || p_description END;
+    desc_part := CASE WHEN COALESCE(p_description, '') = '' THEN '' ELSE ' — ' || p_description END;
     name_part := CASE WHEN COALESCE(p_name, '') = '' THEN '' ELSE ' ' || p_name END;
     date_part := CASE
         WHEN p_date IS NULL THEN ''
         WHEN p_date = CURRENT_DATE THEN 'hoy'
         WHEN p_date = CURRENT_DATE - 1 THEN 'ayer'
-        ELSE TO_CHAR(p_date, 'TMDay DD "de" TMMonth')
+        ELSE (ARRAY['domingo','lunes','martes','miércoles','jueves','viernes','sábado'])[EXTRACT(DOW FROM p_date)::INT + 1]
+             || ' ' || TO_CHAR(p_date, 'FMDD') || ' de '
+             || (ARRAY['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'])[EXTRACT(MONTH FROM p_date)::INT]
     END;
     tpl := REPLACE(tpl, '{amount}',      COALESCE(TO_CHAR(p_amount, 'FM999G999G990D00'), ''));
     tpl := REPLACE(tpl, '{category}',    COALESCE(p_category, ''));
@@ -721,7 +723,7 @@ $$ LANGUAGE plpgsql;
 -- onboarding helpers, PDF report metadata.
 -- Idempotent.
 -- =====================================================================
--- ---------- 1. Budget status check (despuÃ©s de un insert) ----------
+-- ---------- 1. Budget status check (después de un insert) ----------
 CREATE OR REPLACE FUNCTION check_budget_status(p_user_id UUID, p_category_id UUID)
 RETURNS TABLE(should_alert BOOLEAN, level TEXT, total NUMERIC, budget_amount NUMERIC, category_name TEXT) AS $$
 DECLARE
@@ -944,7 +946,7 @@ $$ LANGUAGE plpgsql;
 ALTER TABLE transactions
     ADD COLUMN IF NOT EXISTS transaction_at TIMESTAMPTZ;
 
-CREATE INDEX IF NOT EXISTS idx_tx_dup_check ON transactions(user_id, amount, transaction_date) WHERE created_at > NOW() - INTERVAL '1 day';
+CREATE INDEX IF NOT EXISTS idx_tx_dup_check ON transactions(user_id, amount, transaction_date, created_at);
 
 CREATE OR REPLACE FUNCTION check_duplicate_tx(
     p_user_id UUID,

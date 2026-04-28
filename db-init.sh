@@ -24,14 +24,8 @@ for db in $(echo "$POSTGRES_MULTIPLE_DATABASES" | tr ',' ' '); do
     fi
 done
 
-echo "[db-init] checking expenses schema..."
-table_count=$($PSQL -d expenses -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
-if [ "$table_count" = "0" ]; then
-    echo "[db-init] applying schema.sql to expenses"
-    $PSQL -d expenses -f /schema.sql
-else
-    echo "[db-init] expenses has $table_count tables, skipping schema.sql"
-fi
+echo "[db-init] applying schema.sql to expenses (idempotent)"
+$PSQL -d expenses -f /schema.sql
 
 # Apply migrations (idempotent — they all use IF NOT EXISTS / CREATE OR REPLACE)
 if [ -d /migrations ]; then
