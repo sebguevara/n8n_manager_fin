@@ -16,7 +16,7 @@ services:
   # -------------------------------------------------------------------
   n8n_postgres:
     image: postgres:18.3-alpine
-    container_name: postgres
+    container_name: n8n_postgres
     restart: unless-stopped
     ports:
       - "${POSTGRES_PORT:-8832}:5432"
@@ -55,7 +55,7 @@ services:
     networks:
       - expense-net
     depends_on:
-      postgres:
+      n8n_postgres:
         condition: service_healthy
     entrypoint: ["sh", "/db-init.sh"]
 
