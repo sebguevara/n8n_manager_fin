@@ -152,16 +152,16 @@ services:
         condition: service_completed_successfully
 
   # -------------------------------------------------------------------
-  # Evolution API — exposed on PORT_EVOLUTION (default 8080)
+  # Evolution API — exposed on PORT_EVOLUTION (default 8808)
   # -------------------------------------------------------------------
-  evolution-api:
+  n8n_evolution-api:
     image: evoapicloud/evolution-api:latest
-    container_name: evolution-api
+    container_name: n8n_evolution-api
     restart: unless-stopped
     ports:
-      - "${PORT_EVOLUTION:-8080}:8080"
+      - "${PORT_EVOLUTION:-8808}:8808"
     environment:
-      SERVER_URL: http://${VPS_IP}:${PORT_EVOLUTION:-8080}
+      SERVER_URL: http://${VPS_IP}:${PORT_EVOLUTION:-8808}
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
 
@@ -217,43 +217,8 @@ services:
       db-init:
         condition: service_completed_successfully
 
-  # -------------------------------------------------------------------
-  # NocoDB — exposed on PORT_NOCODB (default 8081)
-  # -------------------------------------------------------------------
-  nocodb:
-    image: nocodb/nocodb:latest
-    container_name: nocodb
-    restart: unless-stopped
-    ports:
-      - "${PORT_NOCODB:-8081}:8080"
-    environment:
-      NC_DB: "pg://n8n_postgres:5432?u=${POSTGRES_USER}&p=${POSTGRES_PASSWORD}&d=nocodb"
-      NC_PUBLIC_URL: http://${VPS_IP}:${PORT_NOCODB:-8081}
-      NC_AUTH_JWT_SECRET: ${NOCODB_JWT_SECRET}
-      NC_DISABLE_TELE: "true"
-      # Allow connecting to internal/private hosts (postgres in same docker network)
-      NC_ALLOW_LOCAL_HOOKS: "true"
-      NC_DISABLE_AUDIT: "false"
-      NC_CONNECT_TO_EXTERNAL_DB_DISABLED: "false"
-      NC_TOOL_DIR: /usr/app/data
-      NC_PRIVATE_HOST_BLOCK_DISABLED: "true"
-      NC_DB_VALIDATE_DISABLE_PRIVATE_IPS: "true"
-      TZ: ${TZ}
-    volumes:
-      - nocodb_data:/usr/app/data
-    networks:
-      - expense-net
-    depends_on:
-      n8n_postgres:
-        condition: service_healthy
-      db-init:
-        condition: service_completed_successfully
-
-  # -------------------------------------------------------------------
-  # Metabase — exposed on PORT_METABASE (default 3001)
-  # -------------------------------------------------------------------
-  metabase:
-    image: metabase/metabase:latest
+  n8n_metabase:
+  image: metabase/metabase:latest
     container_name: metabase
     restart: unless-stopped
     ports:
