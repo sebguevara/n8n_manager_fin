@@ -218,7 +218,7 @@ services:
         condition: service_completed_successfully
 
   n8n_metabase:
-  image: metabase/metabase:latest
+    image: metabase/metabase:latest
     container_name: metabase
     restart: unless-stopped
     ports:
