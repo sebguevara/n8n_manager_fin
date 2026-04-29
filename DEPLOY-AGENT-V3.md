@@ -65,7 +65,13 @@ En n8n:
 
 ### 4. Apuntar Evolution API al webhook v3
 
-El agente nuevo escucha en `/webhook/chefin`. En tu config de Evolution API, cambiá la URL del webhook hacia el path nuevo. Si querés A/B, podés dejar el viejo activo: solo los teléfonos en `ALLOWED_PHONES` reciben respuesta.
+El agente escucha en `/webhook/chefin`. En tu config de Evolution API:
+
+```
+URL: http://n8n:5678/webhook/chefin
+```
+
+⚠️ Si tenés el workflow v1 (`chefin` viejo) activo y usa el mismo path, **desactivá el v1 antes de activar el v3** para evitar conflicto de path.
 
 ### 5. Smoke tests del agente
 
