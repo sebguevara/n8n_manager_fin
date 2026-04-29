@@ -65,7 +65,7 @@ En n8n:
 
 ### 4. Apuntar Evolution API al webhook v3
 
-El agente nuevo escucha en `/webhook/expense-bot-v3`. En tu config de Evolution API, cambiá la URL del webhook hacia el path nuevo. Si querés A/B, podés dejar el viejo activo: solo los teléfonos en `ALLOWED_PHONES` reciben respuesta.
+El agente nuevo escucha en `/webhook/chefin`. En tu config de Evolution API, cambiá la URL del webhook hacia el path nuevo. Si querés A/B, podés dejar el viejo activo: solo los teléfonos en `ALLOWED_PHONES` reciben respuesta.
 
 ### 5. Smoke tests del agente
 
