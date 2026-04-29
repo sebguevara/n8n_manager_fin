@@ -143,7 +143,10 @@ services:
       DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
 
       # Misc
-      N8N_DIAGNOSTICS_ENABLED: "false"
+      # Diagnostics MUST be true for the Community Edition "Unlock" flow on
+      # Settings → Usage and plan to work — the free license registration
+      # piggybacks on the same telemetry pipeline.
+      N8N_DIAGNOSTICS_ENABLED: "true"
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_DEFAULT_BINARY_DATA_MODE: filesystem
       EXECUTIONS_DATA_PRUNE: "true"
