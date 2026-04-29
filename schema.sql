@@ -1053,3 +1053,785 @@ BEGIN
               (SELECT c.name FROM categories c WHERE c.id = t.category_id);
 END;
 $$ LANGUAGE plpgsql;
+
+-- =====================================================================
+-- AGENT V2: tools para el clasificador conversacional con tool-calling
+-- =====================================================================
+-- Estas funciones reemplazan los handlers rígidos del switch por capacidades
+-- que el LLM puede combinar libremente. Filosofía:
+--   - Filtros determinísticos (monto, fecha, ids) son AND duros.
+--   - Filtros fuzzy (descripción, categoría libre) solo afectan ranking.
+--   - Ninguna función borra/edita sin recibir UUIDs explícitos.
+--   - Todas devuelven datos estructurados listos para serializar a JSON.
+
+-- ---------- A1. find_matching_tx_v2: matcher robusto con scoring ----------
+-- Devuelve hasta p_limit transacciones, ordenadas por score.
+-- Los hints fuzzy (description/category) NO excluyen filas; solo rankean,
+-- salvo que sean los únicos filtros dados (entonces se aplica trigram %).
+-- Si vienen filtros determinísticos (amount/date/range) son AND duros.
+CREATE OR REPLACE FUNCTION find_matching_tx_v2(
+    p_user_id UUID,
+    p_description_hint TEXT DEFAULT NULL,
+    p_date DATE DEFAULT NULL,
+    p_date_from DATE DEFAULT NULL,
+    p_date_to DATE DEFAULT NULL,
+    p_amount NUMERIC DEFAULT NULL,
+    p_amount_min NUMERIC DEFAULT NULL,
+    p_amount_max NUMERIC DEFAULT NULL,
+    p_category_hint TEXT DEFAULT NULL,
+    p_type TEXT DEFAULT NULL,
+    p_group_hint TEXT DEFAULT NULL,
+    p_limit INT DEFAULT 20
+)
+RETURNS TABLE(
+    id UUID,
+    amount NUMERIC,
+    description TEXT,
+    transaction_date DATE,
+    category_id UUID,
+    category_name TEXT,
+    category_emoji TEXT,
+    type TEXT,
+    group_name TEXT,
+    score REAL,
+    match_reasons JSONB
+) AS $$
+DECLARE
+    v_has_deterministic BOOLEAN;
+    v_has_fuzzy BOOLEAN;
+BEGIN
+    v_has_deterministic := (p_date IS NOT NULL OR p_date_from IS NOT NULL OR p_date_to IS NOT NULL
+                            OR p_amount IS NOT NULL OR p_amount_min IS NOT NULL OR p_amount_max IS NOT NULL
+                            OR p_type IS NOT NULL);
+    v_has_fuzzy := (COALESCE(p_description_hint,'') <> '' OR COALESCE(p_category_hint,'') <> ''
+                    OR COALESCE(p_group_hint,'') <> '');
+
+    RETURN QUERY
+    SELECT
+        t.id,
+        t.amount,
+        t.description,
+        t.transaction_date,
+        t.category_id,
+        c.name AS category_name,
+        c.emoji AS category_emoji,
+        t.type,
+        g.name AS group_name,
+        (
+            CASE WHEN COALESCE(p_description_hint,'') = '' THEN 0
+                 ELSE GREATEST(
+                    similarity(normalize_text(COALESCE(t.description,'')), normalize_text(p_description_hint)),
+                    similarity(normalize_text(COALESCE(c.name,'')), normalize_text(p_description_hint))
+                 ) * 0.5 END
+          + CASE WHEN COALESCE(p_category_hint,'') = '' THEN 0
+                 ELSE similarity(normalize_text(COALESCE(c.name,'')), normalize_text(p_category_hint)) * 0.4 END
+          + CASE WHEN COALESCE(p_group_hint,'') = '' THEN 0
+                 ELSE similarity(normalize_text(COALESCE(g.name,'')), normalize_text(p_group_hint)) * 0.3 END
+          + CASE WHEN p_amount IS NOT NULL AND t.amount = p_amount THEN 0.2 ELSE 0 END
+          + CASE WHEN p_date IS NOT NULL AND t.transaction_date = p_date THEN 0.2 ELSE 0 END
+        )::REAL AS score,
+        jsonb_build_object(
+            'exact_amount', (p_amount IS NOT NULL AND t.amount = p_amount),
+            'exact_date', (p_date IS NOT NULL AND t.transaction_date = p_date),
+            'in_date_range', (p_date_from IS NOT NULL OR p_date_to IS NOT NULL),
+            'in_amount_range', (p_amount_min IS NOT NULL OR p_amount_max IS NOT NULL),
+            'desc_similarity', CASE WHEN COALESCE(p_description_hint,'') = '' THEN NULL
+                                    ELSE GREATEST(
+                                        similarity(normalize_text(COALESCE(t.description,'')), normalize_text(p_description_hint)),
+                                        similarity(normalize_text(COALESCE(c.name,'')), normalize_text(p_description_hint))
+                                    ) END,
+            'cat_similarity', CASE WHEN COALESCE(p_category_hint,'') = '' THEN NULL
+                                   ELSE similarity(normalize_text(COALESCE(c.name,'')), normalize_text(p_category_hint)) END
+        ) AS match_reasons
+    FROM transactions t
+    LEFT JOIN categories c ON c.id = t.category_id
+    LEFT JOIN expense_groups g ON g.id = t.group_id
+    WHERE t.user_id = p_user_id
+      -- Hard filters (AND, determinísticos)
+      AND (p_date IS NULL OR t.transaction_date = p_date)
+      AND (p_date_from IS NULL OR t.transaction_date >= p_date_from)
+      AND (p_date_to IS NULL OR t.transaction_date <= p_date_to)
+      AND (p_amount IS NULL OR t.amount = p_amount)
+      AND (p_amount_min IS NULL OR t.amount >= p_amount_min)
+      AND (p_amount_max IS NULL OR t.amount <= p_amount_max)
+      AND (p_type IS NULL OR t.type = p_type)
+      -- Fuzzy filters: si NO hay determinístico, exigimos al menos un trigram match.
+      -- Si hay determinístico, los fuzzy son solo ranking.
+      AND (v_has_deterministic
+           OR NOT v_has_fuzzy
+           OR (COALESCE(p_description_hint,'') <> ''
+               AND (normalize_text(COALESCE(t.description,'')) % normalize_text(p_description_hint)
+                    OR normalize_text(COALESCE(c.name,'')) % normalize_text(p_description_hint)))
+           OR (COALESCE(p_category_hint,'') <> ''
+               AND normalize_text(COALESCE(c.name,'')) % normalize_text(p_category_hint))
+           OR (COALESCE(p_group_hint,'') <> ''
+               AND normalize_text(COALESCE(g.name,'')) % normalize_text(p_group_hint))
+          )
+    ORDER BY score DESC, t.transaction_date DESC, t.created_at DESC
+    LIMIT GREATEST(p_limit, 1);
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A2. query_tx_dynamic: query flexible con paginación ----------
+-- Tool principal de lectura para el agente. Acepta cualquier combinación de
+-- filtros vía JSONB y devuelve transacciones + total_count para paginar.
+-- Filtros soportados:
+--   period: today|yesterday|this_week|this_month|last_month|this_year|all|custom
+--   start_date, end_date: ISO (solo si period='custom')
+--   category, description_contains, group_name, payment_method
+--   exact_amount, min_amount, max_amount
+--   type: expense|income|both
+--   sort: date_desc|date_asc|amount_desc|amount_asc
+--   limit (1..50), offset
+CREATE OR REPLACE FUNCTION query_tx_dynamic(
+    p_user_id UUID,
+    p_filters JSONB DEFAULT '{}'::jsonb,
+    p_limit INT DEFAULT 20,
+    p_offset INT DEFAULT 0
+)
+RETURNS TABLE(
+    id UUID,
+    transaction_date DATE,
+    amount NUMERIC,
+    description TEXT,
+    category_name TEXT,
+    category_emoji TEXT,
+    type TEXT,
+    payment_method_name TEXT,
+    group_name TEXT,
+    total_count BIGINT
+) AS $$
+DECLARE
+    v_period TEXT := COALESCE(p_filters->>'period', 'all');
+    v_start DATE;
+    v_end DATE;
+    v_type TEXT := NULLIF(p_filters->>'type', '');
+    v_category TEXT := NULLIF(p_filters->>'category', '');
+    v_desc TEXT := NULLIF(p_filters->>'description_contains', '');
+    v_group TEXT := NULLIF(p_filters->>'group_name', '');
+    v_pm TEXT := NULLIF(p_filters->>'payment_method', '');
+    v_exact_amt NUMERIC := NULLIF(p_filters->>'exact_amount', '')::NUMERIC;
+    v_min_amt NUMERIC := NULLIF(p_filters->>'min_amount', '')::NUMERIC;
+    v_max_amt NUMERIC := NULLIF(p_filters->>'max_amount', '')::NUMERIC;
+    v_sort TEXT := COALESCE(p_filters->>'sort', 'date_desc');
+    v_lim INT := LEAST(GREATEST(p_limit, 1), 50);
+BEGIN
+    -- Resolver período → rango de fechas
+    CASE v_period
+        WHEN 'today'      THEN v_start := CURRENT_DATE;                     v_end := CURRENT_DATE;
+        WHEN 'yesterday'  THEN v_start := CURRENT_DATE - 1;                 v_end := CURRENT_DATE - 1;
+        WHEN 'this_week'  THEN v_start := DATE_TRUNC('week', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'this_month' THEN v_start := DATE_TRUNC('month', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'last_month' THEN v_start := DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')::DATE;
+                                v_end := (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 day')::DATE;
+        WHEN 'this_year'  THEN v_start := DATE_TRUNC('year', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'custom'     THEN v_start := NULLIF(p_filters->>'start_date','')::DATE;
+                                v_end   := NULLIF(p_filters->>'end_date','')::DATE;
+        ELSE                   v_start := NULL;  v_end := NULL;  -- 'all'
+    END CASE;
+
+    RETURN QUERY
+    WITH base AS (
+        SELECT
+            t.id, t.transaction_date, t.amount, t.description,
+            c.name AS category_name, c.emoji AS category_emoji, t.type,
+            pm.name AS payment_method_name,
+            g.name AS group_name,
+            t.created_at
+        FROM v_reportable_transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+        LEFT JOIN payment_methods pm ON pm.id = t.payment_method_id
+        LEFT JOIN expense_groups g ON g.id = t.group_id
+        WHERE t.user_id = p_user_id
+          AND (v_start IS NULL OR t.transaction_date >= v_start)
+          AND (v_end   IS NULL OR t.transaction_date <= v_end)
+          AND (v_type  IS NULL OR v_type = 'both' OR t.type = v_type)
+          AND (v_category IS NULL OR normalize_text(COALESCE(c.name,'')) % normalize_text(v_category))
+          AND (v_desc IS NULL OR normalize_text(COALESCE(t.description,'')) ILIKE '%' || normalize_text(v_desc) || '%'
+               OR normalize_text(COALESCE(t.description,'')) % normalize_text(v_desc))
+          AND (v_group IS NULL OR normalize_text(COALESCE(g.name,'')) % normalize_text(v_group))
+          AND (v_pm IS NULL OR normalize_text(COALESCE(pm.name,'')) % normalize_text(v_pm))
+          AND (v_exact_amt IS NULL OR t.amount = v_exact_amt)
+          AND (v_min_amt IS NULL OR t.amount >= v_min_amt)
+          AND (v_max_amt IS NULL OR t.amount <= v_max_amt)
+    ),
+    counted AS (SELECT COUNT(*)::BIGINT AS n FROM base)
+    SELECT b.id, b.transaction_date, b.amount, b.description, b.category_name, b.category_emoji,
+           b.type, b.payment_method_name, b.group_name, c.n
+    FROM base b CROSS JOIN counted c
+    ORDER BY
+      CASE WHEN v_sort = 'date_desc'   THEN b.transaction_date END DESC,
+      CASE WHEN v_sort = 'date_desc'   THEN b.created_at END DESC,
+      CASE WHEN v_sort = 'date_asc'    THEN b.transaction_date END ASC,
+      CASE WHEN v_sort = 'date_asc'    THEN b.created_at END ASC,
+      CASE WHEN v_sort = 'amount_desc' THEN b.amount END DESC,
+      CASE WHEN v_sort = 'amount_asc'  THEN b.amount END ASC
+    OFFSET GREATEST(p_offset, 0)
+    LIMIT v_lim;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A3. get_total_dynamic ----------
+CREATE OR REPLACE FUNCTION get_total_dynamic(
+    p_user_id UUID,
+    p_filters JSONB DEFAULT '{}'::jsonb
+)
+RETURNS TABLE(total NUMERIC, count BIGINT, period_start DATE, period_end DATE) AS $$
+DECLARE
+    v_period TEXT := COALESCE(p_filters->>'period', 'this_month');
+    v_start DATE; v_end DATE;
+    v_type TEXT := COALESCE(NULLIF(p_filters->>'type',''), 'expense');
+    v_category TEXT := NULLIF(p_filters->>'category', '');
+    v_group TEXT := NULLIF(p_filters->>'group_name', '');
+BEGIN
+    CASE v_period
+        WHEN 'today'      THEN v_start := CURRENT_DATE; v_end := CURRENT_DATE;
+        WHEN 'yesterday'  THEN v_start := CURRENT_DATE - 1; v_end := CURRENT_DATE - 1;
+        WHEN 'this_week'  THEN v_start := DATE_TRUNC('week', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'this_month' THEN v_start := DATE_TRUNC('month', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'last_month' THEN v_start := DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')::DATE;
+                                v_end := (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 day')::DATE;
+        WHEN 'this_year'  THEN v_start := DATE_TRUNC('year', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'custom'     THEN v_start := NULLIF(p_filters->>'start_date','')::DATE;
+                                v_end   := NULLIF(p_filters->>'end_date','')::DATE;
+        ELSE                   v_start := NULL; v_end := NULL;
+    END CASE;
+
+    RETURN QUERY
+    SELECT
+        COALESCE(SUM(t.amount), 0)::NUMERIC AS total,
+        COUNT(*)::BIGINT AS count,
+        v_start AS period_start,
+        v_end AS period_end
+    FROM v_reportable_transactions t
+    LEFT JOIN categories c ON c.id = t.category_id
+    LEFT JOIN expense_groups g ON g.id = t.group_id
+    WHERE t.user_id = p_user_id
+      AND (v_start IS NULL OR t.transaction_date >= v_start)
+      AND (v_end   IS NULL OR t.transaction_date <= v_end)
+      AND (v_type = 'both' OR t.type = v_type)
+      AND (v_category IS NULL OR normalize_text(COALESCE(c.name,'')) % normalize_text(v_category))
+      AND (v_group IS NULL OR normalize_text(COALESCE(g.name,'')) % normalize_text(v_group));
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A4. get_breakdown_dynamic ----------
+-- Devuelve agregados agrupados por dimensión: category|day|week|month|payment_method|group
+CREATE OR REPLACE FUNCTION get_breakdown_dynamic(
+    p_user_id UUID,
+    p_dimension TEXT,
+    p_filters JSONB DEFAULT '{}'::jsonb,
+    p_top_n INT DEFAULT 10
+)
+RETURNS TABLE(label TEXT, emoji TEXT, total NUMERIC, count BIGINT, pct_of_total NUMERIC) AS $$
+DECLARE
+    v_period TEXT := COALESCE(p_filters->>'period', 'this_month');
+    v_start DATE; v_end DATE;
+    v_type TEXT := COALESCE(NULLIF(p_filters->>'type',''), 'expense');
+    v_grand NUMERIC;
+BEGIN
+    CASE v_period
+        WHEN 'today'      THEN v_start := CURRENT_DATE; v_end := CURRENT_DATE;
+        WHEN 'yesterday'  THEN v_start := CURRENT_DATE - 1; v_end := CURRENT_DATE - 1;
+        WHEN 'this_week'  THEN v_start := DATE_TRUNC('week', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'this_month' THEN v_start := DATE_TRUNC('month', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'last_month' THEN v_start := DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')::DATE;
+                                v_end := (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 day')::DATE;
+        WHEN 'this_year'  THEN v_start := DATE_TRUNC('year', CURRENT_DATE)::DATE; v_end := CURRENT_DATE;
+        WHEN 'custom'     THEN v_start := NULLIF(p_filters->>'start_date','')::DATE;
+                                v_end   := NULLIF(p_filters->>'end_date','')::DATE;
+        ELSE                   v_start := NULL; v_end := NULL;
+    END CASE;
+
+    SELECT COALESCE(SUM(t.amount), 0) INTO v_grand
+    FROM v_reportable_transactions t
+    WHERE t.user_id = p_user_id
+      AND (v_start IS NULL OR t.transaction_date >= v_start)
+      AND (v_end IS NULL OR t.transaction_date <= v_end)
+      AND (v_type = 'both' OR t.type = v_type);
+
+    IF v_grand = 0 THEN v_grand := 1; END IF; -- evitar div/0
+
+    RETURN QUERY
+    WITH agg AS (
+        SELECT
+            CASE p_dimension
+                WHEN 'category'        THEN COALESCE(c.name, 'Sin categoría')
+                WHEN 'day'             THEN TO_CHAR(t.transaction_date, 'YYYY-MM-DD')
+                WHEN 'week'            THEN TO_CHAR(DATE_TRUNC('week', t.transaction_date), 'YYYY-"W"IW')
+                WHEN 'month'           THEN TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM')
+                WHEN 'payment_method'  THEN COALESCE(pm.name, 'Sin método')
+                WHEN 'group'           THEN COALESCE(g.name, 'Sin grupo')
+                ELSE 'Sin grupo'
+            END AS label,
+            CASE p_dimension WHEN 'category' THEN c.emoji ELSE NULL END AS emoji,
+            SUM(t.amount)::NUMERIC AS total,
+            COUNT(*)::BIGINT AS count
+        FROM v_reportable_transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+        LEFT JOIN payment_methods pm ON pm.id = t.payment_method_id
+        LEFT JOIN expense_groups g ON g.id = t.group_id
+        WHERE t.user_id = p_user_id
+          AND (v_start IS NULL OR t.transaction_date >= v_start)
+          AND (v_end   IS NULL OR t.transaction_date <= v_end)
+          AND (v_type = 'both' OR t.type = v_type)
+        GROUP BY 1, 2
+    )
+    SELECT a.label, a.emoji, a.total, a.count, ROUND((a.total / v_grand * 100)::NUMERIC, 1) AS pct_of_total
+    FROM agg a
+    ORDER BY a.total DESC
+    LIMIT GREATEST(p_top_n, 1);
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A5. compare_periods ----------
+-- Compara totales entre dos períodos. Útil para "este mes vs el pasado".
+CREATE OR REPLACE FUNCTION compare_periods(
+    p_user_id UUID,
+    p_period_a TEXT,
+    p_period_b TEXT,
+    p_type TEXT DEFAULT 'expense'
+)
+RETURNS TABLE(
+    label_a TEXT, total_a NUMERIC, count_a BIGINT,
+    label_b TEXT, total_b NUMERIC, count_b BIGINT,
+    delta_abs NUMERIC, delta_pct NUMERIC
+) AS $$
+DECLARE
+    v_a JSONB; v_b JSONB;
+    v_total_a NUMERIC; v_count_a BIGINT;
+    v_total_b NUMERIC; v_count_b BIGINT;
+BEGIN
+    v_a := jsonb_build_object('period', p_period_a, 'type', p_type);
+    v_b := jsonb_build_object('period', p_period_b, 'type', p_type);
+
+    SELECT total, count INTO v_total_a, v_count_a FROM get_total_dynamic(p_user_id, v_a);
+    SELECT total, count INTO v_total_b, v_count_b FROM get_total_dynamic(p_user_id, v_b);
+
+    RETURN QUERY SELECT
+        p_period_a, COALESCE(v_total_a, 0), COALESCE(v_count_a, 0),
+        p_period_b, COALESCE(v_total_b, 0), COALESCE(v_count_b, 0),
+        (COALESCE(v_total_a, 0) - COALESCE(v_total_b, 0))::NUMERIC AS delta_abs,
+        CASE WHEN COALESCE(v_total_b, 0) = 0 THEN NULL
+             ELSE ROUND(((v_total_a - v_total_b) / v_total_b * 100)::NUMERIC, 1)
+        END AS delta_pct;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A6. find_potential_duplicates ----------
+-- Detecta gastos repetidos (mismo monto + categoría dentro de N días).
+-- Útil para "elimina los gastos repetidos".
+CREATE OR REPLACE FUNCTION find_potential_duplicates(
+    p_user_id UUID,
+    p_window_days INT DEFAULT 7,
+    p_min_repetitions INT DEFAULT 2
+)
+RETURNS TABLE(
+    cluster_id INT,
+    tx_count BIGINT,
+    total_amount NUMERIC,
+    sample_amount NUMERIC,
+    sample_category TEXT,
+    sample_description TEXT,
+    earliest_date DATE,
+    latest_date DATE,
+    transaction_ids UUID[]
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH grouped AS (
+        SELECT
+            DENSE_RANK() OVER (ORDER BY t.amount, t.category_id, normalize_text(COALESCE(t.description,'')))::INT AS cluster_id,
+            t.amount,
+            t.category_id,
+            c.name AS category_name,
+            t.description,
+            t.transaction_date,
+            t.id,
+            (t.transaction_date - LAG(t.transaction_date) OVER (
+                PARTITION BY t.amount, t.category_id, normalize_text(COALESCE(t.description,''))
+                ORDER BY t.transaction_date
+            )) AS gap_days
+        FROM v_reportable_transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.user_id = p_user_id
+          AND t.type = 'expense'
+          AND t.transaction_date >= CURRENT_DATE - (p_window_days * 4 || ' days')::INTERVAL
+    ),
+    clusters AS (
+        SELECT g.cluster_id,
+               COUNT(*)::BIGINT AS tx_count,
+               SUM(g.amount)::NUMERIC AS total_amount,
+               (ARRAY_AGG(g.amount))[1]::NUMERIC AS sample_amount,
+               (ARRAY_AGG(g.category_name))[1] AS sample_category,
+               (ARRAY_AGG(g.description))[1] AS sample_description,
+               MIN(g.transaction_date) AS earliest_date,
+               MAX(g.transaction_date) AS latest_date,
+               ARRAY_AGG(g.id) AS transaction_ids
+        FROM grouped g
+        GROUP BY g.cluster_id
+        HAVING COUNT(*) >= p_min_repetitions
+           AND MAX(g.transaction_date) - MIN(g.transaction_date) <= p_window_days
+    )
+    SELECT cl.cluster_id, cl.tx_count, cl.total_amount, cl.sample_amount,
+           cl.sample_category, cl.sample_description, cl.earliest_date, cl.latest_date,
+           cl.transaction_ids
+    FROM clusters cl
+    ORDER BY cl.tx_count DESC, cl.total_amount DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A7. bulk_delete_by_ids ----------
+-- Borra una lista de transacciones por UUID. Filtro de seguridad: user_id.
+-- El agente DEBE pasar la lista explícita; nunca borra por hint.
+CREATE OR REPLACE FUNCTION bulk_delete_by_ids(
+    p_user_id UUID,
+    p_ids UUID[]
+)
+RETURNS TABLE(deleted_count BIGINT, deleted_total NUMERIC, deleted_ids UUID[]) AS $$
+DECLARE
+    v_count BIGINT;
+    v_total NUMERIC;
+    v_ids UUID[];
+BEGIN
+    WITH del AS (
+        DELETE FROM transactions
+        WHERE user_id = p_user_id
+          AND id = ANY(p_ids)
+        RETURNING id, amount
+    )
+    SELECT COUNT(*)::BIGINT, COALESCE(SUM(amount), 0)::NUMERIC, COALESCE(ARRAY_AGG(id), ARRAY[]::UUID[])
+    INTO v_count, v_total, v_ids
+    FROM del;
+
+    RETURN QUERY SELECT v_count, v_total, v_ids;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A8. bulk_update_by_ids ----------
+CREATE OR REPLACE FUNCTION bulk_update_by_ids(
+    p_user_id UUID,
+    p_ids UUID[],
+    p_new_category_id UUID DEFAULT NULL,
+    p_new_date DATE DEFAULT NULL,
+    p_new_group_id UUID DEFAULT NULL,
+    p_amount_delta NUMERIC DEFAULT NULL,
+    p_set_excluded BOOLEAN DEFAULT NULL
+)
+RETURNS TABLE(updated_count BIGINT, updated_ids UUID[]) AS $$
+DECLARE
+    v_count BIGINT; v_ids UUID[];
+BEGIN
+    WITH upd AS (
+        UPDATE transactions t
+        SET category_id = COALESCE(p_new_category_id, t.category_id),
+            transaction_date = COALESCE(p_new_date, t.transaction_date),
+            group_id = COALESCE(p_new_group_id, t.group_id),
+            amount = CASE WHEN p_amount_delta IS NOT NULL THEN t.amount + p_amount_delta ELSE t.amount END,
+            excluded_from_reports = COALESCE(p_set_excluded, t.excluded_from_reports),
+            updated_at = NOW()
+        WHERE t.user_id = p_user_id AND t.id = ANY(p_ids)
+        RETURNING t.id
+    )
+    SELECT COUNT(*)::BIGINT, COALESCE(ARRAY_AGG(id), ARRAY[]::UUID[])
+    INTO v_count, v_ids FROM upd;
+    RETURN QUERY SELECT v_count, v_ids;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A9. bulk_preview ----------
+-- Previo a borrar/editar masivamente: cuenta y muestra primeros 10.
+-- Acepta los mismos filtros que query_tx_dynamic.
+CREATE OR REPLACE FUNCTION bulk_preview(
+    p_user_id UUID,
+    p_filters JSONB DEFAULT '{}'::jsonb
+)
+RETURNS TABLE(
+    would_match_count BIGINT,
+    would_match_total NUMERIC,
+    sample_ids UUID[],
+    preview JSONB
+) AS $$
+DECLARE
+    v_count BIGINT; v_total NUMERIC; v_ids UUID[]; v_preview JSONB;
+BEGIN
+    WITH matches AS (
+        SELECT q.id, q.transaction_date, q.amount, q.description, q.category_name, q.category_emoji
+        FROM query_tx_dynamic(p_user_id, p_filters, 10000, 0) q
+    ),
+    samp AS (
+        SELECT id, transaction_date, amount, description, category_name, category_emoji
+        FROM matches LIMIT 10
+    )
+    SELECT
+        (SELECT COUNT(*)::BIGINT FROM matches),
+        (SELECT COALESCE(SUM(amount),0)::NUMERIC FROM matches),
+        (SELECT COALESCE(ARRAY_AGG(id), ARRAY[]::UUID[]) FROM matches),
+        (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+            'id', id,
+            'date', transaction_date,
+            'amount', amount,
+            'description', description,
+            'category', category_name,
+            'emoji', category_emoji
+         )), '[]'::jsonb) FROM samp)
+    INTO v_count, v_total, v_ids, v_preview;
+
+    RETURN QUERY SELECT v_count, v_total, v_ids, v_preview;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A10. remember_last_list ----------
+-- Guarda una lista mostrada al usuario en conversation_state.context.last_list
+-- para resolver referencias deícticas ("borrá los 2 primeros", "esos").
+CREATE OR REPLACE FUNCTION remember_last_list(
+    p_user_id UUID,
+    p_kind TEXT,
+    p_items JSONB,
+    p_filters JSONB DEFAULT '{}'::jsonb,
+    p_ttl_seconds INT DEFAULT 600
+)
+RETURNS VOID AS $$
+BEGIN
+    INSERT INTO conversation_state (user_id, state, context, expires_at)
+    VALUES (
+        p_user_id,
+        'has_last_list',
+        jsonb_build_object(
+            'last_list', jsonb_build_object(
+                'kind', p_kind,
+                'items', p_items,
+                'shown_at', NOW(),
+                'filters_applied', p_filters
+            )
+        ),
+        NOW() + (p_ttl_seconds || ' seconds')::INTERVAL
+    )
+    ON CONFLICT (user_id) DO UPDATE
+    SET context = COALESCE(conversation_state.context, '{}'::jsonb)
+                  || jsonb_build_object(
+                      'last_list', jsonb_build_object(
+                          'kind', p_kind,
+                          'items', p_items,
+                          'shown_at', NOW(),
+                          'filters_applied', p_filters
+                      )
+                  ),
+        expires_at = NOW() + (p_ttl_seconds || ' seconds')::INTERVAL,
+        updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A11. get_last_list ----------
+CREATE OR REPLACE FUNCTION get_last_list(p_user_id UUID)
+RETURNS TABLE(kind TEXT, items JSONB, shown_at TIMESTAMPTZ, filters_applied JSONB, is_fresh BOOLEAN) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        cs.context->'last_list'->>'kind',
+        cs.context->'last_list'->'items',
+        (cs.context->'last_list'->>'shown_at')::TIMESTAMPTZ,
+        cs.context->'last_list'->'filters_applied',
+        (cs.expires_at > NOW())
+    FROM conversation_state cs
+    WHERE cs.user_id = p_user_id
+      AND cs.context ? 'last_list';
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A12. list_categories_with_counts ----------
+CREATE OR REPLACE FUNCTION list_categories_with_counts(
+    p_user_id UUID,
+    p_type TEXT DEFAULT NULL,
+    p_include_excluded BOOLEAN DEFAULT FALSE
+)
+RETURNS TABLE(
+    id UUID, name TEXT, emoji TEXT, type TEXT,
+    excluded BOOLEAN, tx_count BIGINT, total_amount NUMERIC
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT c.id, c.name, c.emoji, c.type,
+           c.excluded_from_reports,
+           COUNT(t.id)::BIGINT,
+           COALESCE(SUM(t.amount), 0)::NUMERIC
+    FROM categories c
+    LEFT JOIN transactions t ON t.category_id = c.id AND t.user_id = c.user_id
+    WHERE c.user_id = p_user_id
+      AND c.is_active = TRUE
+      AND (p_type IS NULL OR p_type = 'both' OR c.type = p_type)
+      AND (p_include_excluded OR c.excluded_from_reports = FALSE)
+    GROUP BY c.id, c.name, c.emoji, c.type, c.excluded_from_reports
+    ORDER BY c.type DESC, total_amount DESC, c.name;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A13. Índices de soporte para el agente ----------
+CREATE INDEX IF NOT EXISTS idx_tx_user_amount_date
+    ON transactions(user_id, amount, transaction_date);
+
+CREATE INDEX IF NOT EXISTS idx_tx_user_date_type
+    ON transactions(user_id, transaction_date DESC, type);
+
+-- Trigram index sobre description directo (sin normalize_text para que sea IMMUTABLE).
+-- Acelera búsquedas con `ILIKE '%foo%'` y `% similarity` en description.
+CREATE INDEX IF NOT EXISTS idx_tx_desc_trgm
+    ON transactions USING GIN (description gin_trgm_ops);
+
+-- ---------- A14. LangChain Postgres Chat Memory ----------
+-- Tabla que usa @n8n/n8n-nodes-langchain.memoryPostgresChat para persistir
+-- el historial conversacional por session_id (= user_id en nuestro caso).
+CREATE TABLE IF NOT EXISTS n8n_chat_histories (
+    id          SERIAL PRIMARY KEY,
+    session_id  TEXT NOT NULL,
+    message     JSONB NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_n8n_chat_histories_session
+    ON n8n_chat_histories(session_id, id);
+
+-- Job de retención: borra historial >30 días en cada cleanup.
+CREATE OR REPLACE FUNCTION purge_old_chat_history(p_days INT DEFAULT 30)
+RETURNS BIGINT AS $$
+DECLARE v_deleted BIGINT;
+BEGIN
+    WITH d AS (
+        DELETE FROM n8n_chat_histories
+        WHERE created_at < NOW() - (p_days || ' days')::INTERVAL
+        RETURNING 1
+    )
+    SELECT COUNT(*)::BIGINT INTO v_deleted FROM d;
+    RETURN v_deleted;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A15. Cron run log (observabilidad de los jobs cron) ----------
+CREATE TABLE IF NOT EXISTS cron_runs (
+    id           SERIAL PRIMARY KEY,
+    job_name     TEXT NOT NULL,
+    started_at   TIMESTAMPTZ DEFAULT NOW(),
+    finished_at  TIMESTAMPTZ,
+    items_processed INT DEFAULT 0,
+    items_sent   INT DEFAULT 0,
+    success      BOOLEAN,
+    error_msg    TEXT,
+    metadata     JSONB DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_cron_runs_job_started
+    ON cron_runs(job_name, started_at DESC);
+
+CREATE OR REPLACE FUNCTION log_cron_start(p_job TEXT, p_meta JSONB DEFAULT '{}'::jsonb)
+RETURNS INT AS $$
+DECLARE v_id INT;
+BEGIN
+    INSERT INTO cron_runs (job_name, metadata) VALUES (p_job, p_meta)
+    RETURNING id INTO v_id;
+    RETURN v_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION log_cron_end(
+    p_run_id INT,
+    p_items_processed INT DEFAULT 0,
+    p_items_sent INT DEFAULT 0,
+    p_success BOOLEAN DEFAULT TRUE,
+    p_error TEXT DEFAULT NULL
+) RETURNS VOID AS $$
+BEGIN
+    UPDATE cron_runs
+    SET finished_at = NOW(),
+        items_processed = p_items_processed,
+        items_sent = p_items_sent,
+        success = p_success,
+        error_msg = p_error
+    WHERE id = p_run_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A16. Cleanup periódico de conversation_state expirado ----------
+CREATE OR REPLACE FUNCTION purge_expired_conv_states()
+RETURNS BIGINT AS $$
+DECLARE v_deleted BIGINT;
+BEGIN
+    WITH d AS (
+        DELETE FROM conversation_state
+        WHERE expires_at < NOW() - INTERVAL '1 hour'
+        RETURNING 1
+    )
+    SELECT COUNT(*)::BIGINT INTO v_deleted FROM d;
+    RETURN v_deleted;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- A17. Budget alerts cron (notifica acercamiento/exceso) ----------
+-- Devuelve usuarios + categorías que cruzaron el umbral de 80% o 100%
+-- en el período del presupuesto, y NO fueron notificados en las últimas 18 horas.
+CREATE TABLE IF NOT EXISTS budget_alert_log (
+    id          SERIAL PRIMARY KEY,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    budget_id   UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+    level       TEXT NOT NULL,
+    notified_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_budget_alert_log_user_budget
+    ON budget_alert_log(user_id, budget_id, notified_at DESC);
+
+CREATE OR REPLACE FUNCTION pending_budget_alerts()
+RETURNS TABLE(
+    user_id UUID, phone TEXT, budget_id UUID,
+    category_name TEXT, amount NUMERIC, period TEXT,
+    spent NUMERIC, level TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH alerts AS (
+        SELECT
+            u.id AS user_id, u.phone_number AS phone,
+            b.id AS budget_id, c.name AS category_name,
+            b.amount, b.period::text AS period,
+            COALESCE(s.spent, 0) AS spent,
+            CASE
+                WHEN COALESCE(s.spent, 0) >= b.amount THEN 'over_budget'
+                WHEN COALESCE(s.spent, 0) >= b.amount * 0.8 THEN 'near_budget'
+                ELSE NULL
+            END AS level
+        FROM budgets b
+        JOIN users u ON u.id = b.user_id
+        JOIN categories c ON c.id = b.category_id
+        LEFT JOIN LATERAL (
+            SELECT SUM(t.amount) AS spent
+            FROM v_reportable_transactions t
+            WHERE t.user_id = b.user_id
+              AND t.category_id = b.category_id
+              AND t.type = 'expense'
+              AND t.transaction_date >= CASE b.period
+                  WHEN 'weekly' THEN DATE_TRUNC('week', CURRENT_DATE)::DATE
+                  WHEN 'yearly' THEN DATE_TRUNC('year', CURRENT_DATE)::DATE
+                  ELSE DATE_TRUNC('month', CURRENT_DATE)::DATE
+              END
+        ) s ON TRUE
+        WHERE b.is_active = TRUE
+          AND u.is_active = TRUE
+    )
+    SELECT a.user_id, a.phone, a.budget_id, a.category_name, a.amount,
+           a.period, a.spent, a.level
+    FROM alerts a
+    WHERE a.level IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM budget_alert_log bal
+          WHERE bal.user_id = a.user_id
+            AND bal.budget_id = a.budget_id
+            AND bal.level = a.level
+            AND bal.notified_at > NOW() - INTERVAL '18 hours'
+      );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION mark_budget_alert_sent(
+    p_user_id UUID, p_budget_id UUID, p_level TEXT
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO budget_alert_log (user_id, budget_id, level)
+    VALUES (p_user_id, p_budget_id, p_level);
+END;
+$$ LANGUAGE plpgsql;
