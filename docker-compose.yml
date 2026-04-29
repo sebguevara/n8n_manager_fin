@@ -121,6 +121,11 @@ services:
       # Must be false so $env.ALLOWED_PHONES is reachable from Code/IF nodes
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
 
+      # Trust proxy hops + accept the editor URL as valid origin
+      # (necesario cuando se accede por IP:puerto en HTTP)
+      N8N_PROXY_HOPS: 1
+      N8N_TRUST_PROXY_HEADER: "true"
+
       # Push backend — usa SSE para evitar el bug de WebSocket detrás del
       # bridge de Docker Desktop en Windows (code=1005 cada segundo).
       N8N_PUSH_BACKEND: sse
