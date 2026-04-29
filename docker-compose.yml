@@ -126,9 +126,9 @@ services:
       N8N_PROXY_HOPS: 1
       N8N_TRUST_PROXY_HEADER: "true"
 
-      # Push backend — usa SSE para evitar el bug de WebSocket detrás del
-      # bridge de Docker Desktop en Windows (code=1005 cada segundo).
-      N8N_PUSH_BACKEND: sse
+      # Push backend — websocket (en 2.18 SSE rompe la validación de Origin
+      # cuando se accede por IP:puerto sin proxy).
+      N8N_PUSH_BACKEND: websocket
 
       # Database (Postgres)
       DB_TYPE: postgresdb
