@@ -1,0 +1,62 @@
+{
+  "name": "Recurring Transactions Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "cronExpression", "expression": "0 0 6 * * *"}]}
+      },
+      "id": "rcron-001",
+      "name": "Daily 06:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM process_due_recurring();",
+        "options": {}
+      },
+      "id": "rproc-001",
+      "name": "Process Due Recurring",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [420, 300],
+      "alwaysOutputData": true,
+      "credentials": {"postgres": {"id": "f8CCpjEZRkcHEaJI", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().filter(i => i.json.transaction_id);\nconst out = [];\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nfor (const it of items) {\n  const j = it.json;\n  out.push({ json: { phone: j.phone, instance: 'chefin', replyText: `🔁 Cargué tu gasto recurrente: $${fmt(j.amount)} de ${j.category_name||'sin categoría'}${j.description?' — '+j.description:''}` }});\n}\nreturn out;"
+      },
+      "id": "rfmt-001",
+      "name": "Format Notifications",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "={{ $json.instance }}",
+        "remoteJid": "={{ $json.phone }}",
+        "messageText": "={{ $json.replyText }}",
+        "options_message": {}
+      },
+      "id": "rsend-001",
+      "name": "Notify User",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [860, 300],
+      "credentials": {"evolutionApi": {"id": "FgeqqvxAqTER4oeD", "name": "Evolution account"}}
+    }
+  ],
+  "connections": {
+    "Daily 06:00": {"main": [[{"node": "Process Due Recurring", "type": "main", "index": 0}]]},
+    "Process Due Recurring": {"main": [[{"node": "Format Notifications", "type": "main", "index": 0}]]},
+    "Format Notifications": {"main": [[{"node": "Notify User", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1", "timezone": "America/Argentina/Buenos_Aires"},
+  "tags": []
+}

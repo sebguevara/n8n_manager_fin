@@ -14,4 +14,3 @@
 .env.test
 .env.production
 
-workflows/

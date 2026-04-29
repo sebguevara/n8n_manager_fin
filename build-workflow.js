@@ -320,18 +320,19 @@ Sos Chefin, un asistente conversacional experto en finanzas personales para What
 Devolvé EXCLUSIVAMENTE un JSON válido con esta estructura. Sin markdown, sin texto adicional, sin backticks:
 
 {
-  "intent": "log_expense"|"log_income"|"query"|"chart"|"delete_last"|"create_group"|"set_budget"|"toggle_category_exclusion"|"list_groups"|"list_categories"|"set_recurring"|"generate_report"|"confirm_yes"|"confirm_no"|"help"|"chat"|"unknown",
+  "intent": "log_expense"|"log_income"|"query"|"chart"|"delete_last"|"edit_last"|"create_group"|"set_budget"|"toggle_category_exclusion"|"list_groups"|"list_categories"|"set_recurring"|"generate_report"|"confirm_yes"|"confirm_no"|"help"|"chat"|"unknown",
   "human_reply": "respuesta corta, cálida, max 280 chars. Si pedís aclaración, hacelo acá.",
   "needs_clarification": boolean,
   "confidence": 0.0-1.0,
   "transaction": {"amount": number, "description": string, "category_hint": string, "payment_method_hint": string, "type": "expense"|"income", "transaction_date_iso": "YYYY-MM-DD"|null, "group_hint": string|null},
-  "query": {"kind": "total"|"by_category"|"list_recent"|"average", "category_hint": string, "period": "today"|"yesterday"|"this_week"|"this_month"|"last_month"|"this_year"|"all", "group_hint": string|null},
+  "query": {"kind": "total"|"by_category"|"list_recent"|"average"|"find", "category_hint": string, "description_hint": string|null, "period": "today"|"yesterday"|"this_week"|"this_month"|"last_month"|"this_year"|"all", "group_hint": string|null},
   "chart": {"kind": "by_category"|"by_day"|"by_payment_method"|"trend", "period": "this_week"|"this_month"|"last_month"|"this_year", "group_hint": string|null},
   "group": {"name": string, "kind": "trip"|"event"|"emergency"|"project"|"other", "action": "create"|"exclude"|"include"|"close"|"list"},
   "budget": {"category_hint": string, "amount": number, "period": "weekly"|"monthly"|"yearly"},
   "category_action": {"category_hint": string, "action": "exclude"|"include"|"resolve_category"},
   "recurring": {"amount": number, "description": string, "category_hint": string, "frequency": "daily"|"weekly"|"biweekly"|"monthly"|"yearly", "start_date_iso": string|null},
-  "report": {"period": "this_month"|"last_month"|"this_year"|"all"|"custom", "start_date_iso": string|null, "end_date_iso": string|null}
+  "report": {"period": "this_month"|"last_month"|"this_year"|"all"|"custom", "start_date_iso": string|null, "end_date_iso": string|null},
+  "match": {"description_hint": string|null, "date_iso": "YYYY-MM-DD"|null, "amount": number|null, "category_hint": string|null}
 }
 
 Solo llenás los sub-objetos que correspondan al intent detectado. El resto pueden quedar como objetos vacíos {}.
@@ -380,6 +381,7 @@ Palo = millón. "Medio palo" = 500000.
   - 'by_category' → "por categoría", "en qué gasté", "gastos desglosados"
   - 'list_recent' → "últimos gastos", "los últimos", "qué movimientos tengo"
   - 'average' → "promedio", "cuánto gasto x día"
+  - 'find' → "mostrame el café", "qué cargué en starbucks", "buscá los supermercados", "tengo algo de comida ayer?"
 - query.period:
   - "hoy" → today
   - "ayer" → yesterday
@@ -389,6 +391,7 @@ Palo = millón. "Medio palo" = 500000.
   - "este año"/"anual" → this_year
   - "todo"/"siempre"/"histórico" → all
 - query.category_hint: si filtran por categoría ("en comida", "de transporte").
+- query.description_hint: texto a buscar en descripciones ("café", "starbucks", "uber"). Solo si kind='find' o si quieren filtrar por nombre concreto.
 - query.group_hint: si filtran por grupo ("del viaje a bariloche").
 
 ## chart
@@ -400,7 +403,12 @@ Palo = millón. "Medio palo" = 500000.
 - chart.period: igual que query, default this_month.
 
 ## delete_last
-"borrá el último", "eliminalo", "no eso último", "deshacelo", "cancelá el último".
+Borra UN gasto/ingreso. Si el usuario apunta a uno específico, llená "match" con los datos para identificarlo. Si dice "el último" / "deshacelo" sin más detalle, dejá match vacío y se borra el más reciente.
+- match.description_hint: texto que mencionan ("café", "supermercado", "starbucks").
+- match.date_iso: la fecha del gasto a borrar ("ayer", "el lunes pasado", "12/03").
+- match.amount: el monto exacto si lo dicen ("borrá los 15000").
+- match.category_hint: categoría si la mencionan ("borrá el de comida del lunes").
+Triggers: "borrá el último", "eliminalo", "no eso último", "borrá el café de ayer", "borrá los 15000 del lunes", "eliminá el supermercado del 15".
 
 ## create_group
 "creá un viaje a X", "agregá evento Y", "abrí proyecto Z", "nuevo grupo X".
@@ -435,10 +443,34 @@ SOLO si convState está activo. Sin contexto previo, NO devuelvas confirm_*.
 "ayuda", "qué podés hacer", "menu", "/help", "comandos disponibles".
 
 ## chat
-Saludos puros, agradecimientos, charla. En human_reply contestá CÁLIDO Y CORTO, opcionalmente sugerí lo que podés hacer (1 línea, sin lista).
+Saludos, agradecimientos, charla, Y **preguntas factuales simples** que NO requieren tocar la base de datos. En human_reply contestá DIRECTO.
+
+Ejemplos de chat con respuesta directa:
+- "qué fecha es hoy?" → usá "Fecha y hora actual" del CONTEXTO. Respondé "Hoy es {{ $now.toFormat("EEEE d 'de' MMMM 'de' yyyy") }}" (en español, traducí los días/meses si vienen en inglés).
+- "qué día es ayer?" → calculá ayer desde la fecha actual y devolvé en español: "Ayer fue {día} {número} de {mes}".
+- "cuál es la fecha de mañana?" → idem.
+- "cómo te llamás?" → "Soy Chefin, tu asistente de gastos."
+- "qué hora es?" → respondé con la hora actual.
+NUNCA respondas estas preguntas pidiendo aclaración — la respuesta está en el contexto.
+
+## edit_last
+Modifica UN gasto/ingreso. Identificás cuál con "match" y los nuevos valores con "transaction".
+- match.* → ¿qué gasto editar? Si dicen "el último" o no especifican, dejá match vacío y se edita el más reciente.
+  - match.description_hint, match.date_iso, match.amount, match.category_hint.
+- transaction.* → ¿qué cambiar?
+  - transaction.transaction_date_iso: nueva fecha si la mencionan.
+  - transaction.amount: nuevo monto si lo mencionan.
+  - transaction.description: nueva descripción si la mencionan.
+Triggers: "cambiá el último", "ese fue ayer no hoy", "el café de ayer fue 3000 no 2000", "corregí la fecha del supermercado", "movelo a ayer", "el último fue de 5000".
+
+Ejemplo de razonamiento:
+- "el café de ayer fue 3000 no 2000" → match={description_hint:"café", date_iso:<ayer>, amount:2000}, transaction={amount:3000}
+- "movelo a ayer" → match={} (último), transaction={transaction_date_iso:<ayer>}
+- "cambiá la fecha del supermercado a hoy" → match={description_hint:"supermercado"}, transaction={transaction_date_iso:<hoy>}
 
 ## unknown
 needs_clarification=true. En human_reply pedí UNA cosa concreta. Ej: "Falta el monto, ¿cuánto fue?" o "¿Lo querés registrar como gasto o ingreso?".
+NO uses unknown para preguntas factuales (fecha, hora, identidad) — esas van en chat con respuesta directa.
 
 # EJEMPLOS FEW-SHOT (estudialos)
 
@@ -456,6 +488,15 @@ Input: "che cuánto gasté en comida"
 
 Input: "mostrame los últimos movimientos"
 → {"intent":"query","query":{"kind":"list_recent","period":"this_month"},"confidence":0.97}
+
+Input: "mostrame el café de ayer" / "buscá los starbucks"
+→ {"intent":"query","query":{"kind":"find","description_hint":"café","period":"yesterday"},"confidence":0.93}
+
+Input: "qué cargué en supermercados este mes"
+→ {"intent":"query","query":{"kind":"find","description_hint":"supermercado","period":"this_month"},"confidence":0.94}
+
+Input: "tengo algún uber registrado?"
+→ {"intent":"query","query":{"kind":"find","description_hint":"uber","period":"all"},"confidence":0.92}
 
 Input: "decime un grafico de mis gastos del mes"
 → {"intent":"chart","chart":{"kind":"by_category","period":"this_month"},"confidence":0.95}
@@ -508,6 +549,36 @@ Input: "ayuda" / "qué podés hacer"
 Input: "gracias!"
 → {"intent":"chat","human_reply":"De nada 🙌","confidence":0.99}
 
+Input: "qué fecha es hoy?" / "qué día es hoy"
+→ {"intent":"chat","human_reply":"Hoy es <día y fecha en español calculado desde el contexto>","confidence":0.99}
+
+Input: "cuál es la fecha de ayer?" / "qué día fue ayer?"
+→ {"intent":"chat","human_reply":"Ayer fue <día y fecha en español, calculado restándole 1 día a la fecha actual>","confidence":0.99}
+
+Input: "cambiá el último registro a ayer" / "ese último fue ayer no hoy"
+→ {"intent":"edit_last","match":{},"transaction":{"transaction_date_iso":"<fecha de ayer YYYY-MM-DD>"},"confidence":0.95}
+
+Input: "el último fue de 5000 no 2000"
+→ {"intent":"edit_last","match":{},"transaction":{"amount":5000},"confidence":0.93}
+
+Input: "el café de ayer fue 3000 no 2000"
+→ {"intent":"edit_last","match":{"description_hint":"café","date_iso":"<ayer>","amount":2000},"transaction":{"amount":3000},"confidence":0.94}
+
+Input: "cambiá la fecha del supermercado a hoy"
+→ {"intent":"edit_last","match":{"description_hint":"supermercado"},"transaction":{"transaction_date_iso":"<hoy>"},"confidence":0.92}
+
+Input: "borrá el café de ayer"
+→ {"intent":"delete_last","match":{"description_hint":"café","date_iso":"<ayer>"},"confidence":0.96}
+
+Input: "eliminá los 15000 del lunes"
+→ {"intent":"delete_last","match":{"amount":15000,"date_iso":"<fecha del último lunes>"},"confidence":0.94}
+
+Input: "borrá el de transporte del 15"
+→ {"intent":"delete_last","match":{"category_hint":"transporte","date_iso":"<2026-04-15 si ese día tiene sentido>"},"confidence":0.9}
+
+Input: "por qué tengo X" / "explicame el total"
+→ {"intent":"query","query":{"kind":"list_recent","period":"this_month"},"human_reply":"Te paso el detalle.","confidence":0.85}
+
 Input: "pague algo"
 → {"intent":"unknown","needs_clarification":true,"human_reply":"¿Cuánto y de qué?","confidence":0.4}
 
@@ -543,12 +614,12 @@ addNode('AI Classify', '@n8n/n8n-nodes-langchain.openAi', {
 connect('IF PDF Import', 'AI Classify', 1);
 
 addNode('Parse AI', 'n8n-nodes-base.code', {
-    jsCode: `let raw=$input.first().json;\nlet payload=raw.message?.content||raw.content||raw;\nif(typeof payload==='string'){try{payload=JSON.parse(payload);}catch(e){payload={intent:'unknown',human_reply:'No te entendí, ¿podés repetirlo?'};}}\nconst ctx=$('Concat').first().json;\nreturn [{ json:{ ...ctx, intent:payload.intent||'unknown', human_reply:payload.human_reply||'', needs_clarification:!!payload.needs_clarification, transaction:payload.transaction||{}, query:payload.query||{}, chart:payload.chart||{}, group:payload.group||{}, budget:payload.budget||{}, category_action:payload.category_action||{}, recurring:payload.recurring||{}, report:payload.report||{}, raw_ai:payload }}];`
+    jsCode: `let raw=$input.first().json;\nlet payload=raw.message?.content||raw.content||raw;\nif(typeof payload==='string'){try{payload=JSON.parse(payload);}catch(e){payload={intent:'unknown',human_reply:'No te entendí, ¿podés repetirlo?'};}}\nconst ctx=$('Concat').first().json;\nreturn [{ json:{ ...ctx, intent:payload.intent||'unknown', human_reply:payload.human_reply||'', needs_clarification:!!payload.needs_clarification, transaction:payload.transaction||{}, query:payload.query||{}, chart:payload.chart||{}, group:payload.group||{}, budget:payload.budget||{}, category_action:payload.category_action||{}, recurring:payload.recurring||{}, report:payload.report||{}, match:payload.match||{}, raw_ai:payload }}];`
 }, 5500, 150);
 connect('AI Classify', 'Parse AI');
 
 // Switch Intent — many branches
-const intents = ['log_expense','log_income','query','chart','delete_last','create_group','list_groups','set_budget','toggle_category_exclusion','set_recurring','generate_report','confirm_yes','confirm_no','help','chat','list_categories'];
+const intents = ['log_expense','log_income','query','chart','delete_last','create_group','list_groups','set_budget','toggle_category_exclusion','set_recurring','generate_report','confirm_yes','confirm_no','help','chat','list_categories','edit_last'];
 addNode('Switch Intent', 'n8n-nodes-base.switch', {
     rules: { values: intents.map((it, i) => ({
         conditions: conditions('and', [eq('r'+i, '={{ $json.intent }}', it)]),
@@ -692,7 +763,7 @@ connect('Check Budget', 'Pack Expense Reply');
 
 // === query (idx 2) ===
 addNode('Build Query SQL', 'n8n-nodes-base.code', {
-    jsCode: `const ctx=$input.first().json;\nconst q=ctx.query||{};\nconst period=q.period||'this_month';\nconst periodSql={today:"transaction_date = CURRENT_DATE",yesterday:"transaction_date = CURRENT_DATE - INTERVAL '1 day'",this_week:"transaction_date >= DATE_TRUNC('week', CURRENT_DATE)",this_month:"transaction_date >= DATE_TRUNC('month', CURRENT_DATE)",last_month:"transaction_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND transaction_date < DATE_TRUNC('month', CURRENT_DATE)",this_year:"transaction_date >= DATE_TRUNC('year', CURRENT_DATE)",all:"TRUE"}[period]||"transaction_date >= DATE_TRUNC('month', CURRENT_DATE)";\nlet sql,params;const userId=ctx.userId;const catHint=(q.category_hint||'').trim();\nif(q.kind==='list_recent'){sql=\`SELECT t.transaction_date::text AS d, t.amount, t.description, c.name AS cat, c.emoji FROM v_reportable_transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT 10\`;params=[userId];}\nelse if(q.kind==='by_category'){sql=\`SELECT c.name AS category, c.emoji, SUM(t.amount) AS total, COUNT(*) AS n FROM v_reportable_transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} GROUP BY c.name, c.emoji ORDER BY total DESC\`;params=[userId];}\nelse if(q.kind==='average'){sql=\`SELECT AVG(amount) AS avg_amount, COUNT(*) AS n FROM v_reportable_transactions WHERE user_id=$1 AND type='expense' AND \${periodSql}\`;params=[userId];}\nelse{if(catHint){sql=\`SELECT COALESCE(SUM(t.amount),0) AS total, COUNT(*) AS n, c.name AS category, c.emoji FROM v_reportable_transactions t JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} AND c.normalized_name % normalize_text($2) GROUP BY c.name, c.emoji ORDER BY total DESC LIMIT 5\`;params=[userId,catHint];}else{sql=\`SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM v_reportable_transactions WHERE user_id=$1 AND type='expense' AND \${periodSql}\`;params=[userId];}}\nreturn [{json:{...ctx,sql,params,period}}];`
+    jsCode: `const ctx=$input.first().json;\nconst q=ctx.query||{};\nconst period=q.period||'this_month';\nconst periodSql={today:"transaction_date = CURRENT_DATE",yesterday:"transaction_date = CURRENT_DATE - INTERVAL '1 day'",this_week:"transaction_date >= DATE_TRUNC('week', CURRENT_DATE)",this_month:"transaction_date >= DATE_TRUNC('month', CURRENT_DATE)",last_month:"transaction_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND transaction_date < DATE_TRUNC('month', CURRENT_DATE)",this_year:"transaction_date >= DATE_TRUNC('year', CURRENT_DATE)",all:"TRUE"}[period]||"transaction_date >= DATE_TRUNC('month', CURRENT_DATE)";\nlet sql,params;const userId=ctx.userId;const catHint=(q.category_hint||'').trim();const descHint=(q.description_hint||'').trim();\nif(q.kind==='find'){const hint=descHint||catHint||'';if(!hint){sql=\`SELECT t.transaction_date::text AS d, t.amount, t.description, c.name AS cat, c.emoji FROM v_reportable_transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND \${periodSql} ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT 15\`;params=[userId];}else{sql=\`SELECT t.transaction_date::text AS d, t.amount, t.description, c.name AS cat, c.emoji FROM v_reportable_transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND \${periodSql} AND (normalize_text(COALESCE(t.description,'')) % normalize_text($2) OR normalize_text(COALESCE(c.name,'')) % normalize_text($2)) ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT 15\`;params=[userId,hint];}}\nelse if(q.kind==='list_recent'){const descFilter=descHint?" AND normalize_text(COALESCE(t.description,'')) % normalize_text($2)":'';sql=\`SELECT t.transaction_date::text AS d, t.amount, t.description, c.name AS cat, c.emoji FROM v_reportable_transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql}\${descFilter} ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT 10\`;params=descHint?[userId,descHint]:[userId];}\nelse if(q.kind==='by_category'){sql=\`SELECT c.name AS category, c.emoji, SUM(t.amount) AS total, COUNT(*) AS n FROM v_reportable_transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} GROUP BY c.name, c.emoji ORDER BY total DESC\`;params=[userId];}\nelse if(q.kind==='average'){sql=\`SELECT AVG(amount) AS avg_amount, COUNT(*) AS n FROM v_reportable_transactions WHERE user_id=$1 AND type='expense' AND \${periodSql}\`;params=[userId];}\nelse{if(catHint){sql=\`SELECT COALESCE(SUM(t.amount),0) AS total, COUNT(*) AS n, c.name AS category, c.emoji FROM v_reportable_transactions t JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} AND c.normalized_name % normalize_text($2) GROUP BY c.name, c.emoji ORDER BY total DESC LIMIT 5\`;params=[userId,catHint];}else{sql=\`SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS n FROM v_reportable_transactions WHERE user_id=$1 AND type='expense' AND \${periodSql}\`;params=[userId];}}\nreturn [{json:{...ctx,sql,params,period}}];`
 }, 5940, 280);
 connect('Switch Intent', 'Build Query SQL', 2);
 
@@ -703,13 +774,13 @@ addNode('Run Query', 'n8n-nodes-base.postgres', {
 connect('Build Query SQL', 'Run Query');
 
 addNode('Format Query Reply', 'n8n-nodes-base.code', {
-    jsCode: `const items=$input.all();const ctx=$('Parse AI').first().json;const period=$('Build Query SQL').first().json.period;const fmt=n=>Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:2});const periodLabel=({today:'hoy',yesterday:'ayer',this_week:'esta semana',this_month:'este mes',last_month:'el mes pasado',this_year:'este año',all:'en total'})[period]||period;\nlet text='';\nif(!items.length||(items.length===1&&items[0].json.total==='0')){text=\`📭 No tengo registros para \${periodLabel} todavía.\`;}\nelse if(items.length===1&&items[0].json.total!==undefined&&!items[0].json.category){const r=items[0].json;text=\`💸 Gastaste $\${fmt(r.total)} \${periodLabel} (\${r.n} \${r.n==1?'movimiento':'movimientos'}).\`;}\nelse if(items[0].json.category!==undefined){text=\`📊 Gastos por categoría \${periodLabel}:\\n\`+items.slice(0,10).map(i=>\`\${i.json.emoji||''} \${i.json.category||'—'}: $\${fmt(i.json.total)} (\${i.json.n})\`).join('\\n');const total=items.reduce((s,i)=>s+Number(i.json.total||0),0);text+=\`\\n\\n*Total:* $\${fmt(total)}\`;}\nelse if(items[0].json.d!==undefined){text=\`🧾 Últimos movimientos:\\n\`+items.map(i=>\`\${i.json.d} · \${i.json.emoji||''} \${i.json.cat||'—'} · $\${fmt(i.json.amount)}\${i.json.description?' — '+i.json.description:''}\`).join('\\n');}\nelse if(items[0].json.avg_amount!==undefined){const r=items[0].json;text=\`📈 Promedio \${periodLabel}: $\${fmt(r.avg_amount)} (\${r.n} mov).\`;}\nelse{text='No tengo registros.';}\nreturn [{json:{replyText:text,replyKind:'text',userId:ctx.userId,phone:ctx.phone,instance:ctx.instance,remoteJid:ctx.remoteJid,messageId:ctx.messageId,reactionEmoji:'📊'}}];`
+    jsCode: `const items=$input.all();const ctx=$('Parse AI').first().json;const meta=$('Build Query SQL').first().json;const period=meta.period;const kind=meta.query?.kind||'total';const descHint=(meta.query?.description_hint||'').trim();const fmt=n=>Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:2});const periodLabel=({today:'hoy',yesterday:'ayer',this_week:'esta semana',this_month:'este mes',last_month:'el mes pasado',this_year:'este año',all:'en total'})[period]||period;\nlet text='';\nconst isEmpty=!items.length||(items.length===1&&!items[0].json.amount&&(items[0].json.total==='0'||items[0].json.total===0||items[0].json.total===null||items[0].json.total===undefined)&&items[0].json.d===undefined&&items[0].json.avg_amount===undefined);\nif(isEmpty){\n  if(kind==='find')text=\`🔍 No encontré gastos\${descHint?' que coincidan con \"'+descHint+'\"':''} \${periodLabel}.\`;\n  else text=\`📭 No tengo registros para \${periodLabel} todavía.\`;\n}\nelse if(items[0].json.d!==undefined){\n  const header=kind==='find'?(\`🔍 Encontré \${items.length} \${items.length==1?'gasto':'gastos'}\${descHint?' de \"'+descHint+'\"':''} \${periodLabel}:\`):\`🧾 Últimos movimientos \${periodLabel}:\`;\n  text=header+'\\n'+items.map(i=>\`\${i.json.d} · \${i.json.emoji||''} \${i.json.cat||'—'} · $\${fmt(i.json.amount)}\${i.json.description?' — '+i.json.description:''}\`).join('\\n');\n  if(kind==='find'){const total=items.reduce((s,i)=>s+Number(i.json.amount||0),0);text+=\`\\n\\n*Total:* $\${fmt(total)}\`;}\n}\nelse if(items[0].json.category!==undefined){text=\`📊 Gastos por categoría \${periodLabel}:\\n\`+items.slice(0,10).map(i=>\`\${i.json.emoji||''} \${i.json.category||'—'}: $\${fmt(i.json.total)} (\${i.json.n})\`).join('\\n');const total=items.reduce((s,i)=>s+Number(i.json.total||0),0);text+=\`\\n\\n*Total:* $\${fmt(total)}\`;}\nelse if(items[0].json.avg_amount!==undefined){const r=items[0].json;text=\`📈 Promedio \${periodLabel}: $\${fmt(r.avg_amount)} (\${r.n} mov).\`;}\nelse if(items[0].json.total!==undefined){const r=items[0].json;text=\`💸 Gastaste $\${fmt(r.total)} \${periodLabel} (\${r.n} \${r.n==1?'movimiento':'movimientos'}).\`;}\nelse{text='No tengo registros.';}\nreturn [{json:{replyText:text,replyKind:'text',userId:ctx.userId,phone:ctx.phone,instance:ctx.instance,remoteJid:ctx.remoteJid,messageId:ctx.messageId,reactionEmoji:kind==='find'?'🔍':'📊'}}];`
 }, 6380, 280);
 connect('Run Query', 'Format Query Reply');
 
 // === chart (idx 3) ===
 addNode('Build Chart SQL', 'n8n-nodes-base.code', {
-    jsCode: `const ctx=$input.first().json;const c=ctx.chart||{};const period=c.period||'this_month';const periodSql={this_week:"transaction_date >= DATE_TRUNC('week', CURRENT_DATE)",this_month:"transaction_date >= DATE_TRUNC('month', CURRENT_DATE)",last_month:"transaction_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND transaction_date < DATE_TRUNC('month', CURRENT_DATE)",this_year:"transaction_date >= DATE_TRUNC('year', CURRENT_DATE)"}[period]||"transaction_date >= DATE_TRUNC('month', CURRENT_DATE)";\nlet sql;\nif(c.kind==='by_day'){sql=\`SELECT transaction_date::text AS label, SUM(amount)::numeric AS value FROM v_reportable_transactions WHERE user_id=$1 AND type='expense' AND \${periodSql} GROUP BY transaction_date ORDER BY transaction_date\`;}\nelse if(c.kind==='by_payment_method'){sql=\`SELECT COALESCE(p.name,'Sin método') AS label, SUM(t.amount)::numeric AS value FROM v_reportable_transactions t LEFT JOIN payment_methods p ON p.id=t.payment_method_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} GROUP BY p.name ORDER BY value DESC\`;}\nelse if(c.kind==='trend'){sql=\`SELECT TO_CHAR(DATE_TRUNC('month', transaction_date),'YYYY-MM') AS label, SUM(amount)::numeric AS value FROM v_reportable_transactions WHERE user_id=$1 AND type='expense' AND transaction_date >= CURRENT_DATE - INTERVAL '6 months' GROUP BY 1 ORDER BY 1\`;}\nelse{sql=\`SELECT COALESCE(c.name,'Sin categoría') AS label, SUM(t.amount)::numeric AS value FROM v_reportable_transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} GROUP BY c.name ORDER BY value DESC LIMIT 12\`;}\nreturn [{json:{...ctx,sql,kind:c.kind||'by_category',period}}];`
+    jsCode: `const ctx=$input.first().json;const c=ctx.chart||{};const period=c.period||'this_month';const periodSql={today:"transaction_date = CURRENT_DATE",yesterday:"transaction_date = CURRENT_DATE - INTERVAL '1 day'",this_week:"transaction_date >= DATE_TRUNC('week', CURRENT_DATE)",this_month:"transaction_date >= DATE_TRUNC('month', CURRENT_DATE)",last_month:"transaction_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND transaction_date < DATE_TRUNC('month', CURRENT_DATE)",this_year:"transaction_date >= DATE_TRUNC('year', CURRENT_DATE)"}[period]||"transaction_date >= DATE_TRUNC('month', CURRENT_DATE)";\nlet sql;\nif(c.kind==='by_day'){sql=\`SELECT transaction_date::text AS label, SUM(amount)::numeric AS value FROM v_reportable_transactions WHERE user_id=$1 AND type='expense' AND \${periodSql} GROUP BY transaction_date ORDER BY transaction_date\`;}\nelse if(c.kind==='by_payment_method'){sql=\`SELECT COALESCE(p.name,'Sin método') AS label, SUM(t.amount)::numeric AS value FROM v_reportable_transactions t LEFT JOIN payment_methods p ON p.id=t.payment_method_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} GROUP BY p.name ORDER BY value DESC\`;}\nelse if(c.kind==='trend'){sql=\`SELECT TO_CHAR(DATE_TRUNC('month', transaction_date),'YYYY-MM') AS label, SUM(amount)::numeric AS value FROM v_reportable_transactions WHERE user_id=$1 AND type='expense' AND transaction_date >= CURRENT_DATE - INTERVAL '6 months' GROUP BY 1 ORDER BY 1\`;}\nelse{sql=\`SELECT COALESCE(c.name,'Sin categoría') AS label, SUM(t.amount)::numeric AS value FROM v_reportable_transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=$1 AND t.type='expense' AND \${periodSql} GROUP BY c.name ORDER BY value DESC LIMIT 12\`;}\nreturn [{json:{...ctx,sql,kind:c.kind||'by_category',period}}];`
 }, 5940, 460);
 connect('Switch Intent', 'Build Chart SQL', 3);
 
@@ -720,38 +791,35 @@ addNode('Run Chart', 'n8n-nodes-base.postgres', {
 connect('Build Chart SQL', 'Run Chart');
 
 addNode('Build QuickChart URL', 'n8n-nodes-base.code', {
-    jsCode: `const items=$input.all();const ctx=$('Parse AI').first().json;const meta=$('Build Chart SQL').first().json;const periodLabel=({this_week:'esta semana',this_month:'este mes',last_month:'mes pasado',this_year:'este año'})[meta.period]||meta.period;\nif(!items.length||items.every(i=>!i.json.label)){return [{json:{replyKind:'text',replyText:\`📭 No tengo gastos para \${periodLabel}. Mandame algunos primero.\`,userId:ctx.userId,phone:ctx.phone,instance:ctx.instance,remoteJid:ctx.remoteJid,messageId:ctx.messageId,reactionEmoji:'📈'}}];}\nconst labels=items.map(i=>i.json.label);const values=items.map(i=>Number(i.json.value));const total=values.reduce((s,v)=>s+v,0);const isPie=meta.kind==='by_category'||meta.kind==='by_payment_method';const palette=['#FF6B6B','#4ECDC4','#FFD93D','#6BCB77','#4D96FF','#9D4EDD','#FF9F1C','#2EC4B6','#E71D36','#7209B7','#3A86FF','#FB5607'];const titleByKind=({by_category:'Gastos por categoría',by_payment_method:'Gastos por método de pago',by_day:'Gastos diarios',trend:'Tendencia mensual (6 meses)'})[meta.kind]||'Gastos';\nlet chart;\nif(isPie){chart={type:'doughnut',data:{labels,datasets:[{data:values,backgroundColor:palette}]},options:{plugins:{title:{display:true,text:\`\${titleByKind} — \${periodLabel}\`},legend:{position:'right'}}}};}\nelse{chart={type:'bar',data:{labels,datasets:[{label:'Gasto',data:values,backgroundColor:palette[0]}]},options:{plugins:{title:{display:true,text:\`\${titleByKind} — \${periodLabel}\`},legend:{display:false}},scales:{y:{beginAtZero:true}}}};}\nconst url='https://quickchart.io/chart?bkg=white&w=900&h=600&c='+encodeURIComponent(JSON.stringify(chart));const fmt=n=>Number(n||0).toLocaleString('es-AR');const caption=\`\${titleByKind} — \${periodLabel}\\nTotal: $\${fmt(total)}\`;\nreturn [{json:{replyKind:'image',imageUrl:url,replyText:caption,userId:ctx.userId,phone:ctx.phone,instance:ctx.instance,remoteJid:ctx.remoteJid,messageId:ctx.messageId,reactionEmoji:'📈'}}];`
+    jsCode: `const items=$input.all();const ctx=$('Parse AI').first().json;const meta=$('Build Chart SQL').first().json;const periodLabel=({today:'hoy',yesterday:'ayer',this_week:'esta semana',this_month:'este mes',last_month:'el mes pasado',this_year:'este año'})[meta.period]||meta.period;\nif(!items.length||items.every(i=>!i.json.label)){return [{json:{replyKind:'text',replyText:\`📭 No tengo gastos para \${periodLabel}. Mandame algunos primero.\`,userId:ctx.userId,phone:ctx.phone,instance:ctx.instance,remoteJid:ctx.remoteJid,messageId:ctx.messageId,reactionEmoji:'📈'}}];}\nconst labels=items.map(i=>i.json.label);const values=items.map(i=>Number(i.json.value));const total=values.reduce((s,v)=>s+v,0);const isPie=meta.kind==='by_category'||meta.kind==='by_payment_method';const palette=['#FF6B6B','#4ECDC4','#FFD93D','#6BCB77','#4D96FF','#9D4EDD','#FF9F1C','#2EC4B6','#E71D36','#7209B7','#3A86FF','#FB5607'];const titleByKind=({by_category:'Gastos por categoría',by_payment_method:'Gastos por método de pago',by_day:'Gastos diarios',trend:'Tendencia mensual (6 meses)'})[meta.kind]||'Gastos';\nlet chart;\nif(isPie){chart={type:'doughnut',data:{labels,datasets:[{data:values,backgroundColor:palette}]},options:{plugins:{title:{display:true,text:\`\${titleByKind} — \${periodLabel}\`},legend:{position:'right'}}}};}\nelse{chart={type:'bar',data:{labels,datasets:[{label:'Gasto',data:values,backgroundColor:palette[0]}]},options:{plugins:{title:{display:true,text:\`\${titleByKind} — \${periodLabel}\`},legend:{display:false}},scales:{y:{beginAtZero:true}}}};}\nconst url='https://quickchart.io/chart?bkg=white&w=900&h=600&c='+encodeURIComponent(JSON.stringify(chart));const fmt=n=>Number(n||0).toLocaleString('es-AR');const caption=\`\${titleByKind} — \${periodLabel}\\nTotal: $\${fmt(total)}\`;\nreturn [{json:{replyKind:'image',imageUrl:url,replyText:caption,userId:ctx.userId,phone:ctx.phone,instance:ctx.instance,remoteJid:ctx.remoteJid,messageId:ctx.messageId,reactionEmoji:'📈'}}];`
 }, 6380, 460);
 connect('Run Chart', 'Build QuickChart URL');
 
 // === delete_last (idx 4) ===
 addNode('Delete Last', 'n8n-nodes-base.postgres', {
     operation: 'executeQuery',
-    query: "WITH last_tx AS (SELECT id, amount, description, transaction_date FROM transactions WHERE user_id = $1::uuid ORDER BY created_at DESC LIMIT 1) DELETE FROM transactions WHERE id IN (SELECT id FROM last_tx) RETURNING amount, description, transaction_date;",
-    options: { queryReplacement: "={{ $json.userId }}" }
+    query: "WITH target AS (SELECT id FROM find_matching_tx($1::uuid, NULLIF($2,'')::text, NULLIF($3,'null')::date, NULLIF($4,'null')::numeric, NULLIF($5,'')::text, 1) LIMIT 1), deleted AS (DELETE FROM transactions WHERE id = (SELECT id FROM target) AND user_id = $1::uuid RETURNING amount, description, transaction_date) SELECT d.amount, d.description, d.transaction_date::text AS transaction_date, (d.amount IS NOT NULL) AS found FROM (SELECT NULL::numeric AS x) base LEFT JOIN deleted d ON TRUE;",
+    options: { queryReplacement: "={{ $json.userId }},={{ ($json.match?.description_hint || '').toString() }},={{ $json.match?.date_iso || 'null' }},={{ $json.match?.amount || 'null' }},={{ ($json.match?.category_hint || '').toString() }}" }
 }, 5940, 640, { tv: 2.5, creds: { postgres: PG }, always: true });
 connect('Switch Intent', 'Delete Last', 4);
 
-addNode('Format Delete Reply', 'n8n-nodes-base.postgres', {
-    operation: 'executeQuery',
-    query: "SELECT format_reply('deleted', $1::numeric, NULL, $2::text, $3::date) AS reply_text;",
-    options: { queryReplacement: "={{ $json.amount }},={{ $json.description }},={{ $json.transaction_date }}" }
-}, 6160, 640, { tv: 2.5, creds: { postgres: PG } });
-connect('Delete Last', 'Format Delete Reply');
+addNode('Pack Delete Reply', 'n8n-nodes-base.code', {
+    jsCode: "const r=$input.first().json;const ctx=$('Parse AI').first().json;const base={replyKind:'text',userId:ctx.userId,phone:ctx.phone,instance:ctx.instance,remoteJid:ctx.remoteJid,messageId:ctx.messageId};if(!r||!r.found){return [{json:{...base,replyText:'😅 No encontré ese gasto para borrar. Probá dándome más detalle (monto, fecha o descripción).',reactionEmoji:'😅'}}];}const fmt=n=>Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});const today=new Date();const yest=new Date(today);yest.setDate(yest.getDate()-1);const iso=d=>d.toISOString().slice(0,10);const txDate=String(r.transaction_date).slice(0,10);const dateLabel=txDate===iso(today)?'hoy':txDate===iso(yest)?'ayer':(()=>{const d=new Date(r.transaction_date+'T00:00:00');const days=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];return `${days[d.getDay()]} ${d.getDate()} de ${months[d.getMonth()]}`;})();const desc=r.description?` — ${r.description}`:'';return [{json:{...base,replyText:`🗑️ Borrado: $${fmt(r.amount)}${desc} · ${dateLabel}.`,reactionEmoji:'🗑️'}}];"
+}, 6160, 640);
+connect('Delete Last', 'Pack Delete Reply');
 
-addNode('Pack Delete Reply', 'n8n-nodes-base.set', {
-    assignments: { assignments: [
-        { id: 'r', name: 'replyText', type: 'string', value: '={{ $json.reply_text }}' },
-        { id: 'k', name: 'replyKind', type: 'string', value: 'text' },
-        { id: 'p', name: 'phone', type: 'string', value: "={{ $('Parse AI').first().json.phone }}" },
-        { id: 'i', name: 'instance', type: 'string', value: "={{ $('Parse AI').first().json.instance }}" },
-        { id: 'j', name: 'remoteJid', type: 'string', value: "={{ $('Parse AI').first().json.remoteJid }}" },
-        { id: 'm', name: 'messageId', type: 'string', value: "={{ $('Parse AI').first().json.messageId }}" },
-        { id: 'u', name: 'userId', type: 'string', value: "={{ $('Parse AI').first().json.userId }}" },
-        { id: 'rx', name: 'reactionEmoji', type: 'string', value: '🗑️' }
-    ] }, options: {}
-}, 6380, 640, { tv: 3.4 });
-connect('Format Delete Reply', 'Pack Delete Reply');
+// === edit_last (idx 16) — single-node match + update (always returns 1 row) ===
+addNode('Edit Tx', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: "WITH found AS (SELECT id FROM find_matching_tx($1::uuid, NULLIF($2,'')::text, NULLIF($3,'null')::date, NULLIF($4,'null')::numeric, NULLIF($5,'')::text, 1) LIMIT 1), updated AS (UPDATE transactions t SET transaction_date = COALESCE(NULLIF($6,'null')::date, t.transaction_date), amount = COALESCE(NULLIF($7,'null')::numeric, t.amount), description = COALESCE(NULLIF($8,''), t.description), updated_at = NOW() WHERE t.id = (SELECT id FROM found) AND t.user_id = $1::uuid RETURNING t.id, t.amount, t.description, t.transaction_date, t.category_id) SELECT u.id, u.amount, u.description, u.transaction_date::text AS transaction_date, c.name AS category_name, c.emoji AS category_emoji, (u.id IS NOT NULL) AS found FROM (SELECT NULL::uuid AS x) base LEFT JOIN updated u ON TRUE LEFT JOIN categories c ON c.id = u.category_id;",
+    options: { queryReplacement: "={{ $json.userId }},={{ ($json.match?.description_hint || '').toString() }},={{ $json.match?.date_iso || 'null' }},={{ $json.match?.amount || 'null' }},={{ ($json.match?.category_hint || '').toString() }},={{ $json.transaction?.transaction_date_iso || 'null' }},={{ $json.transaction?.amount || 'null' }},={{ ($json.transaction?.description || '').toString() }}" }
+}, 5940, 820, { tv: 2.5, creds: { postgres: PG }, always: true });
+connect('Switch Intent', 'Edit Tx', 16);
+
+addNode('Format Edit Reply', 'n8n-nodes-base.code', {
+    jsCode: "const r=$input.first().json;const ctx=$('Parse AI').first().json;const base={replyKind:'text',userId:ctx.userId,phone:ctx.phone,instance:ctx.instance,remoteJid:ctx.remoteJid,messageId:ctx.messageId};if(!r||!r.found){return [{json:{...base,replyText:'😅 No encontré ese gasto. Probá con más detalle (monto, fecha o descripción).',reactionEmoji:'😅'}}];}const fmt=n=>Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});const today=new Date();const yest=new Date(today);yest.setDate(yest.getDate()-1);const iso=d=>d.toISOString().slice(0,10);const txDate=String(r.transaction_date).slice(0,10);const dateLabel=txDate===iso(today)?'hoy':txDate===iso(yest)?'ayer':(()=>{const d=new Date(r.transaction_date+'T00:00:00');const days=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];return `${days[d.getDay()]} ${d.getDate()} de ${months[d.getMonth()]}`;})();const desc=r.description?` — ${r.description}`:'';const cat=r.category_name?` · ${r.category_emoji||''} ${r.category_name}`.trim():'';return [{json:{...base,replyText:`✏️ Listo, actualicé: $${fmt(r.amount)}${desc}${cat} · ${dateLabel}.`,reactionEmoji:'✏️'}}];"
+}, 6160, 820);
+connect('Edit Tx', 'Format Edit Reply');
 
 // === create_group (idx 5) ===
 addNode('Create Group', 'n8n-nodes-base.postgres', {
@@ -985,7 +1053,7 @@ addNode('Chat Reply', 'n8n-nodes-base.set', {
     ] }, options: {}
 }, 5940, 2260, { tv: 3.4 });
 connect('Switch Intent', 'Chat Reply', 14);
-connect('Switch Intent', 'Chat Reply', 16);
+connect('Switch Intent', 'Chat Reply', 17); // fallback (unknown intents)
 
 // === list_categories (idx 15) ===
 addNode('List Categories', 'n8n-nodes-base.postgres', {
@@ -1003,7 +1071,7 @@ connect('List Categories', 'Format Categories List');
 // === help (fallback) ===
 addNode('Help Reply', 'n8n-nodes-base.set', {
     assignments: { assignments: [
-        { id: 'r', name: 'replyText', type: 'string', value: "=👋 Soy Chefin, tu bot de gastos.\n\n📝 *Registrar*\n• \"2500 cafe\" / \"15000 luz con débito\"\n• \"30k nafta ayer\" / \"cobré 200000\"\n\n📊 *Consultas*\n• \"cuánto gasté este mes\" / \"gastos en comida\"\n• \"últimos movimientos\"\n\n📈 *Gráficos*\n• \"gráfico por categoría\"\n• \"tendencia de los últimos 6 meses\"\n\n🧳 *Grupos*\n• \"creá viaje a bariloche\"\n• \"3500 cena para el viaje\"\n• \"qué viajes tengo\"\n\n🎯 *Presupuestos*\n• \"presupuesto mensual de comida 80000\"\n• \"no cuentes transferencias\"\n\n🔁 *Recurrentes*\n• \"netflix 5500 mensual\"\n\n📄 *Reportes*\n• \"mandame reporte mensual\"\n\n🎙️ También entiendo audios y 📸 fotos de tickets." },
+        { id: 'r', name: 'replyText', type: 'string', value: "=👋 Soy Chefin, tu bot de gastos.\n\n📝 *Registrar*\n• \"2500 café\" / \"15000 luz con débito\"\n• \"30k nafta ayer\" / \"cobré 200000\"\n\n📊 *Consultas*\n• \"cuánto gasté este mes\" / \"gastos en comida\"\n• \"últimos movimientos\"\n• \"mostrame el café de ayer\" / \"buscá los uber\"\n\n📈 *Gráficos*\n• \"gráfico por categoría\"\n• \"tendencia de los últimos 6 meses\"\n• \"gráfico de gastos de ayer\"\n\n✏️ *Editar / Borrar*\n• \"cambiá el último a ayer\"\n• \"el café de ayer fue 3000 no 2000\"\n• \"borrá el último\" / \"borrá el café de ayer\"\n• \"eliminá los 15000 del lunes\"\n\n🧳 *Grupos*\n• \"creá viaje a bariloche\"\n• \"3500 cena para el viaje\"\n• \"qué viajes tengo\"\n\n🎯 *Presupuestos*\n• \"presupuesto mensual de comida 80000\"\n• \"no cuentes transferencias\"\n\n🔁 *Recurrentes*\n• \"netflix 5500 mensual\"\n\n📄 *Reportes*\n• \"mandame reporte mensual\"\n\n🎙️ También entiendo audios y 📸 fotos de tickets." },
         { id: 'k', name: 'replyKind', type: 'string', value: 'text' },
         { id: 'p', name: 'phone', type: 'string', value: "={{ $json.phone }}" },
         { id: 'i', name: 'instance', type: 'string', value: "={{ $json.instance }}" },
@@ -1016,7 +1084,7 @@ addNode('Help Reply', 'n8n-nodes-base.set', {
 connect('Switch Intent', 'Help Reply', 13);
 
 // === Converge to Send Reply ===
-const replyNodes = ['Pack Otros Reply','Pack Expense Reply','Format Query Reply','Build QuickChart URL','Pack Delete Reply','Pack Group Created','Format Groups List','Pack Budget Reply','Pack Toggle Reply','Pack Recurring Reply','Pack Report Reply','Pack Yes Reply','Pack No Reply','Chat Reply','Help Reply','Pack PDF Confirm','Pack PDF Imported','Format Categories List','Pack Dup Question'];
+const replyNodes = ['Pack Otros Reply','Pack Expense Reply','Format Query Reply','Build QuickChart URL','Pack Delete Reply','Format Edit Reply','Pack Group Created','Format Groups List','Pack Budget Reply','Pack Toggle Reply','Pack Recurring Reply','Pack Report Reply','Pack Yes Reply','Pack No Reply','Chat Reply','Help Reply','Pack PDF Confirm','Pack PDF Imported','Format Categories List','Pack Dup Question'];
 
 const EVO_CRED = { evolutionApi: { id: 'FgeqqvxAqTER4oeD', name: 'Evolution account' } };
 

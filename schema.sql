@@ -618,15 +618,16 @@ BEGIN
              || ' ' || TO_CHAR(p_date, 'FMDD') || ' de '
              || (ARRAY['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'])[EXTRACT(MONTH FROM p_date)::INT]
     END;
-    tpl := REPLACE(tpl, '{amount}',      COALESCE(TO_CHAR(p_amount, 'FM999G999G990D00'), ''));
+    -- Format numbers in es-AR style: 2.000,00 (dot thousands, comma decimal)
+    tpl := REPLACE(tpl, '{amount}',      COALESCE(TRANSLATE(TO_CHAR(p_amount, 'FM999G999G990D00'), ',.', '.,'), ''));
     tpl := REPLACE(tpl, '{category}',    COALESCE(p_category, ''));
     tpl := REPLACE(tpl, '{description}', desc_part);
     tpl := REPLACE(tpl, '{date}',        date_part);
     tpl := REPLACE(tpl, '{name}',        name_part);
     tpl := REPLACE(tpl, '{period}',      COALESCE(p_period, ''));
     tpl := REPLACE(tpl, '{group}',       COALESCE(p_group, ''));
-    tpl := REPLACE(tpl, '{total}',       COALESCE(TO_CHAR(p_total, 'FM999G999G990D00'), ''));
-    tpl := REPLACE(tpl, '{budget}',      COALESCE(TO_CHAR(p_budget, 'FM999G999G990D00'), ''));
+    tpl := REPLACE(tpl, '{total}',       COALESCE(TRANSLATE(TO_CHAR(p_total, 'FM999G999G990D00'), ',.', '.,'), ''));
+    tpl := REPLACE(tpl, '{budget}',      COALESCE(TRANSLATE(TO_CHAR(p_budget, 'FM999G999G990D00'), ',.', '.,'), ''));
     RETURN tpl;
 END;
 $$ LANGUAGE plpgsql;
@@ -965,5 +966,90 @@ BEGIN
       AND t.created_at > NOW() - (p_window_minutes || ' minutes')::INTERVAL
     ORDER BY t.created_at DESC
     LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================================
+-- Migration 004: flexible transaction matcher (find/edit/delete by hints)
+-- =====================================================================
+-- Returns up to p_limit transactions matching any combination of hints.
+-- If all hints are NULL, returns the most recent transactions.
+CREATE OR REPLACE FUNCTION find_matching_tx(
+    p_user_id UUID,
+    p_description_hint TEXT DEFAULT NULL,
+    p_date DATE DEFAULT NULL,
+    p_amount NUMERIC DEFAULT NULL,
+    p_category_hint TEXT DEFAULT NULL,
+    p_limit INT DEFAULT 5
+)
+RETURNS TABLE(
+    id UUID,
+    amount NUMERIC,
+    description TEXT,
+    transaction_date DATE,
+    category_id UUID,
+    category_name TEXT,
+    category_emoji TEXT,
+    type TEXT,
+    score REAL
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        t.id,
+        t.amount,
+        t.description,
+        t.transaction_date,
+        t.category_id,
+        c.name AS category_name,
+        c.emoji AS category_emoji,
+        t.type,
+        (
+            CASE WHEN p_description_hint IS NULL OR p_description_hint = '' THEN 0
+                 ELSE GREATEST(
+                     similarity(normalize_text(COALESCE(t.description,'')), normalize_text(p_description_hint)),
+                     similarity(normalize_text(COALESCE(c.name,'')), normalize_text(p_description_hint))
+                 ) END
+          + CASE WHEN p_date IS NOT NULL AND t.transaction_date = p_date THEN 1 ELSE 0 END
+          + CASE WHEN p_amount IS NOT NULL AND t.amount = p_amount THEN 1 ELSE 0 END
+          + CASE WHEN p_category_hint IS NULL OR p_category_hint = '' THEN 0
+                 ELSE similarity(normalize_text(COALESCE(c.name,'')), normalize_text(p_category_hint)) END
+        )::REAL AS score
+    FROM transactions t
+    LEFT JOIN categories c ON c.id = t.category_id
+    WHERE t.user_id = p_user_id
+      AND (p_description_hint IS NULL OR p_description_hint = ''
+           OR normalize_text(COALESCE(t.description,'')) % normalize_text(p_description_hint)
+           OR normalize_text(COALESCE(c.name,'')) % normalize_text(p_description_hint))
+      AND (p_date IS NULL OR t.transaction_date = p_date)
+      AND (p_amount IS NULL OR t.amount = p_amount)
+      AND (p_category_hint IS NULL OR p_category_hint = ''
+           OR normalize_text(COALESCE(c.name,'')) % normalize_text(p_category_hint))
+    ORDER BY score DESC, t.created_at DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Edit a transaction by id (returns updated row)
+CREATE OR REPLACE FUNCTION update_tx(
+    p_user_id UUID,
+    p_tx_id UUID,
+    p_new_date DATE DEFAULT NULL,
+    p_new_amount NUMERIC DEFAULT NULL,
+    p_new_description TEXT DEFAULT NULL,
+    p_new_category_id UUID DEFAULT NULL
+)
+RETURNS TABLE(id UUID, amount NUMERIC, description TEXT, transaction_date DATE, category_name TEXT) AS $$
+BEGIN
+    RETURN QUERY
+    UPDATE transactions t
+    SET transaction_date = COALESCE(p_new_date, t.transaction_date),
+        amount = COALESCE(p_new_amount, t.amount),
+        description = COALESCE(NULLIF(p_new_description, ''), t.description),
+        category_id = COALESCE(p_new_category_id, t.category_id),
+        updated_at = NOW()
+    WHERE t.id = p_tx_id AND t.user_id = p_user_id
+    RETURNING t.id, t.amount, t.description, t.transaction_date,
+              (SELECT c.name FROM categories c WHERE c.id = t.category_id);
 END;
 $$ LANGUAGE plpgsql;
