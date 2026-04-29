@@ -39,26 +39,64 @@ const eqStr = (id, lv, rv) => ({
 // =========================================================================
 // 1. ENTRY POINT
 // =========================================================================
+// Trigger uses passthrough mode so any field shape is accepted.
+// Tool nodes pass tool_name, user_id, and one field per tool parameter.
 addNode('When Called', 'n8n-nodes-base.executeWorkflowTrigger', {
-    inputSource: 'jsonExample',
-    jsonExample: JSON.stringify({
-        tool_name: 'get_total',
-        user_id: '00000000-0000-0000-0000-000000000000',
-        params: { period: 'this_month', type: 'expense' }
-    }, null, 2)
+    inputSource: 'passthrough'
 }, 0, 0, { tv: 1.1 });
 
-// Normalize input
+// Normalize input — accepts:
+//   (a) tool_name + user_id + per-field flat params (new design — preferred)
+//   (b) tool_name + user_id + params (object)
+//   (c) tool_name + user_id + params_json (stringified) — legacy
+// Reconstructs params object regardless. Drops empty strings / zero defaults
+// for fields the LLM didn't fill (so SQL handlers see undefined and skip them).
 addNode('Normalize Input', 'n8n-nodes-base.code', {
     jsCode: `const inp = $input.first().json;
-const tool_name = inp.tool_name || inp.query?.tool_name || '';
-const user_id = inp.user_id || inp.query?.user_id || '';
-let params = inp.params || inp.query?.params || {};
-if (typeof params === 'string') {
-  try { params = JSON.parse(params); } catch { params = {}; }
-}
+const q = inp.query || {};
+const merged = { ...q, ...inp };
+
+const tool_name = merged.tool_name || '';
+const user_id = merged.user_id || '';
 if (!user_id) throw new Error('Missing user_id');
 if (!tool_name) throw new Error('Missing tool_name');
+
+// 1) Try blob-style first
+let params = merged.params;
+if (typeof params === 'string') {
+  try { params = JSON.parse(params); } catch { params = null; }
+}
+if (params && typeof params !== 'object') params = null;
+
+// 2) params_json legacy
+if (!params && typeof merged.params_json === 'string') {
+  try { params = JSON.parse(merged.params_json || '{}'); } catch { params = {}; }
+}
+
+// 3) Per-field flat (new design): collect everything except control fields
+if (!params) {
+  params = {};
+  const ctrl = new Set(['tool_name', 'user_id', 'query', 'params', 'params_json']);
+  for (const [k, v] of Object.entries(merged)) {
+    if (ctrl.has(k)) continue;
+    // Skip empty strings and 0 numbers (treated as "field not provided" defaults)
+    if (v === '' || v === null || v === undefined) continue;
+    if (typeof v === 'number' && v === 0 && k !== 'amount_delta' && k !== 'top_n') continue;
+    if (Array.isArray(v) && v.length === 0) continue;
+    if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) continue;
+    params[k] = v;
+  }
+}
+
+if (!params || typeof params !== 'object') params = {};
+
+// Strip placeholder fields
+['_', 'dummy', 'action'].forEach(k => {
+  if (Object.prototype.hasOwnProperty.call(params, k) && (params[k] === true || params[k] === 'run' || params[k] === 'execute')) {
+    delete params[k];
+  }
+});
+
 return [{ json: { tool_name, user_id, params, params_json: JSON.stringify(params) } }];`
 }, 220, 0);
 connect('When Called', 'Normalize Input');
@@ -131,8 +169,13 @@ const formatNames = [];
 
 // 0. query_transactions → query_tx_dynamic
 formatNames.push(addPgTool(0, 'query_transactions',
-    'SELECT * FROM query_tx_dynamic($1::uuid, $2::jsonb, $3::int, $4::int);',
-    "={{ $json.user_id }},={{ $json.params_json }},={{ $json.params?.limit || 20 }},={{ $json.params?.offset || 0 }}",
+    `SELECT * FROM query_tx_dynamic(
+        $1::uuid,
+        $2::jsonb,
+        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 20),
+        COALESCE(NULLIF($2::jsonb->>'offset','')::int, 0)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const rows = $input.all().map(i => i.json);
 const total = rows[0]?.total_count || 0;
 const items = rows.map(r => ({
@@ -157,8 +200,13 @@ return [{ json: { ok: true, tool: 'get_total', data: {
 
 // 2. get_breakdown
 formatNames.push(addPgTool(2, 'get_breakdown',
-    "SELECT * FROM get_breakdown_dynamic($1::uuid, $2::text, $3::jsonb, $4::int);",
-    "={{ $json.user_id }},={{ $json.params?.dimension || 'category' }},={{ $json.params_json }},={{ $json.params?.top_n || 10 }}",
+    `SELECT * FROM get_breakdown_dynamic(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'dimension',''), 'category'),
+        $2::jsonb,
+        COALESCE(NULLIF($2::jsonb->>'top_n','')::int, 10)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const rows = $input.all().map(i => i.json);
 return [{ json: { ok: true, tool: 'get_breakdown', data: {
   rows: rows.map(r => ({ label: r.label, emoji: r.emoji, total: Number(r.total),
@@ -169,8 +217,13 @@ return [{ json: { ok: true, tool: 'get_breakdown', data: {
 
 // 3. compare_periods
 formatNames.push(addPgTool(3, 'compare_periods',
-    "SELECT * FROM compare_periods($1::uuid, $2::text, $3::text, $4::text);",
-    "={{ $json.user_id }},={{ $json.params?.period_a || 'this_month' }},={{ $json.params?.period_b || 'last_month' }},={{ $json.params?.type || 'expense' }}",
+    `SELECT * FROM compare_periods(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'period_a',''), 'this_month'),
+        COALESCE(NULLIF($2::jsonb->>'period_b',''), 'last_month'),
+        COALESCE(NULLIF($2::jsonb->>'type',''), 'expense')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 return [{ json: { ok: true, tool: 'compare_periods', data: {
   a: { label: r.label_a, total: Number(r.total_a), count: Number(r.count_a) },
@@ -183,30 +236,19 @@ return [{ json: { ok: true, tool: 'compare_periods', data: {
 formatNames.push(addPgTool(4, 'find_transactions',
     `SELECT * FROM find_matching_tx_v2(
         $1::uuid,
-        NULLIF($2,'')::text,
-        NULLIF($3,'')::date,
-        NULLIF($4,'')::date,
-        NULLIF($5,'')::date,
-        NULLIF($6,'')::numeric,
-        NULLIF($7,'')::numeric,
-        NULLIF($8,'')::numeric,
-        NULLIF($9,'')::text,
-        NULLIF($10,'')::text,
-        NULLIF($11,'')::text,
-        $12::int
+        NULLIF($2::jsonb->>'description_contains','')::text,
+        NULLIF($2::jsonb->>'date','')::date,
+        NULLIF($2::jsonb->>'date_from','')::date,
+        NULLIF($2::jsonb->>'date_to','')::date,
+        NULLIF($2::jsonb->>'exact_amount','')::numeric,
+        NULLIF($2::jsonb->>'min_amount','')::numeric,
+        NULLIF($2::jsonb->>'max_amount','')::numeric,
+        NULLIF($2::jsonb->>'category','')::text,
+        NULLIF($2::jsonb->>'type','')::text,
+        NULLIF($2::jsonb->>'group_name','')::text,
+        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 20)
     );`,
-    "={{ $json.user_id }}," +
-    "={{ $json.params?.description_contains || '' }}," +
-    "={{ $json.params?.date || '' }}," +
-    "={{ $json.params?.date_from || '' }}," +
-    "={{ $json.params?.date_to || '' }}," +
-    "={{ $json.params?.exact_amount ?? '' }}," +
-    "={{ $json.params?.min_amount ?? '' }}," +
-    "={{ $json.params?.max_amount ?? '' }}," +
-    "={{ $json.params?.category || '' }}," +
-    "={{ $json.params?.type || '' }}," +
-    "={{ $json.params?.group_name || '' }}," +
-    "={{ $json.params?.limit || 20 }}",
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const rows = $input.all().map(i => i.json);
 const items = rows.map(r => ({
   id: r.id, date: r.transaction_date, amount: Number(r.amount),
@@ -220,8 +262,12 @@ return [{ json: { ok: true, tool: 'find_transactions',
 
 // 5. find_duplicates
 formatNames.push(addPgTool(5, 'find_duplicates',
-    "SELECT * FROM find_potential_duplicates($1::uuid, $2::int, $3::int);",
-    "={{ $json.user_id }},={{ $json.params?.window_days || 7 }},={{ $json.params?.min_repetitions || 2 }}",
+    `SELECT * FROM find_potential_duplicates(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'window_days','')::int, 7),
+        COALESCE(NULLIF($2::jsonb->>'min_repetitions','')::int, 2)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const rows = $input.all().map(i => i.json);
 return [{ json: { ok: true, tool: 'find_duplicates', data: {
   clusters: rows.map(r => ({
@@ -249,8 +295,11 @@ return [{ json: { ok: true, tool: 'bulk_preview', data: {
 
 // 7. bulk_delete → bulk_delete_by_ids
 formatNames.push(addPgTool(7, 'bulk_delete',
-    "SELECT * FROM bulk_delete_by_ids($1::uuid, $2::uuid[]);",
-    "={{ $json.user_id }},={{ '{' + ($json.params?.ids || []).join(',') + '}' }}",
+    `SELECT * FROM bulk_delete_by_ids(
+        $1::uuid,
+        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'ids'))::uuid[]
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 return [{ json: { ok: true, tool: 'bulk_delete', data: {
   deleted_count: Number(r.deleted_count||0),
@@ -262,20 +311,15 @@ return [{ json: { ok: true, tool: 'bulk_delete', data: {
 // 8. bulk_update → bulk_update_by_ids
 formatNames.push(addPgTool(8, 'bulk_update',
     `SELECT * FROM bulk_update_by_ids(
-        $1::uuid, $2::uuid[],
-        NULLIF($3,'')::uuid,
-        NULLIF($4,'')::date,
-        NULLIF($5,'')::uuid,
-        NULLIF($6,'')::numeric,
-        NULLIF($7,'')::boolean
+        $1::uuid,
+        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'ids'))::uuid[],
+        NULLIF($2::jsonb->>'new_category_id','')::uuid,
+        NULLIF($2::jsonb->>'new_date','')::date,
+        NULLIF($2::jsonb->>'new_group_id','')::uuid,
+        NULLIF($2::jsonb->>'amount_delta','')::numeric,
+        NULLIF($2::jsonb->>'set_excluded','')::boolean
     );`,
-    "={{ $json.user_id }}," +
-    "={{ '{' + ($json.params?.ids || []).join(',') + '}' }}," +
-    "={{ $json.params?.new_category_id || '' }}," +
-    "={{ $json.params?.new_date || '' }}," +
-    "={{ $json.params?.new_group_id || '' }}," +
-    "={{ $json.params?.amount_delta ?? '' }}," +
-    "={{ $json.params?.set_excluded ?? '' }}",
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 return [{ json: { ok: true, tool: 'bulk_update', data: {
   updated_count: Number(r.updated_count||0), updated_ids: r.updated_ids || []
@@ -283,38 +327,75 @@ return [{ json: { ok: true, tool: 'bulk_update', data: {
 ));
 
 // 9. log_transaction (full insert with category match + duplicate check)
+// If create_category_if_missing=true, uses resolve_or_create_category instead
+// of find_best_category — guarantees a category (creates new if needed).
 formatNames.push(addPgTool(9, 'log_transaction',
-    `WITH cat AS (
-        SELECT * FROM find_best_category(
-            $1::uuid,
-            COALESCE(NULLIF($3,''), NULLIF($2,'')),
-            COALESCE(NULLIF($8,''), 'expense')
-        )
+    `WITH p AS (SELECT $2::jsonb AS j),
+    cat AS (
+        SELECT
+            CASE
+                WHEN COALESCE(((SELECT j->>'create_category_if_missing' FROM p))::boolean, false)
+                THEN (SELECT category_id FROM resolve_or_create_category(
+                    $1::uuid,
+                    COALESCE(NULLIF((SELECT j->>'category_hint' FROM p),''), 'Otros'),
+                    COALESCE(NULLIF((SELECT j->>'type' FROM p),''), 'expense')
+                ))
+                ELSE (SELECT category_id FROM find_best_category(
+                    $1::uuid,
+                    COALESCE(NULLIF((SELECT j->>'category_hint' FROM p),''), NULLIF((SELECT j->>'description' FROM p),'')),
+                    COALESCE(NULLIF((SELECT j->>'type' FROM p),''), 'expense')
+                ))
+            END AS category_id,
+            CASE
+                WHEN COALESCE(((SELECT j->>'create_category_if_missing' FROM p))::boolean, false)
+                THEN (SELECT category_name FROM resolve_or_create_category(
+                    $1::uuid,
+                    COALESCE(NULLIF((SELECT j->>'category_hint' FROM p),''), 'Otros'),
+                    COALESCE(NULLIF((SELECT j->>'type' FROM p),''), 'expense')
+                ))
+                ELSE (SELECT category_name FROM find_best_category(
+                    $1::uuid,
+                    COALESCE(NULLIF((SELECT j->>'category_hint' FROM p),''), NULLIF((SELECT j->>'description' FROM p),'')),
+                    COALESCE(NULLIF((SELECT j->>'type' FROM p),''), 'expense')
+                ))
+            END AS category_name,
+            1::numeric AS score
     ),
     dup AS (
         SELECT id, amount, description, transaction_date
-        FROM check_duplicate_tx($1::uuid, $4::numeric,
-            COALESCE(NULLIF($5,'')::date, CURRENT_DATE), 60)
-        WHERE NOT $9::boolean
+        FROM check_duplicate_tx(
+            $1::uuid,
+            ((SELECT j->>'amount' FROM p))::numeric,
+            COALESCE(NULLIF((SELECT j->>'date' FROM p),'')::date, CURRENT_DATE),
+            60
+        )
+        WHERE NOT COALESCE(((SELECT j->>'skip_dup_check' FROM p))::boolean, false)
     ),
     grp AS (
-        SELECT CASE WHEN NULLIF($7,'') IS NULL THEN NULL
-               ELSE upsert_group($1::uuid, $7, 'event') END AS gid
+        SELECT CASE
+            WHEN NULLIF((SELECT j->>'group_hint' FROM p),'') IS NULL THEN NULL
+            ELSE upsert_group($1::uuid, (SELECT j->>'group_hint' FROM p), 'event')
+        END AS gid
     ),
     pm AS (
         SELECT id FROM payment_methods
-        WHERE user_id=$1::uuid AND normalize_text(name) % normalize_text(NULLIF($6,''))
-        ORDER BY similarity(normalize_text(name), normalize_text(COALESCE($6,''))) DESC
+        WHERE user_id=$1::uuid
+          AND normalize_text(name) % normalize_text(COALESCE((SELECT j->>'payment_method_hint' FROM p), ''))
+        ORDER BY similarity(normalize_text(name), normalize_text(COALESCE((SELECT j->>'payment_method_hint' FROM p),''))) DESC
         LIMIT 1
     ),
     ins AS (
         INSERT INTO transactions (user_id, type, amount, description, category_id,
             payment_method_id, group_id, transaction_date)
-        SELECT $1::uuid, COALESCE(NULLIF($8,''),'expense'), $4::numeric, NULLIF($2,''),
-               (SELECT category_id FROM cat),
-               (SELECT id FROM pm),
-               (SELECT gid FROM grp),
-               COALESCE(NULLIF($5,'')::date, CURRENT_DATE)
+        SELECT
+            $1::uuid,
+            COALESCE(NULLIF((SELECT j->>'type' FROM p),''),'expense'),
+            ((SELECT j->>'amount' FROM p))::numeric,
+            NULLIF((SELECT j->>'description' FROM p),''),
+            (SELECT category_id FROM cat),
+            (SELECT id FROM pm),
+            (SELECT gid FROM grp),
+            COALESCE(NULLIF((SELECT j->>'date' FROM p),'')::date, CURRENT_DATE)
         WHERE NOT EXISTS (SELECT 1 FROM dup)
         RETURNING id, amount, description, transaction_date, category_id
     )
@@ -331,15 +412,7 @@ formatNames.push(addPgTool(9, 'log_transaction',
         (SELECT id FROM dup) AS duplicate_of_id,
         (SELECT amount FROM dup) AS duplicate_of_amount,
         (SELECT description FROM dup) AS duplicate_of_description;`,
-    "={{ $json.user_id }}," +
-    "={{ $json.params?.description || '' }}," +
-    "={{ $json.params?.category_hint || '' }}," +
-    "={{ Number($json.params?.amount || 0) }}," +
-    "={{ $json.params?.date || '' }}," +
-    "={{ $json.params?.payment_method_hint || '' }}," +
-    "={{ $json.params?.group_hint || '' }}," +
-    "={{ $json.params?.type || 'expense' }}," +
-    "={{ $json.params?.skip_dup_check ? 'true' : 'false' }}",
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 if (r.duplicate_of_id) {
   return [{ json: { ok: true, tool: 'log_transaction', data: {
@@ -359,18 +432,14 @@ return [{ json: { ok: true, tool: 'log_transaction', data: {
 // 10. update_transaction
 formatNames.push(addPgTool(10, 'update_transaction',
     `SELECT * FROM update_tx(
-        $1::uuid, $2::uuid,
-        NULLIF($3,'')::date,
-        NULLIF($4,'')::numeric,
-        NULLIF($5,''),
-        NULLIF($6,'')::uuid
+        $1::uuid,
+        ($2::jsonb->>'transaction_id')::uuid,
+        NULLIF($2::jsonb->>'new_date','')::date,
+        NULLIF($2::jsonb->>'new_amount','')::numeric,
+        NULLIF($2::jsonb->>'new_description',''),
+        NULLIF($2::jsonb->>'new_category_id','')::uuid
     );`,
-    "={{ $json.user_id }}," +
-    "={{ $json.params?.transaction_id || '' }}," +
-    "={{ $json.params?.new_date || '' }}," +
-    "={{ $json.params?.new_amount ?? '' }}," +
-    "={{ $json.params?.new_description || '' }}," +
-    "={{ $json.params?.new_category_id || '' }}",
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 if (!r || !r.id) {
   return [{ json: { ok: false, tool: 'update_transaction', error: 'Transaction not found or not owned by user' } }];
@@ -383,8 +452,11 @@ return [{ json: { ok: true, tool: 'update_transaction', data: {
 
 // 11. delete_transaction (single id via bulk_delete_by_ids)
 formatNames.push(addPgTool(11, 'delete_transaction',
-    "SELECT * FROM bulk_delete_by_ids($1::uuid, ARRAY[$2::uuid]::uuid[]);",
-    "={{ $json.user_id }},={{ $json.params?.transaction_id || '' }}",
+    `SELECT * FROM bulk_delete_by_ids(
+        $1::uuid,
+        ARRAY[($2::jsonb->>'transaction_id')::uuid]::uuid[]
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 const cnt = Number(r.deleted_count||0);
 if (!cnt) return [{ json: { ok: false, tool: 'delete_transaction', error: 'Transaction not found' } }];
@@ -395,8 +467,12 @@ return [{ json: { ok: true, tool: 'delete_transaction', data: {
 
 // 12. list_categories
 formatNames.push(addPgTool(12, 'list_categories',
-    "SELECT * FROM list_categories_with_counts($1::uuid, NULLIF($2,''), $3::boolean);",
-    "={{ $json.user_id }},={{ $json.params?.type || '' }},={{ $json.params?.include_excluded ? 'true' : 'false' }}",
+    `SELECT * FROM list_categories_with_counts(
+        $1::uuid,
+        NULLIF($2::jsonb->>'type',''),
+        COALESCE(NULLIF($2::jsonb->>'include_excluded','')::boolean, false)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const rows = $input.all().map(i => i.json);
 return [{ json: { ok: true, tool: 'list_categories', data: {
   categories: rows.map(r => ({ id: r.id, name: r.name, emoji: r.emoji, type: r.type,
@@ -440,8 +516,13 @@ return [{ json: { ok: true, tool: 'list_budgets', data: {
 
 // 15. set_budget
 formatNames.push(addPgTool(15, 'set_budget',
-    "SELECT * FROM set_budget($1::uuid, NULLIF($2,''), $3::numeric, $4::text);",
-    "={{ $json.user_id }},={{ $json.params?.category_hint || '' }},={{ Number($json.params?.amount || 0) }},={{ $json.params?.period || 'monthly' }}",
+    `SELECT * FROM set_budget(
+        $1::uuid,
+        NULLIF($2::jsonb->>'category_hint',''),
+        ($2::jsonb->>'amount')::numeric,
+        COALESCE(NULLIF($2::jsonb->>'period',''), 'monthly')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 return [{ json: { ok: true, tool: 'set_budget', data: {
   category: r.category_name || null, amount: Number(r.amount||0), period: r.period
@@ -450,16 +531,23 @@ return [{ json: { ok: true, tool: 'set_budget', data: {
 
 // 16. create_group
 formatNames.push(addPgTool(16, 'create_group',
-    "SELECT name, kind FROM expense_groups WHERE id = upsert_group($1::uuid, $2::text, $3::text);",
-    "={{ $json.user_id }},={{ $json.params?.name || 'Sin nombre' }},={{ $json.params?.kind || 'event' }}",
+    `SELECT name, kind FROM expense_groups WHERE id = upsert_group(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'name',''), 'Sin nombre'),
+        COALESCE(NULLIF($2::jsonb->>'kind',''), 'event')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 return [{ json: { ok: true, tool: 'create_group', data: { name: r.name, kind: r.kind } } }];`
 ));
 
 // 17. toggle_category_exclusion
 formatNames.push(addPgTool(17, 'toggle_category_exclusion',
-    "SELECT * FROM toggle_category_exclusion($1::uuid, $2::text);",
-    "={{ $json.user_id }},={{ $json.params?.category_hint || '' }}",
+    `SELECT * FROM toggle_category_exclusion(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'category_hint',''), '')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 if (!r || !r.name) return [{ json: { ok: false, tool: 'toggle_category_exclusion', error: 'Category not found' } }];
 return [{ json: { ok: true, tool: 'toggle_category_exclusion', data: {
@@ -469,20 +557,23 @@ return [{ json: { ok: true, tool: 'toggle_category_exclusion', data: {
 
 // 18. set_recurring
 formatNames.push(addPgTool(18, 'set_recurring',
-    `INSERT INTO recurring_transactions (user_id, type, amount, description, category_id,
+    `WITH p AS (SELECT $2::jsonb AS j)
+     INSERT INTO recurring_transactions (user_id, type, amount, description, category_id,
         frequency, start_date, is_active)
-     SELECT $1::uuid, 'expense', $2::numeric, NULLIF($3,''),
-            (SELECT category_id FROM find_best_category($1::uuid, COALESCE(NULLIF($3,''), NULLIF($4,'')), 'expense')),
-            $5::text,
-            COALESCE(NULLIF($6,'')::date, CURRENT_DATE),
+     SELECT $1::uuid,
+            'expense',
+            ((SELECT j->>'amount' FROM p))::numeric,
+            NULLIF((SELECT j->>'description' FROM p),''),
+            (SELECT category_id FROM find_best_category(
+                $1::uuid,
+                COALESCE(NULLIF((SELECT j->>'description' FROM p),''), NULLIF((SELECT j->>'category_hint' FROM p),'')),
+                'expense'
+            )),
+            COALESCE(NULLIF((SELECT j->>'frequency' FROM p),''), 'monthly'),
+            COALESCE(NULLIF((SELECT j->>'start_date' FROM p),'')::date, CURRENT_DATE),
             TRUE
      RETURNING id, amount, description, frequency, start_date;`,
-    "={{ $json.user_id }}," +
-    "={{ Number($json.params?.amount || 0) }}," +
-    "={{ $json.params?.description || '' }}," +
-    "={{ $json.params?.category_hint || '' }}," +
-    "={{ $json.params?.frequency || 'monthly' }}," +
-    "={{ $json.params?.start_date || '' }}",
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 return [{ json: { ok: true, tool: 'set_recurring', data: {
   id: r.id, amount: Number(r.amount), description: r.description,
@@ -492,12 +583,14 @@ return [{ json: { ok: true, tool: 'set_recurring', data: {
 
 // 19. remember_last_list
 formatNames.push(addPgTool(19, 'remember_last_list',
-    "SELECT remember_last_list($1::uuid, $2::text, $3::jsonb, $4::jsonb, $5::int);",
-    "={{ $json.user_id }}," +
-    "={{ $json.params?.kind || 'transactions' }}," +
-    "={{ JSON.stringify($json.params?.items || []) }}," +
-    "={{ JSON.stringify($json.params?.filters_applied || {}) }}," +
-    "={{ $json.params?.ttl_seconds || 600 }}",
+    `SELECT remember_last_list(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'kind',''), 'transactions'),
+        COALESCE($2::jsonb->'items', '[]'::jsonb),
+        COALESCE($2::jsonb->'filters_applied', '{}'::jsonb),
+        COALESCE(NULLIF($2::jsonb->>'ttl_seconds','')::int, 600)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `return [{ json: { ok: true, tool: 'remember_last_list', data: { saved: true } } }];`
 ));
 
@@ -515,11 +608,13 @@ return [{ json: { ok: true, tool: 'get_last_list', data: {
 
 // 21. set_conv_state
 formatNames.push(addPgTool(21, 'set_conv_state',
-    "SELECT set_conv_state($1::uuid, $2::text, $3::jsonb, $4::int);",
-    "={{ $json.user_id }}," +
-    "={{ $json.params?.state || '' }}," +
-    "={{ JSON.stringify($json.params?.context || {}) }}," +
-    "={{ $json.params?.ttl_seconds || 600 }}",
+    `SELECT set_conv_state(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'state',''), ''),
+        COALESCE($2::jsonb->'context', '{}'::jsonb),
+        COALESCE(NULLIF($2::jsonb->>'ttl_seconds','')::int, 600)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
     `return [{ json: { ok: true, tool: 'set_conv_state', data: { saved: true } } }];`
 ));
 
@@ -535,21 +630,28 @@ const chartIdx = 23;
 yT = -800 + chartIdx * Y_STEP;
 addNode('PG generate_chart', 'n8n-nodes-base.postgres', {
     operation: 'executeQuery',
-    query: "SELECT * FROM get_breakdown_dynamic($1::uuid, $2::text, $3::jsonb, $4::int);",
+    query: `SELECT * FROM get_breakdown_dynamic(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'dimension',''), 'category'),
+        $2::jsonb,
+        COALESCE(NULLIF($2::jsonb->>'top_n','')::int, 10)
+    );`,
     options: {
-        queryReplacement: "={{ $json.user_id }},={{ $json.params?.dimension || 'category' }},={{ $json.params_json }},={{ $json.params?.top_n || 10 }}"
+        queryReplacement: "={{ $json.user_id }},={{ $json.params_json }}"
     }
 }, xT, yT, { tv: 2.5, creds: { postgres: PG }, always: true, cof: true });
 connect('Tool Router', 'PG generate_chart', chartIdx);
 
 addNode('Fmt generate_chart', 'n8n-nodes-base.code', {
-    jsCode: `const rows = $input.all().map(i => i.json);
+    jsCode: `const rawRows = $input.all().map(i => i.json);
 const params = $('Normalize Input').first().json.params || {};
 const kind = params.kind || params.dimension || 'by_category';
 const period = params.period || 'this_month';
 const periodLabel = ({this_month:'este mes',last_month:'el mes pasado',this_week:'esta semana',this_year:'este año',today:'hoy',yesterday:'ayer',all:'en total'})[period] || period;
+// Filter rows with null/empty label or zero/null value — happens when there are no transactions
+const rows = rawRows.filter(r => r && r.label && Number(r.total) > 0);
 if (!rows.length) {
-  return [{ json: { ok: true, tool: 'generate_chart', data: { has_data: false, caption: '📭 No tengo datos para ' + periodLabel + '.' } } }];
+  return [{ json: { ok: true, tool: 'generate_chart', data: { has_data: false, caption: '📭 No tengo datos para graficar ' + periodLabel + '. Cargá algunos gastos primero.' } } }];
 }
 const labels = rows.map(r => r.label);
 const values = rows.map(r => Number(r.total));

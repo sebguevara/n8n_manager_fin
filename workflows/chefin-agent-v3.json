@@ -248,7 +248,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}",
+        "url": "=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -289,7 +289,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"response_format\": {\"type\":\"json_object\"},\n  \"temperature\": 0.1, \"max_tokens\": 1500,\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Sos un experto leyendo tickets argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. Si no es un comprobante, is_receipt=false. amount=TOTAL final.\"},\n    {\"role\":\"user\",\"content\":[\n      {\"type\":\"text\",\"text\":\"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}\"},\n      {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}\"}}\n    ]}\n  ]\n}",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"response_format\": {\"type\":\"json_object\"},\n  \"temperature\": 0.1, \"max_tokens\": 1500,\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Sos un experto leyendo comprobantes argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. is_receipt=TRUE si la imagen muestra CUALQUIER transacción de plata: ticket de compra, recibo, factura, comprobante de transferencia (Mercado Pago, Banco, etc.), pago de servicio, voucher, captura de movimiento bancario. is_receipt=false SOLO si la imagen no tiene info financiera (selfie, paisaje, meme). amount=monto principal sin signos. category_hint para transferencias salientes='transferencias'.\"},\n    {\"role\":\"user\",\"content\":[\n      {\"type\":\"text\",\"text\":\"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}\"},\n      {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}\"}}\n    ]}\n  ]\n}",
         "options": {}
       },
       "id": "n007",
@@ -309,7 +309,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const resp=$input.first().json;const ctx=$('Extract Fields').first().json;\nlet payload;try{payload=JSON.parse(resp.choices?.[0]?.message?.content||'{}');}catch{payload={is_receipt:false,human_reply:'No pude leer el comprobante.'};}\nlet syntheticText;\nif(payload.is_receipt && Number(payload.amount) > 0){\n  const dateOnly = payload.transaction_date_iso ? String(payload.transaction_date_iso).slice(0,10) : '';\n  const desc = payload.description || (payload.merchant ? 'pago a '+payload.merchant : 'comprobante');\n  const parts = ['pagué', String(payload.amount), 'de', payload.category_hint||'otros'];\n  if(payload.payment_method_hint) parts.push('con', payload.payment_method_hint);\n  if(dateOnly) parts.push('el', dateOnly);\n  parts.push('—', desc);\n  syntheticText = parts.join(' ');\n} else { syntheticText = payload.human_reply || 'No pude leer el comprobante.'; }\nreturn [{ json: { text: syntheticText, phone: ctx.phone, remoteJid: ctx.remoteJid, instance: ctx.instance, messageId: ctx.messageId, pushName: ctx.pushName, receipt_data: payload } }];"
+        "jsCode": "const resp=$input.first().json;const ctx=$('Extract Fields').first().json;\nlet payload;try{payload=JSON.parse(resp.choices?.[0]?.message?.content||'{}');}catch{payload={is_receipt:false,human_reply:'No pude leer el comprobante.'};}\nlet syntheticText;\n// Trust amount over is_receipt flag — vision often marks transferencias as is_receipt:false but extracts the data perfectly\nconst amount = Number(payload.amount || 0);\nif (amount > 0) {\n  const dateOnly = payload.transaction_date_iso ? String(payload.transaction_date_iso).slice(0,10) : '';\n  const desc = payload.description || (payload.merchant ? 'pago a '+payload.merchant : 'comprobante');\n  const parts = ['pagué', String(amount), 'de', payload.category_hint||'otros'];\n  if(payload.payment_method_hint) parts.push('con', payload.payment_method_hint);\n  if(dateOnly) parts.push('el', dateOnly);\n  parts.push('—', desc);\n  syntheticText = parts.join(' ');\n} else { syntheticText = payload.human_reply || 'No pude leer el comprobante.'; }\nreturn [{ json: { text: syntheticText, phone: ctx.phone, remoteJid: ctx.remoteJid, instance: ctx.instance, messageId: ctx.messageId, pushName: ctx.pushName, receipt_data: payload } }];"
       },
       "id": "n008",
       "name": "Receipt to Text",
@@ -323,7 +323,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}",
+        "url": "=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -386,7 +386,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}",
+        "url": "=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -630,15 +630,13 @@
     },
     {
       "parameters": {
-        "operation": "incr",
+        "operation": "get",
+        "propertyName": "alreadyProcessed",
         "key": "=processed:{{ $json.messageId }}",
-        "expire": true,
-        "ttl": 3600,
-        "propertyName": "procCount",
         "options": {}
       },
       "id": "n020",
-      "name": "Mark Processed",
+      "name": "Redis Check",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
@@ -650,14 +648,15 @@
           "id": "igDqU9rqRBlmVQGc",
           "name": "Redis account"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
-            "typeValidation": "strict",
+            "typeValidation": "loose",
             "version": 1
           },
           "combinator": "and",
@@ -665,11 +664,11 @@
             {
               "id": "c1",
               "operator": {
-                "type": "number",
-                "operation": "equals"
+                "type": "string",
+                "operation": "empty"
               },
-              "leftValue": "={{ Number($json.procCount) }}",
-              "rightValue": 1
+              "leftValue": "={{ $json.alreadyProcessed }}",
+              "rightValue": ""
             }
           ]
         },
@@ -686,18 +685,41 @@
     },
     {
       "parameters": {
+        "operation": "set",
+        "key": "=processed:{{ $json.messageId }}",
+        "value": "1",
+        "expire": true,
+        "ttl": 3600
+      },
+      "id": "n022",
+      "name": "Mark Processed",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        3300,
+        -100
+      ],
+      "credentials": {
+        "redis": {
+          "id": "igDqU9rqRBlmVQGc",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
         "operation": "push",
         "list": "=buffer:{{ $('Merge Ctx').first().json.phone }}",
         "messageData": "={{ $('Merge Ctx').first().json.text }}",
         "tail": true
       },
-      "id": "n022",
+      "id": "n023",
       "name": "Buffer Push",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        3300,
-        0
+        3520,
+        -100
       ],
       "credentials": {
         "redis": {
@@ -727,7 +749,7 @@
         "includeOtherFields": true,
         "options": {}
       },
-      "id": "n023",
+      "id": "n024",
       "name": "Lock Token",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -744,7 +766,7 @@
         "expire": true,
         "ttl": 30
       },
-      "id": "n024",
+      "id": "n025",
       "name": "Lock Set",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
@@ -763,7 +785,7 @@
       "parameters": {
         "amount": 6
       },
-      "id": "n025",
+      "id": "n026",
       "name": "Wait",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -780,7 +802,7 @@
         "key": "=lock:{{ $('Lock Token').first().json.phone }}",
         "options": {}
       },
-      "id": "n026",
+      "id": "n027",
       "name": "Lock Get",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
@@ -818,7 +840,7 @@
         },
         "options": {}
       },
-      "id": "n027",
+      "id": "n028",
       "name": "IF Won Race",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -835,7 +857,7 @@
         "keyType": "list",
         "options": {}
       },
-      "id": "n028",
+      "id": "n029",
       "name": "Buffer Get",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
@@ -855,7 +877,7 @@
         "operation": "delete",
         "key": "=buffer:{{ $('Lock Token').first().json.phone }}"
       },
-      "id": "n029",
+      "id": "n030",
       "name": "Buffer Delete",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
@@ -874,7 +896,7 @@
       "parameters": {
         "jsCode": "const buf=$input.first().json.bufferedMessages||[];\nconst ctx=$('Merge Ctx').first().json;\nconst combined=buf.filter(Boolean).map(s=>String(s).trim()).join(' \\n ').trim();\nreturn [{ json:{ userId:ctx.userId, phone:ctx.phone, remoteJid:ctx.remoteJid, instance:ctx.instance, messageId:ctx.messageId, pushName:ctx.pushName, combinedText:combined, bufferLength:buf.length, convState:ctx.convState, convContext:ctx.convContext, onboarded:ctx.onboarded }}];"
       },
-      "id": "n030",
+      "id": "n031",
       "name": "Concat",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -895,7 +917,7 @@
           "maxTokens": 1500
         }
       },
-      "id": "n031",
+      "id": "n032",
       "name": "OpenAI Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -917,7 +939,7 @@
         "contextWindowLength": 12,
         "tableName": "n8n_chat_histories"
       },
-      "id": "n032",
+      "id": "n033",
       "name": "Postgres Chat Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1.3,
@@ -936,7 +958,7 @@
       "parameters": {
         "jsonSchemaExample": "{\n  \"reply_text\": \"Hola! ¿en qué te ayudo?\",\n  \"reply_kind\": \"text\",\n  \"image_url\": \"\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}"
       },
-      "id": "n033",
+      "id": "n034",
       "name": "Reply Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -948,54 +970,199 @@
     {
       "parameters": {
         "name": "query_transactions",
-        "description": "Lista transacciones con filtros y paginación. Úsala para \"mostrame los movs\", \"los últimos\", \"todos los gastos del mes\". Filtros opcionales: period, category, description_contains, exact_amount, min_amount, max_amount, type (expense/income/both), group_name, payment_method, sort (date_desc default). Devuelve items con id, date, amount, description, category, emoji.",
+        "description": "Lista transacciones con filtros y paginación. Úsala para \"mostrame los movs\", \"los últimos\", \"todos los gastos del mes\".",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "query_transactions",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', `today|yesterday|this_week|this_month|last_month|this_year|all|custom. Default this_month si no especifican; all si pidieron datos específicos por monto/fecha.`, 'string', 'this_month') }}",
+            "start_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('start_date', `YYYY-MM-DD (solo si period=custom)`, 'string', '') }}",
+            "end_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('end_date', `YYYY-MM-DD (solo si period=custom)`, 'string', '') }}",
+            "category": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category', `Filtro por categoría`, 'string', '') }}",
+            "description_contains": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description_contains', `Busca texto en la descripción. SOLO si el usuario menciona texto explícito (ej. \\\"café\\\", \\\"uber\\\").`, 'string', '') }}",
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income|both`, 'string', 'both') }}",
+            "group_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('group_name', `Nombre de grupo/viaje`, 'string', '') }}",
+            "payment_method": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('payment_method', `Método de pago`, 'string', '') }}",
+            "exact_amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('exact_amount', `Monto exacto`, 'number', 0) }}",
+            "min_amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('min_amount', `Monto mínimo`, 'number', 0) }}",
+            "max_amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('max_amount', `Monto máximo`, 'number', 0) }}",
+            "sort": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('sort', `date_desc|date_asc|amount_desc|amount_asc`, 'string', 'date_desc') }}",
+            "limit": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('limit', `Cantidad de resultados`, 'number', 20) }}",
+            "offset": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('offset', `Paginación offset`, 'number', 0) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "start_date",
+              "displayName": "start_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "end_date",
+              "displayName": "end_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "description_contains",
+              "displayName": "description_contains",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "group_name",
+              "displayName": "group_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "payment_method",
+              "displayName": "payment_method",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "exact_amount",
+              "displayName": "exact_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "min_amount",
+              "displayName": "min_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "max_amount",
+              "displayName": "max_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "sort",
+              "displayName": "sort",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "limit",
+              "displayName": "limit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "offset",
+              "displayName": "offset",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n034",
+      "id": "n035",
       "name": "tool: query_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1007,54 +1174,89 @@
     {
       "parameters": {
         "name": "get_total",
-        "description": "Total y count de gastos/ingresos en un período. Para \"cuánto gasté\", \"total del mes\", \"cuánto en comida\". Filtros: period (default this_month), type (default expense), category, group_name.",
+        "description": "Total y count de gastos/ingresos en un período. Para \"cuánto gasté\", \"total del mes\", \"cuánto en comida\".",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "get_total",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', `today|yesterday|this_week|this_month|last_month|this_year|all|custom`, 'string', 'this_month') }}",
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income|both`, 'string', 'expense') }}",
+            "category": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category', `Filtro por categoría`, 'string', '') }}",
+            "group_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('group_name', `Filtro por grupo`, 'string', '') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "group_name",
+              "displayName": "group_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n035",
+      "id": "n036",
       "name": "tool: get_total",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1066,54 +1268,89 @@
     {
       "parameters": {
         "name": "get_breakdown",
-        "description": "Desglose agrupado por dimensión. Para \"en qué gasté más\", \"por categoría\", \"por método de pago\", \"por día\". Params: dimension (category|day|week|month|payment_method|group), period (default this_month), type (default expense), top_n (default 10).",
+        "description": "Desglose agrupado por dimensión. Para \"en qué gasté más\", \"por categoría\", \"por día\".",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "get_breakdown",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "dimension": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('dimension', `category|day|week|month|payment_method|group`, 'string', 'category') }}",
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', `today|yesterday|this_week|this_month|last_month|this_year|all`, 'string', 'this_month') }}",
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income`, 'string', 'expense') }}",
+            "top_n": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('top_n', `Top N filas`, 'number', 10) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "dimension",
+              "displayName": "dimension",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "top_n",
+              "displayName": "top_n",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n036",
+      "id": "n037",
       "name": "tool: get_breakdown",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1125,54 +1362,78 @@
     {
       "parameters": {
         "name": "compare_periods",
-        "description": "Compara totales entre dos períodos. Para \"este mes vs el pasado\", \"estoy gastando más que antes\". Params: period_a, period_b (mismos enums), type (expense/income).",
+        "description": "Compara totales entre dos períodos. Para \"este mes vs el pasado\".",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "compare_periods",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "period_a": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period_a', `Período A`, 'string', 'this_month') }}",
+            "period_b": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period_b', `Período B`, 'string', 'last_month') }}",
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income`, 'string', 'expense') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "period_a",
+              "displayName": "period_a",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "period_b",
+              "displayName": "period_b",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n037",
+      "id": "n038",
       "name": "tool: compare_periods",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1184,54 +1445,166 @@
     {
       "parameters": {
         "name": "find_transactions",
-        "description": "Busca transacciones específicas para luego borrarlas/editarlas. Devuelve TODAS las que matchean con score y match_reasons. Filtros determinísticos AND: exact_amount, date, date_from, date_to, min_amount, max_amount, type. Filtros fuzzy (rankean): description_contains, category, group_name. Llamá esta antes de cualquier delete/update por hint.",
+        "description": "Busca transacciones específicas para luego borrarlas/editarlas. Devuelve TODAS las matches con score. Llamá ANTES de cualquier delete/update por hint.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "find_transactions",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "description_contains": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description_contains', `Texto a buscar en descripción`, 'string', '') }}",
+            "exact_amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('exact_amount', `Monto exacto`, 'number', 0) }}",
+            "min_amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('min_amount', `Monto mínimo`, 'number', 0) }}",
+            "max_amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('max_amount', `Monto máximo`, 'number', 0) }}",
+            "date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('date', `Fecha exacta YYYY-MM-DD`, 'string', '') }}",
+            "date_from": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('date_from', `Desde fecha YYYY-MM-DD`, 'string', '') }}",
+            "date_to": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('date_to', `Hasta fecha YYYY-MM-DD`, 'string', '') }}",
+            "category": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category', `Categoría`, 'string', '') }}",
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income`, 'string', '') }}",
+            "group_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('group_name', `Grupo`, 'string', '') }}",
+            "limit": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('limit', `Max resultados`, 'number', 20) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "description_contains",
+              "displayName": "description_contains",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "exact_amount",
+              "displayName": "exact_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "min_amount",
+              "displayName": "min_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "max_amount",
+              "displayName": "max_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "date_from",
+              "displayName": "date_from",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "date_to",
+              "displayName": "date_to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "group_name",
+              "displayName": "group_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "limit",
+              "displayName": "limit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n038",
+      "id": "n039",
       "name": "tool: find_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1243,54 +1616,67 @@
     {
       "parameters": {
         "name": "find_duplicates",
-        "description": "Detecta gastos repetidos (mismo monto + categoría dentro de N días). Para \"elimina los repetidos\", \"tengo gastos duplicados\". Params: window_days (default 7), min_repetitions (default 2). Devuelve clusters con sus transaction_ids.",
+        "description": "Detecta gastos repetidos. Para \"elimina los repetidos\", \"tengo gastos duplicados\".",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "find_duplicates",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "window_days": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('window_days', `Ventana de días para considerar duplicado`, 'number', 7) }}",
+            "min_repetitions": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('min_repetitions', `Mínimo de repeticiones`, 'number', 2) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "window_days",
+              "displayName": "window_days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "min_repetitions",
+              "displayName": "min_repetitions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n039",
+      "id": "n040",
       "name": "tool: find_duplicates",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1302,54 +1688,111 @@
     {
       "parameters": {
         "name": "bulk_preview",
-        "description": "Cuenta y muestra preview ANTES de borrar/editar masivo. Acepta los mismos filtros que query_transactions. Devuelve count, total, ids, preview (10 sample). USALA OBLIGATORIAMENTE antes de bulk_delete por criterio.",
+        "description": "Preview ANTES de borrar/editar masivo. USALA OBLIGATORIAMENTE antes de bulk_delete por criterio.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "bulk_preview",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', `Período`, 'string', 'all') }}",
+            "category": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category', `Filtro categoría`, 'string', '') }}",
+            "description_contains": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description_contains', `Texto a buscar`, 'string', '') }}",
+            "exact_amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('exact_amount', `Monto exacto`, 'number', 0) }}",
+            "date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('date', `Fecha exacta`, 'string', '') }}",
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income`, 'string', '') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "description_contains",
+              "displayName": "description_contains",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "exact_amount",
+              "displayName": "exact_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n040",
+      "id": "n041",
       "name": "tool: bulk_preview",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1361,54 +1804,56 @@
     {
       "parameters": {
         "name": "bulk_delete",
-        "description": "Borra múltiples transacciones por una lista explícita de UUIDs. Solo usar después de bulk_preview + confirmación del usuario. Params: ids (array de UUIDs).",
+        "description": "Borra múltiples transacciones por lista de UUIDs. Solo después de bulk_preview o find_transactions + confirmación.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "bulk_delete",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "ids": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('ids', `Array JSON de UUIDs (string). Ejemplo: [\\\"uuid1\\\",\\\"uuid2\\\"]`, 'json', []) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "ids",
+              "displayName": "ids",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n041",
+      "id": "n042",
       "name": "tool: bulk_delete",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1420,54 +1865,111 @@
     {
       "parameters": {
         "name": "bulk_update",
-        "description": "Actualiza múltiples transacciones por UUIDs. Params: ids (array), new_category_id?, new_date?, new_group_id?, amount_delta?, set_excluded?.",
+        "description": "Actualiza múltiples transacciones por UUIDs.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "bulk_update",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "ids": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('ids', `Array JSON de UUIDs`, 'json', []) }}",
+            "new_category_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('new_category_id', `Nueva categoría UUID`, 'string', '') }}",
+            "new_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('new_date', `Nueva fecha YYYY-MM-DD`, 'string', '') }}",
+            "new_group_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('new_group_id', `Nuevo grupo UUID`, 'string', '') }}",
+            "amount_delta": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('amount_delta', `Suma/resta al monto`, 'number', 0) }}",
+            "set_excluded": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('set_excluded', `Marcar excluidas`, 'boolean', false) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "ids",
+              "displayName": "ids",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
+            },
+            {
+              "id": "new_category_id",
+              "displayName": "new_category_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "new_date",
+              "displayName": "new_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "new_group_id",
+              "displayName": "new_group_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "amount_delta",
+              "displayName": "amount_delta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "set_excluded",
+              "displayName": "set_excluded",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n042",
+      "id": "n043",
       "name": "tool: bulk_update",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1479,54 +1981,144 @@
     {
       "parameters": {
         "name": "log_transaction",
-        "description": "Registra UN gasto o ingreso nuevo. Params: amount (number), description, category_hint, type (expense|income, default expense), date (YYYY-MM-DD opcional), payment_method_hint (efectivo|debito|credito|transferencia|mercado_pago|otro), group_hint (nombre de viaje/evento opcional), skip_dup_check (bool, solo si el usuario confirmó duplicado). Devuelve needs_confirmation:duplicate si detectó uno.",
+        "description": "Registra UN gasto o ingreso nuevo. SIEMPRE extraé del mensaje el monto, descripción y categoría antes de llamar.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "log_transaction",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('amount', `Monto en pesos (número entero o decimal, sin signos ni separadores). Ej: 3300`, 'number', 0) }}",
+            "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description', `Descripción del gasto/ingreso`, 'string', '') }}",
+            "category_hint": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category_hint', `Nombre de categoría existente o nueva (ej. comida, salud, salidas, viajes). NO uses \\\"transferencias\\\" — eso es método de pago, no categoría.`, 'string', '') }}",
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income`, 'string', 'expense') }}",
+            "date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('date', `Fecha YYYY-MM-DD si fue mencionada explícitamente. Vacío para hoy.`, 'string', '') }}",
+            "payment_method_hint": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('payment_method_hint', `efectivo|debito|credito|transferencia|mercado_pago|otro. Si fue transferencia, va ACÁ — NO en category_hint.`, 'string', '') }}",
+            "group_hint": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('group_hint', `Nombre del viaje/evento al que pertenece`, 'string', '') }}",
+            "skip_dup_check": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('skip_dup_check', `true solo si el usuario confirmó registrar duplicado`, 'boolean', false) }}",
+            "create_category_if_missing": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('create_category_if_missing', `true cuando el usuario aclaró la categoría (puede ser nueva, hay que crearla). false en flujos automáticos donde solo querés matchear con existentes.`, 'boolean', false) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "amount",
+              "displayName": "amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "category_hint",
+              "displayName": "category_hint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "payment_method_hint",
+              "displayName": "payment_method_hint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "group_hint",
+              "displayName": "group_hint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "skip_dup_check",
+              "displayName": "skip_dup_check",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            },
+            {
+              "id": "create_category_if_missing",
+              "displayName": "create_category_if_missing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n043",
+      "id": "n044",
       "name": "tool: log_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1538,54 +2130,100 @@
     {
       "parameters": {
         "name": "update_transaction",
-        "description": "Edita UNA transacción por UUID exacto. Params: transaction_id (UUID), new_date?, new_amount?, new_description?, new_category_id?.",
+        "description": "Edita UNA transacción por UUID exacto.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "update_transaction",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "transaction_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('transaction_id', `UUID de la transacción a editar`, 'string', '') }}",
+            "new_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('new_date', `Nueva fecha YYYY-MM-DD`, 'string', '') }}",
+            "new_amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('new_amount', `Nuevo monto`, 'number', 0) }}",
+            "new_description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('new_description', `Nueva descripción`, 'string', '') }}",
+            "new_category_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('new_category_id', `Nueva categoría UUID`, 'string', '') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "transaction_id",
+              "displayName": "transaction_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "new_date",
+              "displayName": "new_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "new_amount",
+              "displayName": "new_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "new_description",
+              "displayName": "new_description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "new_category_id",
+              "displayName": "new_category_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n044",
+      "id": "n045",
       "name": "tool: update_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1597,54 +2235,56 @@
     {
       "parameters": {
         "name": "delete_transaction",
-        "description": "Borra UNA transacción por UUID. Params: transaction_id (UUID). Para borrar varias usá bulk_delete.",
+        "description": "Borra UNA transacción por UUID.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "delete_transaction",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "transaction_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('transaction_id', `UUID de la transacción a borrar`, 'string', '') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "transaction_id",
+              "displayName": "transaction_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n045",
+      "id": "n046",
       "name": "tool: delete_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1656,54 +2296,67 @@
     {
       "parameters": {
         "name": "list_categories",
-        "description": "Lista todas las categorías del usuario con sus emojis y conteos. Params: type (expense|income|both opcional), include_excluded (bool).",
+        "description": "Lista todas las categorías del usuario con sus emojis y conteos.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "list_categories",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income|both`, 'string', 'both') }}",
+            "include_excluded": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('include_excluded', `Incluir categorías excluidas`, 'boolean', false) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "include_excluded",
+              "displayName": "include_excluded",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n046",
+      "id": "n047",
       "name": "tool: list_categories",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1719,50 +2372,41 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "list_groups",
-            "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "user_id": "={{ $('Concat').first().json.userId }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n047",
+      "id": "n048",
       "name": "tool: list_groups",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1778,50 +2422,41 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "list_budgets",
-            "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "user_id": "={{ $('Concat').first().json.userId }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n048",
+      "id": "n049",
       "name": "tool: list_budgets",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1833,54 +2468,78 @@
     {
       "parameters": {
         "name": "set_budget",
-        "description": "Crea o actualiza un presupuesto para una categoría. Params: category_hint, amount (number), period (weekly|monthly|yearly).",
+        "description": "Crea o actualiza un presupuesto para una categoría.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "set_budget",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "category_hint": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category_hint', `Categoría`, 'string', '') }}",
+            "amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('amount', `Monto del presupuesto`, 'number', 0) }}",
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', `weekly|monthly|yearly`, 'string', 'monthly') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "category_hint",
+              "displayName": "category_hint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "amount",
+              "displayName": "amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n049",
+      "id": "n050",
       "name": "tool: set_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1892,54 +2551,67 @@
     {
       "parameters": {
         "name": "create_group",
-        "description": "Crea un grupo (viaje/evento/proyecto). Params: name, kind (trip|event|emergency|project|other).",
+        "description": "Crea un grupo (viaje/evento/proyecto).",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "create_group",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('name', `Nombre del grupo`, 'string', '') }}",
+            "kind": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('kind', `trip|event|emergency|project|other`, 'string', 'event') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "kind",
+              "displayName": "kind",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n050",
+      "id": "n051",
       "name": "tool: create_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1951,54 +2623,56 @@
     {
       "parameters": {
         "name": "toggle_category_exclusion",
-        "description": "Excluye/incluye una categoría de los reportes. Params: category_hint.",
+        "description": "Excluye/incluye una categoría de los reportes.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "toggle_category_exclusion",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "category_hint": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category_hint', `Categoría a excluir/incluir`, 'string', '') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "category_hint",
+              "displayName": "category_hint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n051",
+      "id": "n052",
       "name": "tool: toggle_category_exclusion",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2010,54 +2684,100 @@
     {
       "parameters": {
         "name": "set_recurring",
-        "description": "Crea una transacción recurrente (Netflix, alquiler, etc). Params: amount, description, category_hint, frequency (daily|weekly|biweekly|monthly|yearly), start_date?.",
+        "description": "Crea una transacción recurrente (Netflix, alquiler, etc).",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "set_recurring",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('amount', `Monto recurrente`, 'number', 0) }}",
+            "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description', `Descripción`, 'string', '') }}",
+            "category_hint": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category_hint', `Categoría`, 'string', 'otros') }}",
+            "frequency": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('frequency', `daily|weekly|biweekly|monthly|yearly`, 'string', 'monthly') }}",
+            "start_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('start_date', `YYYY-MM-DD`, 'string', '') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "amount",
+              "displayName": "amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "category_hint",
+              "displayName": "category_hint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "frequency",
+              "displayName": "frequency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "start_date",
+              "displayName": "start_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n052",
+      "id": "n053",
       "name": "tool: set_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2069,54 +2789,89 @@
     {
       "parameters": {
         "name": "remember_last_list",
-        "description": "Guarda la última lista mostrada al usuario para resolver referencias deícticas (\"el primero\", \"esos dos\"). LLAMALA después de query_transactions / find_transactions cuando muestres una lista. Params: kind, items (array con id+position), filters_applied, ttl_seconds (default 600).",
+        "description": "Guarda la última lista mostrada al usuario para resolver referencias deícticas. LLAMALA después de query_transactions / find_transactions cuando muestres una lista.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "remember_last_list",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "kind": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('kind', `transactions|duplicate_clusters|categories|groups`, 'string', 'transactions') }}",
+            "items": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('items', `Array de objetos. Ej: [{\\\"position\\\":1,\\\"id\\\":\\\"uuid\\\",\\\"date\\\":\\\"...\\\",\\\"amount\\\":123}]`, 'json', []) }}",
+            "filters_applied": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('filters_applied', `Filtros aplicados (objeto JSON)`, 'json', {}) }}",
+            "ttl_seconds": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('ttl_seconds', `TTL en segundos`, 'number', 600) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "kind",
+              "displayName": "kind",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "items",
+              "displayName": "items",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
+            },
+            {
+              "id": "filters_applied",
+              "displayName": "filters_applied",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "ttl_seconds",
+              "displayName": "ttl_seconds",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n053",
+      "id": "n054",
       "name": "tool: remember_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2128,54 +2883,45 @@
     {
       "parameters": {
         "name": "get_last_list",
-        "description": "Recupera la última lista mostrada al usuario. Devuelve items y si está fresca. Llamala cuando el usuario use deícticos.",
+        "description": "Recupera la última lista mostrada al usuario. Llamala cuando el usuario use deícticos como \"el primero\", \"esos dos\".",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "get_last_list",
-            "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "user_id": "={{ $('Concat').first().json.userId }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n054",
+      "id": "n055",
       "name": "tool: get_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2187,54 +2933,78 @@
     {
       "parameters": {
         "name": "set_conv_state",
-        "description": "Setea estado conversacional pendiente (ej. awaiting_bulk_delete antes de confirmar). Params: state, context (objeto), ttl_seconds (default 600).",
+        "description": "Setea estado conversacional pendiente (ej. awaiting_bulk_delete antes de confirmar).",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "set_conv_state",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "state": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('state', `Nombre del estado`, 'string', '') }}",
+            "context": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('context', `Contexto (objeto JSON)`, 'json', {}) }}",
+            "ttl_seconds": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('ttl_seconds', `TTL en segundos`, 'number', 600) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "state",
+              "displayName": "state",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "context",
+              "displayName": "context",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
+            },
+            {
+              "id": "ttl_seconds",
+              "displayName": "ttl_seconds",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n055",
+      "id": "n056",
       "name": "tool: set_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2250,50 +3020,41 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "clear_conv_state",
-            "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "user_id": "={{ $('Concat').first().json.userId }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n056",
+      "id": "n057",
       "name": "tool: clear_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2305,54 +3066,89 @@
     {
       "parameters": {
         "name": "generate_chart",
-        "description": "Genera un gráfico (URL de imagen) con datos del usuario. Params: dimension (category|day|payment_method), period, type. Devuelve image_url + caption. Cuando uses esta tool, en tu reply final usá reply_kind=\"image\" e image_url.",
+        "description": "Genera un gráfico (URL de imagen). En tu reply final usá reply_kind=\"image\" e image_url.",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "generate_chart",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "dimension": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('dimension', `category|day|payment_method`, 'string', 'category') }}",
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', `today|this_week|this_month|last_month|this_year`, 'string', 'this_month') }}",
+            "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', `expense|income`, 'string', 'expense') }}",
+            "top_n": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('top_n', `Top N`, 'number', 10) }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "params",
-              "displayName": "params",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "object",
-              "canBeUsedToMatch": false
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "dimension",
+              "displayName": "dimension",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "top_n",
+              "displayName": "top_n",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "n057",
+      "id": "n058",
       "name": "tool: generate_chart",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2363,16 +3159,202 @@
     },
     {
       "parameters": {
+        "name": "get_cashflow",
+        "description": "Devuelve flujo de caja del período: ingresos, gastos, neto, ritmo diario y días restantes. Útil para 'cuánto entré', 'cuánto gasté', 'cuánto me queda'. Si has_income=false (el usuario nunca cargó ingresos), income/net vienen null — NO inventes números, respondé que solo tenés gastos y ofrecé UNA VEZ cargar ingresos. Default period=this_month.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tool_name": "get_cashflow",
+            "user_id": "={{ $('Concat').first().json.userId }}",
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', `today|yesterday|this_week|last_week|this_month|last_month|this_year|custom`, 'string', 'this_month') }}",
+            "start_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('start_date', `YYYY-MM-DD si period=custom`, 'string', '') }}",
+            "end_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('end_date', `YYYY-MM-DD si period=custom`, 'string', '') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "tool_name",  "displayName": "tool_name",  "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "user_id",    "displayName": "user_id",    "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "period",     "displayName": "period",     "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "start_date", "displayName": "start_date", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "end_date",   "displayName": "end_date",   "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "n073",
+      "name": "tool: get_cashflow",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        7700,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "name": "get_safe_to_spend",
+        "description": "Devuelve cuánto puede gastar el usuario por día sin pasarse, basado en ingresos y gastos del mes. Si has_income=false, NO podés calcular saldo: respondé que solo ves gastos y NO inventes un número. Sin parámetros.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tool_name": "get_safe_to_spend",
+            "user_id": "={{ $('Concat').first().json.userId }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "tool_name", "displayName": "tool_name", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "user_id",   "displayName": "user_id",   "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "n074",
+      "name": "tool: get_safe_to_spend",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        7700,
+        820
+      ]
+    },
+    {
+      "parameters": {
+        "name": "forecast_month_end",
+        "description": "Proyecta cuánto va a gastar el usuario al fin de mes basado en su ritmo de los últimos N días (default 14). NO requiere ingresos — funciona siempre con gastos. Útil para '¿cómo voy a terminar el mes?', 'voy a llegar', '¿voy bien?'.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tool_name": "forecast_month_end",
+            "user_id": "={{ $('Concat').first().json.userId }}",
+            "lookback_days": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('lookback_days', `Días recientes para calcular el ritmo (default 14)`, 'number', 14) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "tool_name",     "displayName": "tool_name",     "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "user_id",       "displayName": "user_id",       "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "lookback_days", "displayName": "lookback_days", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "number" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "n075",
+      "name": "tool: forecast_month_end",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        7700,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "name": "list_subscriptions",
+        "description": "Detecta suscripciones / cargos recurrentes invisibles (Netflix, Spotify, etc.) mirando patrones repetidos en los últimos N días (default 90). Devuelve {count, monthly_estimated_total, items:[{description,category,avg_amount,cadence_label,last_charge_date,next_estimated_date,confidence}]}. Útil para 'qué suscripciones tengo', 'qué se me debita', 'qué me cobran todos los meses'.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tool_name": "list_subscriptions",
+            "user_id": "={{ $('Concat').first().json.userId }}",
+            "lookback_days": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('lookback_days', `Días para mirar atrás (default 90)`, 'number', 90) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "tool_name",     "displayName": "tool_name",     "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "user_id",       "displayName": "user_id",       "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "lookback_days", "displayName": "lookback_days", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "number" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "n076",
+      "name": "tool: list_subscriptions",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        7700,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "name": "list_anomalies",
+        "description": "Lista gastos anómalos (montos inusualmente altos vs el promedio histórico de su categoría) en un período. Útil para 'qué gasto raro tuve este mes', 'algo fuera de lo normal'. Devuelve items con {id, category, amount, baseline, multiplier, description, date}. Period default this_month.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tool_name": "list_anomalies",
+            "user_id": "={{ $('Concat').first().json.userId }}",
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', `today|yesterday|this_week|last_week|this_month|last_month|this_year|custom`, 'string', 'this_month') }}",
+            "start_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('start_date', `YYYY-MM-DD si period=custom`, 'string', '') }}",
+            "end_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('end_date', `YYYY-MM-DD si period=custom`, 'string', '') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "tool_name",  "displayName": "tool_name",  "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "user_id",    "displayName": "user_id",    "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "period",     "displayName": "period",     "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "start_date", "displayName": "start_date", "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" },
+            { "id": "end_date",   "displayName": "end_date",   "required": false, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string" }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "n077",
+      "name": "tool: list_anomalies",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        7700,
+        1180
+      ]
+    },
+    {
+      "parameters": {
         "promptType": "define",
         "text": "={{ $('Concat').first().json.combinedText }}",
         "options": {
-          "systemMessage": "=Sos **Chefin**, asistente conversacional experto en finanzas personales para WhatsApp en español rioplatense (Argentina).\n\n# CONTEXTO DE LA CONVERSACIÓN\n- Fecha y hora actual: {{ $now.toFormat('yyyy-MM-dd HH:mm') }} (America/Argentina/Buenos_Aires)\n- Día de la semana: {{ $now.toFormat('EEEE') }}\n- Estado de conversación previo: {{ $json.convState || 'ninguno' }}\n- Contexto previo: {{ JSON.stringify($json.convContext || {}) }}\n- Onboarded: {{ $json.onboarded }}\n\n# TU MISIÓN\nResolvés CUALQUIER duda del usuario sobre sus finanzas usando las tools disponibles. Podés encadenar varias tools antes de responder. Sos riguroso con datos destructivos: nunca borrás ni editás sin confirmación cuando hay ambigüedad o son varios items.\n\n# TOOLS DISPONIBLES\nCada tool toma JSON; consultá las descripciones de cada una para entender los parámetros. Algunas reglas globales:\n- `user_id` se inyecta automáticamente — NO lo pongas en `params`.\n- Períodos válidos: today | yesterday | this_week | this_month | last_month | this_year | all | custom.\n- Para búsquedas con DATOS ESPECÍFICOS (monto exacto, fecha exacta, descripción concreta), el período default es `all` salvo que el usuario diga lo contrario.\n- Para totales/resúmenes sin tiempo especificado, default `this_month`.\n\n# ESTRATEGIA DE RAZONAMIENTO\n\n## Para CONSULTAS (lectura)\n1. Si el usuario menciona texto deíctico (\"esos\", \"el primero\", \"los de 3300 que mostraste\") → llamá `get_last_list` PRIMERO.\n2. Para preguntas tipo \"cuánto gasté X\" → `get_total`.\n3. Para \"en qué gasté más / desglosá\" → `get_breakdown` con dimension=category.\n4. Para \"comparame mes a mes\" / \"gasté más que el pasado\" → `compare_periods`.\n5. Para \"mostrame los últimos / los movs\" → `query_transactions`.\n6. Para \"buscame los café / los uber / los de 5000\" → `find_transactions` con filtros determinísticos cuando sean exactos.\n7. Después de mostrar una lista de transacciones (>1 item), llamá `remember_last_list` con sus ids para resolver referencias deícticas en el siguiente turno.\n\n## Para REGISTRO (gasto/ingreso nuevo)\n- Llamá `log_transaction`. Si la tool devuelve `needs_confirmation: 'duplicate'` → preguntá al usuario si quiere registrar de todas formas (y si dice sí, volvés a llamar con `skip_dup_check: true`).\n\n## Para BORRAR / EDITAR\n- 1 transacción específica con monto+fecha exactos:\n  1. `find_transactions` para obtener candidatos con sus ids.\n  2. Si devuelve UN solo match → ejecutás `delete_transaction` o `update_transaction` directo.\n  3. Si devuelve VARIOS matches → mostrás la lista numerada al usuario, llamás `remember_last_list`, pedís que aclare cuál.\n- \"el último\" (sin específicos) → `query_transactions` ordenado por date_desc + límite 1.\n- BULK delete por criterio (\"borrá todos los café del mes pasado\"):\n  1. `bulk_preview` con los filtros para obtener count + sample + ids.\n  2. Mostrás al usuario: \"Voy a borrar N gastos por $X. ¿Confirmás?\". Llamás `set_conv_state` con state='awaiting_bulk_delete' y context={ids:[...]}.\n  3. Cuando responda \"sí\" → `bulk_delete` con esos ids exactos. Llamás `clear_conv_state`.\n- \"Eliminá los gastos repetidos\" → `find_duplicates` → mostrás los clusters → confirmás → `bulk_delete` con los ids elegidos.\n\n## Para CHARLA / FECHAS / IDENTIDAD\n- \"qué fecha es hoy?\" → respondé directo desde el contexto, SIN tools.\n- \"hola / gracias / cómo andás\" → respondé natural, SIN tools.\n- \"ayuda / qué podés hacer\" → enumerá brevemente: registrar, consultar, borrar, editar, gráficos, presupuestos, recurrentes, reportes.\n\n## Para GRÁFICOS\n- \"gráfico de gastos / torta / por categoría\" → `generate_chart` con dimension. Devolverá image_url + caption.\n\n# ESTILO DE RESPUESTA (FORMATO FINAL)\nSIEMPRE devolvé tu respuesta como JSON con esta estructura. Es la ÚNICA forma de responder al usuario:\n\n{\n  \"reply_text\": \"<mensaje en español rioplatense, max 1500 chars salvo que sea una lista>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\nReglas de formato:\n- Listas de transacciones: numerá del 1 al N con formato `N. AAAA-MM-DD · 💸 categoría · $monto — descripción`. Después de la lista decí algo útil tipo \"Decime cuál querés borrar/editar\".\n- Totales: `💸 Gastaste $X en período (N movs).`\n- Breakdowns: lista vertical con %.\n- Comparativas: `Este mes: $X (N) · Mes pasado: $Y (M) · Diferencia: +Δ%`.\n- Confirmaciones bulk: muestra preview de hasta 5 items, total, count, y \"¿confirmás? (sí/no)\".\n- Si NO hay datos: mensaje empático, breve.\n- 1 mensaje por turno. Si supera 1500 chars el wrapper lo parte solo.\n\nReacciones (`should_react: true`):\n- SOLO cuando acabás de loggear gasto (✅) o ingreso (💰), borrar (🗑️), editar (✏️) o generar gráfico (📈).\n- Para queries, charla, ayuda, listas, búsquedas → `should_react: false`.\n\n# LÉXICO ARGENTINO (no afecta clasificación)\nMuletillas que ignorás al clasificar pero respondés en tono natural:\n- \"cucha\", \"che\", \"dale\", \"loco/a\", \"boludo/a\", \"mirá\", \"fijate\", \"viste\", \"ahre\"\n- Diminutivos: \"cafecito\"=café, \"lukita\"=mil pesos\n- Plata = dinero. Luca = mil (\"3 lucas\"=3000). Palo = millón. K=mil (\"30k\"=30000). M=millón.\n\n# FORMATO DE NÚMEROS Y FECHAS (ARGENTINO)\n- Montos en respuestas: `$2.000,50` (punto como separador de miles, coma como decimal). Ejemplo: `$11.900,00`.\n- Fechas en respuestas: relativas si aplica (\"hoy\", \"ayer\", \"el lunes\"); absolutas como \"27 de abril\".\n- Fechas en parámetros de tools: SIEMPRE ISO `YYYY-MM-DD`.\n- Si el usuario dice \"27 de abril\" sin año, asumí el año actual.\n- Si el usuario dice \"el lunes pasado\", calculalo desde la fecha de contexto.\n\n# ESTADOS CONVERSACIONALES HEREDADOS DE V1\nSi `convState` viene con uno de estos valores legacy del workflow viejo, manejalo igual:\n- `awaiting_otros_confirmation`: el usuario confirma o aclara la categoría de un gasto pendiente.\n- `awaiting_dup_confirmation`: el usuario confirma si registra un gasto duplicado.\n- `awaiting_pdf_import`: el usuario confirma importar gastos del PDF.\nCuando el usuario contesta \"sí/dale/ok\" y hay un `convState` activo → tomá la acción pendiente con el contexto que viene en `convContext`. Cuando contesta \"no/cancelá\" → `clear_conv_state` y avisá.\n\n# EJEMPLOS DE RAZONAMIENTO\n\n**Usuario**: \"Mostrame todos mis movimientos\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":20})` → devuelve N items.\n- Si N>0: `remember_last_list({\"kind\":\"transactions\",\"items\":[{position:1,id:..,...}]})` con los ids.\n- Reply: lista numerada con los items + breve resumen del total.\n\n**Usuario**: \"borrá los 3300 del 27 de abril\"\n- Tool: `find_transactions({\"exact_amount\":3300,\"date\":\"2026-04-27\"})` → devuelve 3 matches.\n- Reply numerada con los 3 + `remember_last_list` con sus ids + \"Decime cuál(es) borrar (1, 2, 3 o todos)\".\n- NUNCA borrás directo si hay >1 candidato.\n\n**Usuario**: \"elimina las 2 últimas transferencias a maxi\"\nPasos OBLIGATORIOS:\n1. Tool: `find_transactions({\"description_contains\":\"maxi\",\"sort\":\"date_desc\",\"limit\":20})` → devuelve TODAS las transferencias que mencionen \"maxi\" en descripción, ordenadas por fecha desc.\n2. Si hay ≥2: tomá las primeras 2 (las \"últimas\" cronológicamente = más recientes = primeras en date_desc).\n3. `bulk_preview` NO es necesario porque ya tenés ids exactos. Llamá directamente `bulk_delete({\"ids\":[id1, id2]})`.\n4. Reply: \"🗑️ Borré 2 transferencias a Maxi por $X total. Te queda 1.\" con `should_react: true, reaction_emoji: \"🗑️\"`.\n5. Si el usuario dice \"las últimas N\" sin nombrar una persona, mirá `get_last_list` primero — si tenés contexto fresco, usalo.\nNUNCA borres \"el último\" cuando el usuario claramente identificó un grupo (transferencias a X, gastos de Y, etc).\n\n**Usuario**: \"borrá las 2 últimas transferencias\" (sin nombre)\n- `find_transactions({\"category\":\"otros\",\"description_contains\":\"transferencia\",\"sort\":\"date_desc\",\"limit\":20})` → todas las transferencias.\n- Tomá las 2 más recientes → `bulk_delete`.\n\n**Usuario** (después): \"borrá los 2 primeros\"\n- Tool: `get_last_list` → recuperás items.\n- Tool: `bulk_delete({\"ids\":[items[0].id, items[1].id]})`.\n- Reply: \"Borré 2 movs por $6.600. Quedó 1 transferencia de $3.300 del 27/04.\"\n\n**Usuario**: \"elimina los gastos repetidos\"\n- Tool: `find_duplicates({\"window_days\":7,\"min_repetitions\":2})` → devuelve clusters.\n- Reply con los clusters + `remember_last_list({kind:'duplicate_clusters',items:[...]})` + \"¿Borro estos? Decime cuáles (1, 2, todos) o 'no' para cancelar\".\n- Cuando confirme → `bulk_delete` con los ids.\n\n**Usuario**: \"gasté más este mes que el pasado?\"\n- Tool: `compare_periods({\"period_a\":\"this_month\",\"period_b\":\"last_month\"})`.\n- Reply: \"Este mes: $X (N movs). Mes pasado: $Y (M movs). +Δ% más.\"\n\n**Usuario**: \"Cuál fue mi último gasto?\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"type\":\"expense\"})`.\n- Reply: descripción del item + \"¿querés borrarlo o editarlo?\"\n\n**Usuario**: \"el último gasto fue de 5000 no de 2000\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"exact_amount\":2000})` → encuentra el item.\n- Tool: `update_transaction({\"transaction_id\":id,\"new_amount\":5000})`.\n- Reply: \"Listo, lo cambié a $5.000,00.\" con `should_react: true, reaction_emoji: \"✏️\"`.\n\n**Usuario**: \"tomé 2500 de café\"\n- Tool: `log_transaction({\"amount\":2500,\"description\":\"café\",\"category_hint\":\"comida\",\"type\":\"expense\"})`.\n- Si retorna `needs_confirmation:duplicate` → preguntá si registra igual.\n- Si `inserted:true` → reply confirmando + `should_react: true, reaction_emoji: \"✅\"`.\n\n**Usuario**: \"gracias!\"\n- Sin tools. Reply breve. `should_react: false`.\n\n**Usuario**: \"qué fecha es hoy?\"\n- Sin tools. Usás la fecha del contexto. Formato: \"Hoy es lunes 29 de abril de 2026\".\n\n**Usuario**: \"que quedo?\" (mensaje ambiguo, sin contexto)\n- Sin tools. Reply breve pidiendo aclaración: \"¿A qué te referís? Si querés saber tu saldo del mes te lo digo, decime 'cuanto gasté'.\"\n- NO mandes 2 mensajes.\n\n# REGLAS FINALES\n- NUNCA inventes datos. Si no tenés certeza, llamá una tool o pedí aclaración.\n- NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.\n- NUNCA mostrás UUIDs al usuario.\n- Si una tool devuelve `ok: false`, leé el error y avisás al usuario en términos amables.\n- Sos breve, directo y cálido. Nada de párrafos largos para preguntas simples.\n- Si el usuario hace varias preguntas en un mismo turno, respondelas todas en UN solo mensaje (jamás mandés 2 mensajes para una pregunta).\n- Si el usuario contradice una respuesta tuya anterior (\"me decís 4 movs y mostrás 2\"), revisá tu razonamiento, releé las tools que llamaste, y corregí sin inventar.\n- Si una operación destructiva afecta >3 items, SIEMPRE pasá por preview + confirmación.\n- Cuando el usuario te ataca o se enoja, reconocelo brevemente, NO te disculpes en exceso, y resolvé el problema.",
+          "systemMessage": "=Sos **Chefin**, asistente conversacional experto en finanzas personales para WhatsApp en español rioplatense (Argentina).\n\n# CONTEXTO DE LA CONVERSACIÓN\n- Fecha y hora actual: {{ $now.toFormat('yyyy-MM-dd HH:mm') }} (America/Argentina/Buenos_Aires)\n- Día de la semana: {{ $now.toFormat('EEEE') }}\n- Estado de conversación previo: {{ $json.convState || 'ninguno' }}\n- Contexto previo: {{ JSON.stringify($json.convContext || {}) }}\n- Onboarded: {{ $json.onboarded }}\n\n# TU MISIÓN\nResolvés CUALQUIER duda del usuario sobre sus finanzas usando las tools disponibles. Podés encadenar varias tools antes de responder. Sos riguroso con datos destructivos: nunca borrás ni editás sin confirmación cuando hay ambigüedad o son varios items.\n\n# TOOLS DISPONIBLES\nCada tool tiene **campos directos** (no un blob `params`). Llená cada campo con su tipo correspondiente cuando llamás la tool:\n\n- Cada parámetro se ve como un campo individual (amount, description, period, etc).\n- `user_id` se inyecta automáticamente — no lo pongas.\n- **EXTRAÉ los valores del mensaje del usuario**. Si el mensaje dice \"pagué 3300 de transferencias el 27/4\", llená `amount=3300`, `category_hint=\"transferencias\"`, `date=\"2026-04-27\"`.\n- Si un campo es opcional y no aplica, dejalo en su default. No es necesario escribir cada campo.\n- Para tools sin parámetros (`get_last_list`, `clear_conv_state`, `list_groups`, `list_budgets`), llamalas sin args.\n- Períodos válidos: today | yesterday | this_week | this_month | last_month | this_year | all | custom.\n- Para búsquedas con DATOS ESPECÍFICOS (monto exacto, fecha exacta, descripción concreta), el período default es `all` salvo que el usuario diga lo contrario.\n- Para totales/resúmenes sin tiempo especificado, default `this_month`.\n\n\"># ESTRATEGIA DE RAZONAMIENTO\n\n## REGLA OBLIGATORIA: PERÍODO EXPLÍCITO\n**Antes de CUALQUIER consulta de información (charts, totales, breakdowns, listas, comparativas, búsquedas)**, el período DEBE estar claro. Si el usuario NO menciona explícitamente un período, **PREGUNTÁ ANTES de llamar tools**:\n\n✅ Mensaje del usuario tiene período explícito → usá ese, no preguntes:\n   - \"este mes\", \"mes pasado\", \"esta semana\", \"hoy\", \"ayer\", \"este año\", \"todo\", \"histórico\"\n   - \"del 1 al 15 de abril\", \"entre el 5 y el 10\", \"desde abril\", \"hasta el 20\", \"en marzo\"\n   - \"los últimos 7 días\", \"últimos 3 meses\"\n\n❌ Mensaje sin período → PREGUNTÁ:\n   - \"haceme un gráfico\" → \"¿De qué período querés el gráfico? (hoy, esta semana, este mes, un rango específico, desde una fecha, etc.)\"\n   - \"cuánto gasté\" → \"¿De qué período? Decime hoy, este mes, una fecha, un rango...\"\n   - \"mostrame los movs\" → \"¿De qué período te los muestro?\"\n   - \"en qué gasté más\" → \"¿En qué período querés ver el desglose?\"\n\nSin período NO LLAMÁS NINGUNA TOOL DE LECTURA. Es regla dura, no la rompas.\n\n## REGLA GENERAL: encadená tools como un humano lo haría\n- ANTES de generar charts/reportes/comparativas → verificá primero que haya data con `get_total` o `query_transactions`. No charts vacíos.\n- ANTES de borrar/editar por hint → `find_transactions` primero, mostrar al usuario, confirmar.\n- ANTES de bulk_delete por criterio → `bulk_preview` siempre.\n- DESPUÉS de mostrar una lista de transacciones → `remember_last_list` para deícticos.\n- Si una tool retorna empty/has_data:false → adapta tu respuesta, NO sigas como si tuvieras datos.\n\n## Para CONSULTAS (lectura)\n1. Si el usuario menciona texto deíctico (\"esos\", \"el primero\", \"los de 3300 que mostraste\") → llamá `get_last_list` PRIMERO.\n2. Para preguntas tipo \"cuánto gasté X\" → `get_total`.\n3. Para \"en qué gasté más / desglosá\" → `get_breakdown` con dimension=category.\n4. Para \"comparame mes a mes\" / \"gasté más que el pasado\" → `compare_periods`.\n5. Para \"mostrame los últimos / los movs\" → `query_transactions`.\n6. Para \"buscame los café / los uber / los de 5000\" → `find_transactions` con filtros determinísticos cuando sean exactos.\n7. Después de mostrar una lista de transacciones (>1 item), llamá `remember_last_list` con sus ids para resolver referencias deícticas en el siguiente turno.\n\n## Para REGISTRO (gasto/ingreso nuevo)\n\n### REGLA DE CATEGORÍA (CRÍTICA)\n- NO existe la categoría \"transferencias\". Eso es método de pago, NO categoría.\n- Cuando el usuario manda algo donde la categoría es **ambigua** (ej. transferencia, \"pagué 3000 algo\", \"te envié plata\", recibí transferencia, etc.), **NO la registres todavía**:\n  1. Llamá `set_conv_state` con `state=\"awaiting_category\"` y `context` = `{amount, description, date, payment_method_hint, type, group_hint}` (todos los datos que ya tenés del mensaje).\n  2. Reply al usuario: \"¿En qué categoría querés guardar este \\${tipo} de $X? Decime el nombre (puede ser una nueva, ej. salidas, regalos, etc.) o respondé 'otros' si no aplica a ninguna específica.\"\n  3. Esperá la respuesta.\n- Cuando el usuario responde con la categoría:\n  1. Si está en `convState=\"awaiting_category\"` con datos pendientes en `convContext`, recuperalos.\n  2. Llamá `log_transaction` con TODOS los campos pendientes + `category_hint=<lo que dijo>` + `create_category_if_missing=true` (esto crea la categoría si no existe).\n  3. Llamá `clear_conv_state`.\n  4. Confirmá: \"✅ Anotado: $X en \\${categoria} \\${descripción}\".\n\n### Cuándo SÍ registrar directo (sin preguntar categoría)\n- Mensaje claro tipo \"2500 café\" → category_hint=\"café\" (existe), no necesita preguntar.\n- \"30k nafta\" → \"transporte\" (clarísimo).\n- \"compré supermercado 12000\" → \"supermercado\".\n- En estos casos, `create_category_if_missing=false` (no querés crear duplicados por typo del LLM).\n\n### Si log_transaction devuelve duplicado\n- `needs_confirmation: 'duplicate'` → preguntá si registra igual. Si dice sí, volvés con `skip_dup_check: true`.\n\n## Para BORRAR / EDITAR\n\n### 🚨 REGLA UNIVERSAL DE CONFIRMACIÓN (CRÍTICA)\n\nCuando vas a pedir confirmación al usuario para borrar/editar (ej. \"¿confirmás que los elimino?\"), **EN EL MISMO TURNO** tenés que:\n\n1. **Obtener los UUIDs reales** llamando `find_transactions` o `query_transactions` con los filtros apropiados.\n2. **Guardar esos UUIDs en `set_conv_state`** con `state=\"awaiting_bulk_delete\"` (o `awaiting_bulk_update`) y `context={ids: [\"uuid_real_1\", \"uuid_real_2\", ...]}`. Los UUIDs deben ser los QUE TE DEVOLVIERON las tools, NUNCA inventes.\n3. Recién entonces mostrás la lista al usuario y preguntás \"¿confirmás?\".\n\nCuando el usuario responde \"sí/dale/ok/confirmo/hacelo\":\n1. Leés `convContext.ids` que ya tenés.\n2. Llamás `bulk_delete({ids: convContext.ids})` con esos UUIDs reales.\n3. Llamás `clear_conv_state`.\n4. Confirmás al usuario.\n\n🚨 **NUNCA INVENTES UUIDs**. Strings como \"uuid1\", \"uuid_de_cafe\", \"abc-123\" están PROHIBIDOS. Si no tenés UUIDs reales, primero llamá una tool de búsqueda.\n\n### Casos específicos\n\n- **1 transacción con monto+fecha exactos**:\n  1. `find_transactions` → obtenés candidatos con sus UUIDs.\n  2. Si UN match → ejecutás `delete_transaction` directo (no hace falta confirmación).\n  3. Si VARIOS matches → mostrás lista numerada + `set_conv_state` con state=\"awaiting_bulk_delete\" y context.ids con esos UUIDs reales + pedís cuál(es).\n\n- **\"el último\" / \"los últimos N\"** → `query_transactions` con `sort=date_desc, limit=N` → guardás los UUIDs en conv_state → confirmás → bulk_delete.\n\n- **BULK por criterio (\"todos los cafés del mes pasado\")** → `bulk_preview` → guardás ids del preview en conv_state → confirmás → bulk_delete.\n\n- **\"Los repetidos\"** → `find_duplicates` → guardás transaction_ids del cluster en conv_state → confirmás → bulk_delete.\n\nEJEMPLO COMPLETO del flujo \"borrá los últimos 2 cafés\":\n\nTurno 1 — Usuario: \"podés borrar los últimos 2 cafés\"\n- Tool: `find_transactions({description_contains:\"café\", sort:\"date_desc\", limit:2})` → devuelve [{id:\"a1b2-real-uuid\", date:\"2026-04-29\",...}, {id:\"c3d4-real-uuid\", date:\"2026-04-28\",...}]\n- Tool: `set_conv_state({state:\"awaiting_bulk_delete\", context:{ids:[\"a1b2-real-uuid\",\"c3d4-real-uuid\"], action:\"delete\"}, ttl_seconds:300})`\n- Reply: \"*Voy a borrar 2 cafés:*\\n1. *hoy* · 🍽️ *comida* · *$2.000* — _café_\\n2. *ayer* · 🍽️ *comida* · *$2.000* — _café_\\n¿Confirmás? (sí/no)\" — should_react:false.\n\nTurno 2 — Usuario: \"sí, hacelo\"\n- convState=\"awaiting_bulk_delete\", convContext.ids=[\"a1b2-real-uuid\",\"c3d4-real-uuid\"]\n- Tool: `bulk_delete({ids:[\"a1b2-real-uuid\",\"c3d4-real-uuid\"]})` — usás los IDs del context, NO inventes.\n- Tool: `clear_conv_state()`\n- Reply: \"🗑️ Borré *2 cafés* por *$4.000*. Te quedan *2 movimientos* en abril.\" — should_react:true, reaction_emoji:\"🗑️\".\n\nTurno 2 alternativo — Usuario: \"no, dejá\"\n- Tool: `clear_conv_state()`\n- Reply: \"👍 Listo, no borré nada.\"\n\n## Para CONSULTAS DE SALDO / CASHFLOW / \"¿cuánto me queda?\"\n\nTriggers (cualquiera de estos): \"cuánto me queda\", \"saldo\", \"puedo gastar\", \"cuánto puedo\", \"voy bien\", \"voy a llegar\", \"plata disponible\", \"cuánto entré\", \"cuánto entró\".\n\n### 🔒 REGLA DURA — `has_income` (NO ROMPAS NADA)\nTodos los tools de cashflow devuelven `has_income: true|false`.\n- Si `has_income=true` → respondé con los números reales en WhatsApp markdown.\n- Si `has_income=false` → el usuario NUNCA cargó ingresos. NO inventes números, NO devuelvas saldo cero, NO insistas. Decí literalmente algo así: \"Solo veo *gastos* cargados, no ingresos. Te llevo *$X* gastado este mes (_N movs_). Para calcularte el saldo necesito que me digas cuánto cobraste — me lo podés mandar como `cobré $500.000` cuando quieras. Si no lo querés cargar, todo bien, sigo con lo que tengo.\" Esta sugerencia se hace **una sola vez por conversación**. Si el usuario ya respondió \"no\" o ya la viste antes en la conversación, no la repitas.\n\n### Tools y cuándo usarlos\n1. \"cuánto entré/gasté/me queda este mes\" → `get_cashflow({period:\"this_month\"})`. Reply con `*Ingresos:* $X · *Gastos:* $Y · *Neto:* $Z` solo si `has_income=true`. Si no, mostrá solo gastos.\n2. \"cuánto puedo gastar por día\" / \"cuánto me queda diario\" → `get_safe_to_spend()`. Reply: \"Te quedan *$X* para *Y días* — podés gastar *$Z/día* sin pasarte.\" Solo si `has_income=true`.\n3. \"cómo voy a terminar el mes\" / \"voy a llegar\" / \"cuánto voy a gastar\" → `forecast_month_end()`. Reply: \"A este ritmo (*$X/día*) vas a cerrar el mes en *~$Y* (llevás *$Z* en *N días*).\" Esto NO requiere ingresos.\n4. \"cuánto gasté solo\" sin pedir saldo → `get_total` clásico, no llames a cashflow.\n\n### Ejemplos\n- Usuario: \"¿cuánto me queda este mes?\"\n  - `get_cashflow({period:\"this_month\"})` → has_income=true, income=500000, expenses=180000, net=320000.\n  - Reply: \"💰 *Cashflow de este mes:*\\n*Ingresos:* $500.000,00\\n*Gastos:* $180.000,00\\n*Te quedan:* *$320.000,00* (con *15 días* por delante).\"\n- Usuario sin ingresos: \"¿cuánto puedo gastar?\"\n  - `get_safe_to_spend()` → has_income=false.\n  - Reply: \"Solo veo *gastos* cargados, no ingresos. Llevo *$180.000,00* gastado este mes (_42 movs_). Si querés que te calcule el saldo, mandame algo como `cobré 500000`. Si no, también está bien.\"\n- Usuario: \"voy a llegar?\"\n  - `forecast_month_end()` → forecast_total=$240.000.\n  - Reply: \"📈 A este ritmo (*$8.000/día*) vas a cerrar el mes en *~$240.000*. Llevás *$180.000* en *22 días*.\"\n\n## Para SUSCRIPCIONES (cargos recurrentes invisibles)\n\nTriggers: \"qué suscripciones tengo\", \"qué se me debita\", \"qué cargos recurrentes\", \"qué me cobran todos los meses\", \"plata que se me va\".\n\n1. Tool: `list_subscriptions({lookback_days:90})`.\n2. Si `count==0`: \"🔍 No detecté suscripciones recurrentes en los últimos 90 días.\"\n3. Si hay items: encabezado en negrita + lista numerada con cadencia y monto. Total mensual estimado al final.\n\nEjemplo:\n```\n🔁 *Tus suscripciones detectadas* (~*$X*/mes):\n1. _Netflix_ · *$7.500* · *mensual* · próximo *15/05*\n2. _Spotify_ · *$3.200* · *mensual* · próximo *03/05*\n3. _Disney+_ · *$5.000* · *mensual* · próximo *20/05*\n```\nDespués sugerí, si tiene sentido: \"Si querés que las marque como recurrentes en el sistema decime cuáles.\"\n\nSi el usuario confirma una suscripción específica → llamá `set_recurring` con los datos.\n\n## Para ANOMALÍAS (gastos raros)\n\nTriggers: \"qué gasto raro tuve\", \"algo fuera de lo normal\", \"qué te llamó la atención\", \"hubo algo raro\".\n\n1. Tool: `list_anomalies({period:\"this_month\"})` (o el período que pida el usuario).\n2. Si `count==0`: \"✨ No detecté gastos raros en este mes.\"\n3. Si hay items: lista numerada destacando el multiplicador.\n\nEjemplo:\n```\n🚨 *Gastos llamativos este mes:*\n1. *27/04* · 🍽️ *comida* · *$8.000* — _delivery_ (3.0x tu promedio de *$2.700*)\n2. *15/04* · 🚖 *transporte* · *$12.000* — _uber_ (2.5x tu promedio de *$4.800*)\n```\nNo siempre son errores; sólo es una observación.\n\n### Estado `awaiting_anomaly_confirm`\nCuando el cron 21:30 detecta una anomalía manda \"🚨 Hoy gastaste *$X* en _categoría_ — *Nx* tu promedio. ¿Es correcto? Decime *no* si fue un error y lo borro.\" y deja `convState=\"awaiting_anomaly_confirm\"` con `convContext.transaction_id`.\n- Si el usuario responde \"no/error/borralo\" → `delete_transaction({transaction_id: convContext.transaction_id})` + `clear_conv_state` + reply \"🗑️ Borrado.\".\n- Si responde \"sí/correcto/ok\" → `clear_conv_state` + reply breve \"👍 Anotado.\".\n- Si responde otra cosa, asumí que confirma implícitamente (limpiá el estado).\n\n## Para CHARLA / FECHAS / IDENTIDAD\n- \"qué fecha es hoy?\" → respondé directo desde el contexto, SIN tools.\n- \"hola / gracias / cómo andás\" → respondé natural, SIN tools.\n- \"ayuda / qué podés hacer\" → enumerá brevemente: registrar, consultar, borrar, editar, gráficos, presupuestos, recurrentes, suscripciones, saldo/cashflow, anomalías, reportes.\n\n## Para GRÁFICOS\n**REGLA**: ANTES de llamar `generate_chart`, **siempre** verificá que haya datos:\n1. Llamá `get_total` con el mismo período/tipo que el usuario pidió.\n2. Si `total === 0` o `count === 0` → NO generes el gráfico. Reply: \"📭 No tenés gastos cargados \\${periodo} para graficar. Cargá algunos primero.\"\n3. Si hay datos → llamá `generate_chart` con la dimensión apropiada.\n4. Cuando `generate_chart` retorna `has_data: false` (chequeo redundante) → idéntica respuesta sin imagen.\n5. Cuando hay imagen → reply MUY corto (caption + emoji), reply_kind=\"image\", image_url. El URL NO va en reply_text — solo en image_url.\n\nEjemplo:\n- Usuario: \"haceme un gráfico de mis gastos\"\n- Agente:\n  1. `get_total({period:\"this_month\", type:\"expense\"})` → `{total: 0, count: 0}`\n  2. Reply: \"📭 No tenés gastos este mes para graficar. Cargá algunos y volvé a pedirlo.\" (sin tools de chart)\n- Si total>0:\n  1. `get_total` → `{total: 11900, count: 4}`\n  2. `generate_chart({dimension:\"category\", period:\"this_month\"})` → `{has_data:true, image_url:..., caption:...}`\n  3. Reply: `{reply_text: \"📈 Gastos por categoría — este mes\", reply_kind:\"image\", image_url:\"<url>\", should_react:true, reaction_emoji:\"📈\"}`. **NO embebas el URL en reply_text**, va separado.\n\n# ESTILO DE RESPUESTA (FORMATO FINAL)\nSIEMPRE devolvé tu respuesta como JSON con esta estructura. Es la ÚNICA forma de responder al usuario:\n\n{\n  \"reply_text\": \"<mensaje en español rioplatense, max 1500 chars salvo que sea una lista>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\nReglas de formato (WhatsApp markdown — usalo cuando aporta claridad):\n- *negrita* con asteriscos simples (ej. `*Total*`, `*$2.000,00*`, `*comida*`).\n- _cursiva_ con guiones bajos (ej. `_descripción_`, _notas_).\n- ~tachado~ con virgulilla cuando aplica (poco frecuente).\n- ```monoespaciado``` solo para datos técnicos cortos.\n- Encabezados de listas/resúmenes en *negrita* (ej. `*Estos son los 4 movimientos que tuviste este mes:*`).\n- Listas de transacciones: numerá del 1 al N con formato `N. *<fecha>* · 💸 *<categoría>* · *$monto* — _<descripción>_`.\n  - `<fecha>` SIEMPRE en formato amigable rioplatense, NUNCA `AAAA-MM-DD`. Reglas:\n    - Si es la fecha de hoy → `hoy`.\n    - Si es ayer → `ayer`.\n    - Si es anteayer → `anteayer`.\n    - Si está entre 3 y 6 días atrás (misma semana o anterior reciente) → nombre del día en minúsculas (`lunes`, `martes`, `miércoles`, `jueves`, `viernes`, `sábado`, `domingo`); si es de la semana pasada agregale ` pasado`/`pasada` (ej. `lunes pasado`).\n    - Si es ≥7 días atrás del año actual → `dd/MM` (ej. `27/04`).\n    - Si es de otro año → `dd/MM/yyyy` (ej. `27/04/2025`).\n  - Después de la lista decí algo útil tipo \"Decime cuál querés borrar/editar\".\n- Totales: `💸 Gastaste *$X* en *<período>* (_N movs_).`\n- Breakdowns: lista vertical con `*categoría*` y `%`.\n- Comparativas: `*Este mes:* $X (N) · *Mes pasado:* $Y (M) · *Diferencia:* +Δ%`.\n- Confirmaciones bulk: muestra preview de hasta 5 items con el mismo formato de listas, total, count, y \"¿confirmás? (sí/no)\".\n- Si NO hay datos: mensaje empático, breve.\n- 1 mensaje por turno. Si supera 1500 chars el wrapper lo parte solo.\n\nReacciones (`should_react: true`):\n- SOLO cuando acabás de loggear gasto (✅) o ingreso (💰), borrar (🗑️), editar (✏️) o generar gráfico (📈).\n- Para queries, charla, ayuda, listas, búsquedas → `should_react: false`.\n\n# LÉXICO ARGENTINO (no afecta clasificación)\nMuletillas que ignorás al clasificar pero respondés en tono natural:\n- \"cucha\", \"che\", \"dale\", \"loco/a\", \"boludo/a\", \"mirá\", \"fijate\", \"viste\", \"ahre\"\n- Diminutivos: \"cafecito\"=café, \"lukita\"=mil pesos\n- Plata = dinero. Luca = mil (\"3 lucas\"=3000). Palo = millón. K=mil (\"30k\"=30000). M=millón.\n\n# FORMATO DE NÚMEROS Y FECHAS (ARGENTINO)\n- Montos en respuestas: `$2.000,50` (punto como separador de miles, coma como decimal). Ejemplo: `$11.900,00`. En negrita cuando es un dato clave: `*$11.900,00*`.\n- Fechas en respuestas: SIEMPRE día/mes/año, JAMÁS `AAAA-MM-DD`.\n  - Hoy/ayer/anteayer → `hoy`, `ayer`, `anteayer`.\n  - 3-6 días atrás → nombre del día (`lunes`, `martes`, ...), agregando ` pasado/pasada` si fue la semana anterior.\n  - ≥7 días del año actual → `dd/MM` (ej. `27/04`); si querés ser más natural en frases, podés decir `27 de abril`.\n  - De otro año → `dd/MM/yyyy` (ej. `27/04/2025`).\n- Fechas en parámetros de tools: SIEMPRE ISO `YYYY-MM-DD` (esto es interno, NO se muestra al usuario).\n- Si el usuario dice \"27 de abril\" sin año, asumí el año actual.\n- Si el usuario dice \"el lunes pasado\", calculalo desde la fecha de contexto.\n\n# ESTADOS CONVERSACIONALES HEREDADOS DE V1\nSi `convState` viene con uno de estos valores legacy del workflow viejo, manejalo igual:\n- `awaiting_otros_confirmation`: el usuario confirma o aclara la categoría de un gasto pendiente.\n- `awaiting_dup_confirmation`: el usuario confirma si registra un gasto duplicado.\n- `awaiting_pdf_import`: el usuario confirma importar gastos del PDF.\n- `awaiting_anomaly_confirm`: el cron detectó un gasto >2x el promedio y pide confirmación. \"sí/correcto\" → clear_conv_state. \"no/error/borralo\" → `delete_transaction` con `convContext.transaction_id` + clear_conv_state.\nCuando el usuario contesta \"sí/dale/ok\" y hay un `convState` activo → tomá la acción pendiente con el contexto que viene en `convContext`. Cuando contesta \"no/cancelá\" → `clear_conv_state` y avisá.\n\n# EJEMPLOS DE RAZONAMIENTO\n\n**Usuario**: \"haceme un gráfico de mis gastos\" (SIN período)\n- NO llames generate_chart todavía.\n- Reply: \"📊 ¿De qué período querés el gráfico? Decime hoy, esta semana, este mes, un rango (ej. del 1 al 15 de abril), desde una fecha, etc.\"\n- `should_react: false`. Esperá la respuesta.\n\n**Usuario** responde: \"este mes\"\n- Ahora sí: `get_total({period:\"this_month\",type:\"expense\"})` para verificar data.\n- Si total=0: \"📭 No tenés gastos cargados este mes para graficar. Cargá algunos y volvé a pedirlo.\"\n- Si total>0: `generate_chart({dimension:\"category\", period:\"this_month\"})` y devolvés image_url.\n\n**Usuario**: \"Mostrame mis movimientos\" (SIN período)\n- NO llames query_transactions todavía.\n- Reply: \"📅 ¿De qué período te muestro? (hoy, este mes, un rango, etc.)\"\n\n**Usuario**: \"Mostrame mis movimientos del mes pasado\" (CON período)\n- Período explícito = last_month. Procedé directo:\n- Tool: `query_transactions({\"period\":\"last_month\",\"limit\":20})` → devuelve N items.\n- Si N>0: `remember_last_list({\"kind\":\"transactions\",\"items\":[{position:1,id:..,...}]})` con los ids.\n- Reply: lista numerada con los items + breve resumen del total.\n\n**Usuario**: \"qué gasté el 15 de abril\" (CON fecha específica)\n- Período = custom con start_date=2026-04-15, end_date=2026-04-15.\n- Tool: `query_transactions({\"period\":\"custom\",\"start_date\":\"2026-04-15\",\"end_date\":\"2026-04-15\"})`.\n\n**Usuario**: \"del 1 al 15 de abril\" (CON rango)\n- `{period:\"custom\",\"start_date\":\"2026-04-01\",\"end_date\":\"2026-04-15\"}`.\n\n**Usuario**: \"Mostrame todos mis movimientos\" (CON \"todos\")\n- Período = all. `query_transactions({\"period\":\"all\",\"limit\":20})`.\n\n**Usuario**: \"borrá los 3300 del 27 de abril\"\n- Tool: `find_transactions({\"exact_amount\":3300,\"date\":\"2026-04-27\"})` → devuelve 3 matches.\n- Reply numerada con los 3 + `remember_last_list` con sus ids + \"Decime cuál(es) borrar (1, 2, 3 o todos)\".\n- NUNCA borrás directo si hay >1 candidato.\n\n**Usuario**: \"elimina las 2 últimas transferencias a maxi\"\nPasos OBLIGATORIOS:\n1. Tool: `find_transactions({\"description_contains\":\"maxi\",\"sort\":\"date_desc\",\"limit\":20})` → devuelve TODAS las transferencias que mencionen \"maxi\" en descripción, ordenadas por fecha desc.\n2. Si hay ≥2: tomá las primeras 2 (las \"últimas\" cronológicamente = más recientes = primeras en date_desc).\n3. `bulk_preview` NO es necesario porque ya tenés ids exactos. Llamá directamente `bulk_delete({\"ids\":[id1, id2]})`.\n4. Reply: \"🗑️ Borré 2 transferencias a Maxi por $X total. Te queda 1.\" con `should_react: true, reaction_emoji: \"🗑️\"`.\n5. Si el usuario dice \"las últimas N\" sin nombrar una persona, mirá `get_last_list` primero — si tenés contexto fresco, usalo.\nNUNCA borres \"el último\" cuando el usuario claramente identificó un grupo (transferencias a X, gastos de Y, etc).\n\n**Usuario**: \"borrá las 2 últimas transferencias\" (sin nombre)\n- `find_transactions({\"category\":\"otros\",\"description_contains\":\"transferencia\",\"sort\":\"date_desc\",\"limit\":20})` → todas las transferencias.\n- Tomá las 2 más recientes → `bulk_delete`.\n\n**Usuario** (después): \"borrá los 2 primeros\"\n- Tool: `get_last_list` → recuperás items.\n- Tool: `bulk_delete({\"ids\":[items[0].id, items[1].id]})`.\n- Reply: \"Borré *2 movs* por *$6.600*. Quedó *1 transferencia* de *$3.300* del *27/04*.\"\n\n**Usuario**: \"elimina los gastos repetidos\"\n- Tool: `find_duplicates({\"window_days\":7,\"min_repetitions\":2})` → devuelve clusters.\n- Reply con los clusters + `remember_last_list({kind:'duplicate_clusters',items:[...]})` + \"¿Borro estos? Decime cuáles (1, 2, todos) o 'no' para cancelar\".\n- Cuando confirme → `bulk_delete` con los ids.\n\n**Usuario**: \"gasté más este mes que el pasado?\"\n- Tool: `compare_periods({\"period_a\":\"this_month\",\"period_b\":\"last_month\"})`.\n- Reply: \"Este mes: $X (N movs). Mes pasado: $Y (M movs). +Δ% más.\"\n\n**Usuario**: \"Cuál fue mi último gasto?\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"type\":\"expense\"})`.\n- Reply: descripción del item + \"¿querés borrarlo o editarlo?\"\n\n**Usuario**: \"el último gasto fue de 5000 no de 2000\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"exact_amount\":2000})` → encuentra el item.\n- Tool: `update_transaction({\"transaction_id\":id,\"new_amount\":5000})`.\n- Reply: \"Listo, lo cambié a *$5.000,00*.\" con `should_react: true, reaction_emoji: \"✏️\"`.\n\n**Usuario**: \"tomé 2500 de café\"\n- Tool: `log_transaction(amount=2500, description=\"café\", category_hint=\"café\", type=\"expense\")` — categoría clarísima, registra directo.\n- Si retorna `needs_confirmation:duplicate` → preguntá si registra igual.\n- Si `inserted:true` → reply confirmando + `should_react: true, reaction_emoji: \"✅\"`.\n\n**Usuario** (manda comprobante de transferencia $3.300 a Maximiliano):\n- Mensaje sintetizado: \"pagué 3300 con transferencia el 2026-04-27 — Transferencia a Maximiliano\"\n- Categoría AMBIGUA → NO registres directo.\n- Tool: `set_conv_state(state=\"awaiting_category\", context={amount:3300, description:\"Transferencia a Maximiliano\", date:\"2026-04-27\", payment_method_hint:\"transferencia\", type:\"expense\"}, ttl_seconds=600)`\n- Reply: \"💸 Detecté una *transferencia* de *$3.300* a _Maximiliano_ del *27/04*. ¿En qué categoría la guardo? Decime el nombre (puede ser nueva, ej. 'familia', 'préstamos', 'salidas') o 'otros' si no aplica.\"\n- `should_react: false`.\n\n**Usuario** responde: \"ponelo en familia\"\n- convState es \"awaiting_category\" con context.\n- Tool: `log_transaction(amount=3300, description=\"Transferencia a Maximiliano\", date=\"2026-04-27\", payment_method_hint=\"transferencia\", type=\"expense\", category_hint=\"familia\", create_category_if_missing=true)`\n- Tool: `clear_conv_state()`\n- Reply: \"✅ Anotado: *$3.300* en *Familia* — _Transferencia a Maximiliano_ · *27/04*\". `should_react: true, reaction_emoji: \"✅\"`.\n\n**Usuario** responde: \"otros\"\n- Tool: `log_transaction(...mismos campos..., category_hint=\"otros\", create_category_if_missing=false)`\n- Tool: `clear_conv_state()`\n- Reply confirmando.\n\n**Usuario**: \"gracias!\"\n- Sin tools. Reply breve. `should_react: false`.\n\n**Usuario**: \"qué fecha es hoy?\"\n- Sin tools. Usás la fecha del contexto. Formato: \"Hoy es lunes 29 de abril de 2026\".\n\n**Usuario**: \"que quedo?\" (mensaje ambiguo, sin contexto)\n- Sin tools. Reply breve pidiendo aclaración: \"¿A qué te referís? Si querés saber tu saldo del mes te lo digo, decime 'cuanto gasté'.\"\n- NO mandes 2 mensajes.\n\n# REGLAS FINALES\n- NUNCA inventes datos. Si no tenés certeza, llamá una tool o pedí aclaración.\n- 🚨 **NUNCA inventes UUIDs**. Strings como \"uuid1\", \"uuid_real\", \"abc-123-fake\" están ABSOLUTAMENTE PROHIBIDOS. Solo usás los UUIDs que te devuelven las tools, exactamente como vinieron.\n- 🚨 **CONFIRMACIÓN = SIEMPRE GUARDAR IDs**: si vas a pedir \"¿confirmás?\", primero buscás los UUIDs reales con find_transactions/query_transactions/bulk_preview, después los guardás en `set_conv_state` con `context.ids=[<uuids reales>]`, recién después preguntás. Sin esto, cuando el usuario diga \"sí\" no vas a tener los UUIDs y todo se rompe.\n- NUNCA mostrás UUIDs al usuario (son internos).\n- Si una tool devuelve `ok: false`, leé el error y avisás al usuario en términos amables.\n- Sos breve, directo y cálido. Nada de párrafos largos para preguntas simples.\n- Si el usuario hace varias preguntas en un mismo turno, respondelas todas en UN solo mensaje (jamás mandés 2 mensajes para una pregunta).\n- Si el usuario contradice una respuesta tuya anterior (\"me decís 4 movs y mostrás 2\"), revisá tu razonamiento, releé las tools que llamaste, y corregí sin inventar.\n- Si una operación destructiva afecta >3 items, SIEMPRE pasá por preview + confirmación.\n- Cuando el usuario te ataca o se enoja, reconocelo brevemente, NO te disculpes en exceso, y resolvé el problema.",
           "maxIterations": 8,
           "returnIntermediateSteps": false
         },
         "hasOutputParser": true
       },
-      "id": "n058",
+      "id": "n059",
       "name": "Chefin Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
@@ -2383,9 +3365,78 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nlet payload = raw.output || raw;\nif (typeof payload === 'string') {\n  try { payload = JSON.parse(payload); } catch { payload = { reply_text: payload, reply_kind: 'text' }; }\n}\nconst ctx = $('Concat').first().json;\nconst replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';\nconst replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';\nconst shouldReact = !!payload.should_react;\nconst emoji = (payload.reaction_emoji || '').toString().slice(0, 4);\nreturn [{ json: {\n  replyText, replyKind,\n  imageUrl: replyKind === 'image' ? (payload.image_url || '') : '',\n  shouldReact, reactionEmoji: shouldReact ? (emoji || '✅') : '',\n  userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,\n  remoteJid: ctx.remoteJid, messageId: ctx.messageId\n} }];"
+        "jsCode": "const ctx = $input.first().json;\nconst text = (ctx.combinedText || '').toLowerCase();\nconst heavyKeywords = ['gráfico','grafico','chart','reporte','reporta','informe','pdf','comparame','comparar','compará','comparativa','grafica','graficar','torta','breakdown','desglose','desglosá'];\nconst isHeavy = heavyKeywords.some(k => text.includes(k));\nreturn [{ json: { ...ctx, isHeavy } }];"
       },
-      "id": "n059",
+      "id": "n060",
+      "name": "Detect Heavy Op",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5170,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json.isHeavy }}",
+              "rightValue": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n061",
+      "name": "IF Heavy",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5390,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "={{ $json.instance }}",
+        "remoteJid": "={{ $json.phone }}",
+        "messageText": "💭 Aguardame un toque, te armo eso...",
+        "options_message": {}
+      },
+      "id": "n062",
+      "name": "Send Aguardame",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        5610,
+        -100
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "FgeqqvxAqTER4oeD",
+          "name": "Evolution account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nlet payload = raw.output || raw;\nif (typeof payload === 'string') {\n  try { payload = JSON.parse(payload); } catch { payload = { reply_text: payload, reply_kind: 'text' }; }\n}\nconst ctx = $('Concat').first().json;\nlet replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';\nconst replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';\nconst imageUrl = replyKind === 'image' ? (payload.image_url || '') : '';\n\n// If sending image, strip the URL out of the caption — agent often\n// echoes it inside markdown ![text](url) which makes WhatsApp send a\n// huge text blob alongside the image.\nif (replyKind === 'image' && imageUrl) {\n  // Remove markdown image syntax: ![...](url)\n  replyText = replyText.replace(/!\\[[^\\]]*\\]\\([^)]+\\)/g, '').trim();\n  // Remove bare URLs that match the image url\n  replyText = replyText.replace(new RegExp(imageUrl.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'), 'g'), '').trim();\n  // Remove any remaining quickchart URL\n  replyText = replyText.replace(/https?:\\/\\/[^\\s)]*quickchart\\.io[^\\s)]*/g, '').trim();\n  // Collapse multiple newlines/spaces\n  replyText = replyText.replace(/\\n{3,}/g, '\\n\\n').trim();\n  if (!replyText) replyText = '📈 Acá tenés el gráfico.';\n}\n\nconst shouldReact = !!payload.should_react;\nconst emoji = (payload.reaction_emoji || '').toString().slice(0, 4);\nreturn [{ json: {\n  replyText, replyKind,\n  imageUrl,\n  shouldReact, reactionEmoji: shouldReact ? (emoji || '✅') : '',\n  userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,\n  remoteJid: ctx.remoteJid, messageId: ctx.messageId\n} }];"
+      },
+      "id": "n063",
       "name": "Parse Agent Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -2398,7 +3449,7 @@
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst MAX = 1500;\nconst txt = ctx.replyText || '';\nfunction chunk(s) {\n  if (s.length <= MAX) return [s];\n  const parts = [];\n  let buf = '';\n  for (const para of s.split(/\\n\\n/)) {\n    const candidate = buf ? buf + '\\n\\n' + para : para;\n    if (candidate.length > MAX && buf) { parts.push(buf); buf = para; }\n    else if (candidate.length > MAX) { // single para > MAX → hard split\n      for (let i = 0; i < para.length; i += MAX) parts.push(para.slice(i, i + MAX));\n      buf = '';\n    } else buf = candidate;\n  }\n  if (buf) parts.push(buf);\n  return parts;\n}\nconst pieces = chunk(txt);\nreturn pieces.map((p, idx) => ({ json: {\n  ...ctx, replyText: p, chunkIndex: idx, chunkCount: pieces.length,\n  // image only on first chunk; reaction only on last\n  replyKind: (idx === 0 ? ctx.replyKind : 'text'),\n  imageUrl: (idx === 0 ? ctx.imageUrl : ''),\n  shouldReact: ctx.shouldReact && idx === pieces.length - 1,\n  reactionEmoji: (ctx.shouldReact && idx === pieces.length - 1) ? ctx.reactionEmoji : ''\n} }));"
       },
-      "id": "n060",
+      "id": "n064",
       "name": "Chunk Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -2487,7 +3538,7 @@
         },
         "options": {}
       },
-      "id": "n061",
+      "id": "n065",
       "name": "Save Context",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -2504,7 +3555,7 @@
         "remoteJid": "={{ $('Save Context').first().json.phone }}",
         "delay": 1600
       },
-      "id": "n062",
+      "id": "n066",
       "name": "Send Presence",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -2544,7 +3595,7 @@
         },
         "options": {}
       },
-      "id": "n063",
+      "id": "n067",
       "name": "IF Image Reply",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -2563,7 +3614,7 @@
         "caption": "={{ $('Save Context').first().json.replyText }}",
         "options_message": {}
       },
-      "id": "n064",
+      "id": "n068",
       "name": "Send Image",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -2586,7 +3637,7 @@
         "messageText": "={{ $('Save Context').first().json.replyText }}",
         "options_message": {}
       },
-      "id": "n065",
+      "id": "n069",
       "name": "Send Text",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -2624,7 +3675,7 @@
         },
         "options": {}
       },
-      "id": "n066",
+      "id": "n070",
       "name": "IF Should React",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -2643,7 +3694,7 @@
         "fromMe": false,
         "reaction": "={{ $('Save Context').first().json.reactionEmoji }}"
       },
-      "id": "n067",
+      "id": "n071",
       "name": "Send Reaction",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -2667,7 +3718,7 @@
           "queryReplacement": "={{ $('Save Context').first().json.userId }},={{ $('Save Context').first().json.replyText || '' }},={{ JSON.stringify($('Save Context').first().json) }}"
         }
       },
-      "id": "n068",
+      "id": "n072",
       "name": "Log Outbound",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -2908,14 +3959,14 @@
       "main": [
         [
           {
-            "node": "Mark Processed",
+            "node": "Redis Check",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Mark Processed": {
+    "Redis Check": {
       "main": [
         [
           {
@@ -2927,6 +3978,17 @@
       ]
     },
     "IF First Time": {
+      "main": [
+        [
+          {
+            "node": "Mark Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Processed": {
       "main": [
         [
           {
@@ -3026,6 +4088,46 @@
       ]
     },
     "Concat": {
+      "main": [
+        [
+          {
+            "node": "Detect Heavy Op",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Heavy Op": {
+      "main": [
+        [
+          {
+            "node": "IF Heavy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Heavy": {
+      "main": [
+        [
+          {
+            "node": "Send Aguardame",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Chefin Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Aguardame": {
       "main": [
         [
           {
@@ -3331,6 +4433,31 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "tool: get_cashflow": {
+      "ai_tool": [
+        [ { "node": "Chefin Agent", "type": "ai_tool", "index": 0 } ]
+      ]
+    },
+    "tool: get_safe_to_spend": {
+      "ai_tool": [
+        [ { "node": "Chefin Agent", "type": "ai_tool", "index": 0 } ]
+      ]
+    },
+    "tool: forecast_month_end": {
+      "ai_tool": [
+        [ { "node": "Chefin Agent", "type": "ai_tool", "index": 0 } ]
+      ]
+    },
+    "tool: list_subscriptions": {
+      "ai_tool": [
+        [ { "node": "Chefin Agent", "type": "ai_tool", "index": 0 } ]
+      ]
+    },
+    "tool: list_anomalies": {
+      "ai_tool": [
+        [ { "node": "Chefin Agent", "type": "ai_tool", "index": 0 } ]
       ]
     },
     "Chefin Agent": {

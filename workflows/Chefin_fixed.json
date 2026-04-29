@@ -1,5 +1,5 @@
 {
-  "name": "Chefin Agent v3",
+  "name": "Chefin Agent",
   "nodes": [
     {
       "parameters": {
@@ -7,13 +7,13 @@
         "path": "chefin",
         "options": {}
       },
-      "id": "fd20a805-6596-4d95-8531-ada80348fd66",
+      "id": "d4d92fbc-cc13-4be8-89a7-a4c26fee4262",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -752,
-        736
+        -1168,
+        2928
       ],
       "webhookId": "b8b4a1c2-3e1f-4a3b-9d99-c8c2c2c2c2c2"
     },
@@ -50,13 +50,13 @@
         },
         "options": {}
       },
-      "id": "39ffdf60-e442-4dba-b20a-d3d7c298ce49",
+      "id": "5bd419c9-4239-4987-bfd0-208d5c4e70a8",
       "name": "IF Valid Inbound",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        -528,
-        736
+        -944,
+        2928
       ]
     },
     {
@@ -115,13 +115,13 @@
         },
         "options": {}
       },
-      "id": "d84ad078-a06e-4b2f-ba6b-95ca6cfb992b",
+      "id": "c38f1355-2323-4c71-9561-abe50edb9b09",
       "name": "Extract Fields",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -304,
-        736
+        -720,
+        2928
       ]
     },
     {
@@ -148,13 +148,13 @@
         },
         "options": {}
       },
-      "id": "803b8e34-68f5-457a-8e62-097bcd19689e",
+      "id": "e119db3c-6915-4897-9a7e-3000f9acb2cf",
       "name": "IF Allowed Phone",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        -96,
-        736
+        -512,
+        2928
       ]
     },
     {
@@ -240,13 +240,13 @@
           "renameFallbackOutput": "text"
         }
       },
-      "id": "ef27e0fa-a829-453d-b9a6-d21227100cbb",
+      "id": "e2589196-00a9-4f5f-b881-a67961ac5824",
       "name": "Switch Media Type",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
       "position": [
-        144,
-        736
+        -288,
+        2928
       ]
     },
     {
@@ -267,13 +267,13 @@
         "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
         "options": {}
       },
-      "id": "6965c39f-e05d-4568-9101-21c992f4114d",
+      "id": "f750277d-a8fa-49fb-a515-2be974b8c8a5",
       "name": "Download Image",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        352,
-        528
+        -64,
+        2720
       ]
     },
     {
@@ -296,13 +296,13 @@
         "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"response_format\": {\"type\":\"json_object\"},\n  \"temperature\": 0.1, \"max_tokens\": 1500,\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Sos un experto leyendo tickets argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. Si no es un comprobante, is_receipt=false. amount=TOTAL final.\"},\n    {\"role\":\"user\",\"content\":[\n      {\"type\":\"text\",\"text\":\"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}\"},\n      {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}\"}}\n    ]}\n  ]\n}",
         "options": {}
       },
-      "id": "eceb9819-00ea-459b-9925-e71db2588a01",
+      "id": "f94c8f26-b57e-4a1f-bb33-aa1db08594f0",
       "name": "Vision OCR",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        576,
-        528
+        160,
+        2720
       ],
       "credentials": {
         "openAiApi": {
@@ -315,13 +315,13 @@
       "parameters": {
         "jsCode": "const resp=$input.first().json;const ctx=$('Extract Fields').first().json;\nlet payload;try{payload=JSON.parse(resp.choices?.[0]?.message?.content||'{}');}catch{payload={is_receipt:false,human_reply:'No pude leer el comprobante.'};}\nlet syntheticText;\nif(payload.is_receipt && Number(payload.amount) > 0){\n  const dateOnly = payload.transaction_date_iso ? String(payload.transaction_date_iso).slice(0,10) : '';\n  const desc = payload.description || (payload.merchant ? 'pago a '+payload.merchant : 'comprobante');\n  const parts = ['pagué', String(payload.amount), 'de', payload.category_hint||'otros'];\n  if(payload.payment_method_hint) parts.push('con', payload.payment_method_hint);\n  if(dateOnly) parts.push('el', dateOnly);\n  parts.push('—', desc);\n  syntheticText = parts.join(' ');\n} else { syntheticText = payload.human_reply || 'No pude leer el comprobante.'; }\nreturn [{ json: { text: syntheticText, phone: ctx.phone, remoteJid: ctx.remoteJid, instance: ctx.instance, messageId: ctx.messageId, pushName: ctx.pushName, receipt_data: payload } }];"
       },
-      "id": "77e76edd-3f8b-4416-8ade-d32eecb26de3",
+      "id": "5a15a651-3942-4df3-b5cb-1a78f12c1b11",
       "name": "Receipt to Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        800,
-        528
+        384,
+        2720
       ]
     },
     {
@@ -342,26 +342,26 @@
         "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
         "options": {}
       },
-      "id": "fc6e090e-f0a8-4045-80c3-e6d78f1f8e5c",
+      "id": "8137550d-66fe-4df1-9457-288f16baa401",
       "name": "Download Audio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        352,
-        736
+        -64,
+        2928
       ]
     },
     {
       "parameters": {
         "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst b64=item.base64||'';if(!b64)throw new Error('Empty audio base64');\nconst buf=Buffer.from(b64,'base64');\nconst bin=await this.helpers.prepareBinaryData(buf,'audio.ogg',item.mimetype||'audio/ogg');\nreturn [{ json:{phone:ctx.phone,remoteJid:ctx.remoteJid,instance:ctx.instance,messageId:ctx.messageId,pushName:ctx.pushName}, binary:{data:bin} }];"
       },
-      "id": "2de75542-5a35-4576-90c4-01acc80e028f",
+      "id": "13ac5975-b5e6-4395-9ca5-ebe71365740f",
       "name": "Audio to Binary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        576,
-        736
+        160,
+        2928
       ]
     },
     {
@@ -372,13 +372,13 @@
           "language": "es"
         }
       },
-      "id": "d5f7fa99-e2cf-4578-ba18-48a47f33aeb7",
+      "id": "07778098-a042-4ae0-9533-56dd8e25cf8a",
       "name": "Whisper Transcribe",
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 1.8,
       "position": [
-        800,
-        736
+        384,
+        2928
       ],
       "credentials": {
         "openAiApi": {
@@ -405,26 +405,26 @@
         "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
         "options": {}
       },
-      "id": "b0dee17a-19e5-4738-9eb7-7c8f7ab5757b",
+      "id": "11e22bca-e877-48fd-bd22-6722f0b7b761",
       "name": "Download PDF",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        352,
-        928
+        -64,
+        3120
       ]
     },
     {
       "parameters": {
         "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst b64=item.base64||'';if(!b64)throw new Error('Empty PDF base64');\nconst buf=Buffer.from(b64,'base64');\nconst bin=await this.helpers.prepareBinaryData(buf,'document.pdf','application/pdf');\nreturn [{ json:{phone:ctx.phone,remoteJid:ctx.remoteJid,instance:ctx.instance,messageId:ctx.messageId,pushName:ctx.pushName}, binary:{data:bin} }];"
       },
-      "id": "3fa6e6d7-d1d1-49e8-8a38-89e408af314a",
+      "id": "49aadf92-8208-4874-b0e7-5ce5b5fed401",
       "name": "PDF to Binary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        576,
-        928
+        160,
+        3120
       ]
     },
     {
@@ -432,26 +432,26 @@
         "operation": "pdf",
         "options": {}
       },
-      "id": "cd4de097-1f7a-47ef-ac0a-f84a3a033511",
+      "id": "f9fb653f-a270-4ee9-958e-2a1c6ab9731e",
       "name": "Extract PDF Text",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        800,
-        928
+        384,
+        3120
       ]
     },
     {
       "parameters": {
         "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst txt = (item.text || '').slice(0, 4000);\nreturn [{ json: { text: 'Adjunté un PDF. Contenido relevante:\\n\\n' + txt, phone: ctx.phone, remoteJid: ctx.remoteJid, instance: ctx.instance, messageId: ctx.messageId, pushName: ctx.pushName } }];"
       },
-      "id": "fab75d24-1240-41be-9dd7-e01b75dd07d4",
+      "id": "2d6de3b7-65d9-40a1-8496-2de45fc03606",
       "name": "PDF Stub Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1024,
-        928
+        608,
+        3120
       ]
     },
     {
@@ -498,13 +498,13 @@
         },
         "options": {}
       },
-      "id": "becc3c2e-cf77-4b9b-a335-0c2607579af3",
+      "id": "9733de71-3eda-40d3-a153-28788b463019",
       "name": "Pass Text",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        1232,
-        736
+        816,
+        2928
       ]
     },
     {
@@ -515,13 +515,13 @@
           "queryReplacement": "={{ $json.phone }},={{ $json.pushName }}"
         }
       },
-      "id": "32c15214-ab2d-48f8-99f5-8178f7f3baef",
+      "id": "4f1e8287-87bb-497b-9362-3c9dd856239e",
       "name": "Bootstrap User",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        -768,
-        1120
+        -1376,
+        3408
       ],
       "credentials": {
         "postgres": {
@@ -538,13 +538,13 @@
           "queryReplacement": "={{ $json.user_id }}"
         }
       },
-      "id": "7d31a3ea-bd1f-4d78-8169-56dbde621bca",
+      "id": "11cf2688-5b62-4045-a9df-ba1031867275",
       "name": "Get Conv State",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        -544,
-        1120
+        -1152,
+        3408
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -622,30 +622,31 @@
         },
         "options": {}
       },
-      "id": "90ff342a-bb2b-48f3-9bd1-93c1bef19db9",
+      "id": "aff6a5c5-1564-4566-a714-3f596873793d",
       "name": "Merge Ctx",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -320,
-        1120
+        -928,
+        3408
       ]
     },
     {
       "parameters": {
-        "operation": "incr",
+        "operation": "get",
+        "propertyName": "alreadyProcessed",
         "key": "=processed:{{ $json.messageId }}",
-        "expire": true,
-        "ttl": 3600
+        "options": {}
       },
-      "id": "8877cc42-8329-48c0-b9e2-977487bc0e35",
-      "name": "Mark Processed",
+      "id": "98400dfc-bd6d-4d41-8744-f423a387fbf1",
+      "name": "Redis Check",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        -112,
-        1120
+        -720,
+        3408
       ],
+      "alwaysOutputData": true,
       "credentials": {
         "redis": {
           "id": "8L0NBLL6RmeFiu74",
@@ -659,7 +660,7 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict",
+            "typeValidation": "loose",
             "version": 1
           },
           "combinator": "and",
@@ -667,24 +668,47 @@
             {
               "id": "c1",
               "operator": {
-                "type": "number",
-                "operation": "equals"
+                "type": "string",
+                "operation": "empty"
               },
-              "leftValue": "={{ Number($json.procCount) }}",
-              "rightValue": 1
+              "leftValue": "={{ $json.alreadyProcessed }}",
+              "rightValue": ""
             }
           ]
         },
         "options": {}
       },
-      "id": "e17d366a-caea-4b25-9a3d-753c487baa8b",
+      "id": "8689cd19-146b-407b-b6b9-c51656620001",
       "name": "IF First Time",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        112,
-        1120
+        -496,
+        3408
       ]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "=processed:{{ $json.messageId }}",
+        "value": "1",
+        "expire": true,
+        "ttl": 3600
+      },
+      "id": "25da57a1-9cfa-46d1-8185-40c91e8a0a5b",
+      "name": "Mark Processed",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        3312
+      ],
+      "credentials": {
+        "redis": {
+          "id": "8L0NBLL6RmeFiu74",
+          "name": "Redis account"
+        }
+      }
     },
     {
       "parameters": {
@@ -693,13 +717,13 @@
         "messageData": "={{ $('Merge Ctx').first().json.text }}",
         "tail": true
       },
-      "id": "bfe62157-3c05-41b1-81fb-496ed398ba01",
+      "id": "e36f1b01-db01-4f0e-961c-21888f92aa4c",
       "name": "Buffer Push",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        336,
-        1120
+        -48,
+        3312
       ],
       "credentials": {
         "redis": {
@@ -729,13 +753,13 @@
         "includeOtherFields": true,
         "options": {}
       },
-      "id": "48740cfc-c5eb-4d55-9541-3a46aa6d3938",
+      "id": "57249ff0-31b8-4723-9124-252907345a9a",
       "name": "Lock Token",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        560,
-        1120
+        -96,
+        3488
       ]
     },
     {
@@ -746,13 +770,13 @@
         "expire": true,
         "ttl": 30
       },
-      "id": "5118f050-ef77-4232-9a5a-ee95ff8dfcd6",
+      "id": "17bfc49f-3516-46ea-be5b-0f668bbe4b4a",
       "name": "Lock Set",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        768,
-        1120
+        160,
+        3408
       ],
       "credentials": {
         "redis": {
@@ -763,15 +787,15 @@
     },
     {
       "parameters": {
-        "amount": 4
+        "amount": 6
       },
-      "id": "61d0f3eb-58be-49c1-aac4-297d1f5911fd",
+      "id": "98852ebb-c2a2-4589-ae9f-e59dd004f7e4",
       "name": "Wait",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        992,
-        1120
+        384,
+        3408
       ],
       "webhookId": "7e7eaba2-f851-4e37-8748-2c03cc8144aa"
     },
@@ -782,13 +806,13 @@
         "key": "=lock:{{ $('Lock Token').first().json.phone }}",
         "options": {}
       },
-      "id": "5314af2f-561b-46b7-82bf-40b3538bc51a",
+      "id": "5f3b1350-3762-48ee-b9c3-dc2545a45afb",
       "name": "Lock Get",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        1216,
-        1120
+        608,
+        3408
       ],
       "credentials": {
         "redis": {
@@ -821,13 +845,13 @@
         },
         "options": {}
       },
-      "id": "0f212dce-cb10-40f8-961a-1940cf6b1f7f",
+      "id": "bdb1fde1-7f0c-4bc8-8946-872e27d1b4f1",
       "name": "IF Won Race",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1440,
-        1120
+        832,
+        3408
       ]
     },
     {
@@ -838,13 +862,13 @@
         "keyType": "list",
         "options": {}
       },
-      "id": "b36fb3e7-4426-4bc6-9051-5ddc6b920094",
+      "id": "1f775480-c02f-4273-afd5-7e1e342f77e9",
       "name": "Buffer Get",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        1648,
-        1120
+        1040,
+        3408
       ],
       "credentials": {
         "redis": {
@@ -858,13 +882,13 @@
         "operation": "delete",
         "key": "=buffer:{{ $('Lock Token').first().json.phone }}"
       },
-      "id": "8949a57a-efae-4148-b7bc-196409032531",
+      "id": "d3edfb2e-a184-4e69-aaaa-16af003d2e07",
       "name": "Buffer Delete",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        1872,
-        1120
+        1264,
+        3408
       ],
       "credentials": {
         "redis": {
@@ -877,13 +901,13 @@
       "parameters": {
         "jsCode": "const buf=$input.first().json.bufferedMessages||[];\nconst ctx=$('Merge Ctx').first().json;\nconst combined=buf.filter(Boolean).map(s=>String(s).trim()).join(' \\n ').trim();\nreturn [{ json:{ userId:ctx.userId, phone:ctx.phone, remoteJid:ctx.remoteJid, instance:ctx.instance, messageId:ctx.messageId, pushName:ctx.pushName, combinedText:combined, bufferLength:buf.length, convState:ctx.convState, convContext:ctx.convContext, onboarded:ctx.onboarded }}];"
       },
-      "id": "d6a84d53-0b22-4dbd-a57c-f9c46835a281",
+      "id": "9657a6af-c525-4034-a2de-a6cb1fb24449",
       "name": "Concat",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -928,
-        1488
+        1488,
+        3408
       ]
     },
     {
@@ -898,13 +922,13 @@
           "temperature": 0.2
         }
       },
-      "id": "04f56803-e3d3-45f0-96ce-a299e70dc05d",
+      "id": "3eb247c8-2e85-4c6b-bfef-9acb0c16cda7",
       "name": "OpenAI Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [
-        -496,
-        1680
+        -1120,
+        3920
       ],
       "credentials": {
         "openAiApi": {
@@ -919,13 +943,13 @@
         "sessionKey": "={{ $('Concat').first().json.userId }}",
         "contextWindowLength": 12
       },
-      "id": "f525fa43-c808-478c-b32c-9181749bd495",
+      "id": "dc74e829-7a6c-4b5f-ae74-0ac20ea139c8",
       "name": "Postgres Chat Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1.3,
       "position": [
-        -272,
-        1680
+        -896,
+        3920
       ],
       "credentials": {
         "postgres": {
@@ -938,13 +962,13 @@
       "parameters": {
         "jsonSchemaExample": "{\n  \"reply_text\": \"Hola! ¿en qué te ayudo?\",\n  \"reply_kind\": \"text\",\n  \"image_url\": \"\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}"
       },
-      "id": "8ef9c774-b5af-4924-8de9-b07c15de75f6",
+      "id": "fd5ef2f7-2828-44ae-8f9f-825385fbebb1",
       "name": "Reply Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
       "position": [
-        -48,
-        1680
+        -672,
+        3920
       ]
     },
     {
@@ -954,33 +978,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "query_transactions",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -988,22 +1014,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "7351722f-a091-49e2-a2a4-b2fa0affe37b",
+      "id": "24bb1589-d196-4a42-8781-bcdeb6630dc9",
       "name": "tool: query_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        -688,
-        1888
+        -1312,
+        4128
       ]
     },
     {
@@ -1013,33 +1039,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "get_total",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1047,22 +1075,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "8aa6eac7-5e18-4e7e-9e48-cff4ebccd7e1",
+      "id": "e38246d1-7932-4326-aa72-c2dbe937ad45",
       "name": "tool: get_total",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        -496,
-        1888
+        -1120,
+        4128
       ]
     },
     {
@@ -1072,33 +1100,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "get_breakdown",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1106,22 +1136,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "f77f4cc2-eb71-4f58-9fe6-ae9b5eb1e811",
+      "id": "e10518c5-57ad-4939-8db2-b181c4a948c4",
       "name": "tool: get_breakdown",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        -288,
-        1888
+        -912,
+        4128
       ]
     },
     {
@@ -1131,33 +1161,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "compare_periods",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1165,22 +1197,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "df1f6fdc-916f-436d-804d-7fcea34667b3",
+      "id": "87e5cbcc-d8b0-4ed0-bbcc-2ddb582822fd",
       "name": "tool: compare_periods",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        -96,
-        1888
+        -720,
+        4128
       ]
     },
     {
@@ -1190,33 +1222,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "find_transactions",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1224,22 +1258,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "1fb8566b-4517-4e17-a23c-d332cc693120",
+      "id": "007de0c7-c15d-4afa-8160-a51a3dfd5971",
       "name": "tool: find_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        112,
-        1888
+        -512,
+        4128
       ]
     },
     {
@@ -1249,33 +1283,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "find_duplicates",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1283,22 +1319,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "e6659e7a-e115-41a0-8953-ebbd214b078a",
+      "id": "3eaf287a-78c5-411d-a66f-91f7dd1460a8",
       "name": "tool: find_duplicates",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        304,
-        1888
+        -320,
+        4128
       ]
     },
     {
@@ -1308,33 +1344,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "bulk_preview",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1342,22 +1380,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "d6364650-42aa-4ae0-8f4f-41ee6ec7bae9",
+      "id": "f0b8e768-3267-4dd6-9b66-0653b4a7ea6c",
       "name": "tool: bulk_preview",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        512,
-        1888
+        -112,
+        4128
       ]
     },
     {
@@ -1367,33 +1405,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "bulk_delete",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1401,22 +1441,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "c7b56168-55cc-487d-bc45-65af64c071a2",
+      "id": "dab8352d-bfa1-44f3-bcb2-7089eb0b0d4b",
       "name": "tool: bulk_delete",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        704,
-        1888
+        80,
+        4128
       ]
     },
     {
@@ -1426,33 +1466,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "bulk_update",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1460,22 +1502,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "249ccb59-e08f-4381-851f-c003bc894d8e",
+      "id": "6b424cff-1c26-44bd-8003-174d38c14160",
       "name": "tool: bulk_update",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        912,
-        1888
+        288,
+        4128
       ]
     },
     {
@@ -1485,33 +1527,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "log_transaction",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1519,22 +1563,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "c8b0ee23-e9fe-40cd-95f3-230da0700767",
+      "id": "420990dc-53f3-4bb9-8300-df17126c8ab4",
       "name": "tool: log_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        1104,
-        1888
+        480,
+        4128
       ]
     },
     {
@@ -1544,33 +1588,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "update_transaction",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1578,22 +1624,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "a2c79cc3-a3da-4aea-a8b1-2d004fbdb232",
+      "id": "929b860b-7b71-4132-97f7-7d9f1ef7dfaa",
       "name": "tool: update_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        1312,
-        1888
+        688,
+        4128
       ]
     },
     {
@@ -1603,33 +1649,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "delete_transaction",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1637,22 +1685,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "8e1fd259-1357-4ae9-b48b-d100fb4ea242",
+      "id": "62dfb7ed-7e0a-446d-89aa-572cdcab0d69",
       "name": "tool: delete_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        1504,
-        1888
+        880,
+        4128
       ]
     },
     {
@@ -1662,33 +1710,34 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "list_categories",
-            "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "user_id": "={{ $('Concat').first().json.userId }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1696,22 +1745,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "515c1266-d218-4ab2-9a0c-0aa11bc7b80f",
+      "id": "f6ba0365-d92a-4697-be5e-dbdd8882550d",
       "name": "tool: list_categories",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        -688,
-        2080
+        -1312,
+        4320
       ]
     },
     {
@@ -1721,33 +1770,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "list_groups",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1755,22 +1806,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "f9ba58a5-a8ea-4b58-a254-1d54d88bd53a",
+      "id": "13282c8b-11cc-431e-91ea-0f790788af38",
       "name": "tool: list_groups",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        -496,
-        2080
+        -1120,
+        4320
       ]
     },
     {
@@ -1780,33 +1831,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "list_budgets",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1814,22 +1867,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "f983a912-357d-4028-813c-046f3921618d",
+      "id": "a16112af-ca7d-4088-bf8f-870c393dc7f3",
       "name": "tool: list_budgets",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        -288,
-        2080
+        -912,
+        4320
       ]
     },
     {
@@ -1839,33 +1892,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "set_budget",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1873,22 +1928,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "b1fd21be-c7f1-4bce-b6eb-976a86538100",
+      "id": "8fd400fb-0e44-400c-8c1a-439339de5386",
       "name": "tool: set_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        -96,
-        2080
+        -720,
+        4320
       ]
     },
     {
@@ -1898,33 +1953,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "create_group",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1932,22 +1989,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "1cf9b4c9-6af6-4c2b-8e1d-4ece8b88eeb7",
+      "id": "f0e4efc6-f7f9-4d87-a3dd-36e0896c3665",
       "name": "tool: create_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        112,
-        2080
+        -512,
+        4320
       ]
     },
     {
@@ -1957,33 +2014,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "toggle_category_exclusion",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -1991,22 +2050,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "16b7e38a-2c68-462b-8c2f-996455990a75",
+      "id": "455cae0f-9df5-47ca-a3da-2cd6e50f96f0",
       "name": "tool: toggle_category_exclusion",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        304,
-        2080
+        -320,
+        4320
       ]
     },
     {
@@ -2016,33 +2075,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "set_recurring",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -2050,22 +2111,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "b0393f25-3f6d-45f3-b8cd-3b959bf91b7d",
+      "id": "e48365d7-c5a5-4503-a0ca-88157e81bc56",
       "name": "tool: set_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        512,
-        2080
+        -112,
+        4320
       ]
     },
     {
@@ -2075,33 +2136,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "remember_last_list",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -2109,22 +2172,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "5cd203e6-624e-4970-bdd3-88ddc81c44b4",
+      "id": "d510a232-fea5-447d-9eaa-5041f5a666da",
       "name": "tool: remember_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        704,
-        2080
+        80,
+        4320
       ]
     },
     {
@@ -2134,33 +2197,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "get_last_list",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -2168,22 +2233,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "6918dba6-83b9-47f9-8b7d-aef965fd431e",
+      "id": "cb0f7434-7ae8-4f6b-be3f-155e0de4cb94",
       "name": "tool: get_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        912,
-        2080
+        288,
+        4320
       ]
     },
     {
@@ -2193,33 +2258,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "set_conv_state",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -2227,22 +2294,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "6fd27dc6-c03b-4d76-9625-22a1ee871098",
+      "id": "9aec983d-5516-44e2-9fea-ac4984a8919c",
       "name": "tool: set_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        1104,
-        2080
+        480,
+        4320
       ]
     },
     {
@@ -2252,33 +2319,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "clear_conv_state",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -2286,22 +2355,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "4d54d59c-5614-409f-8432-5cf754a894de",
+      "id": "f29fa73e-fe40-48a5-9cff-b2dd608f076d",
       "name": "tool: clear_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        1312,
-        2080
+        688,
+        4320
       ]
     },
     {
@@ -2311,33 +2380,35 @@
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "chefin_tools_v3"
+          "value": "MYLEpz6k1idWadkE",
+          "cachedResultName": "Chefin Agent Tools v3"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
             "tool_name": "generate_chart",
             "user_id": "={{ $('Concat').first().json.userId }}",
-            "params": "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'json') }}"
           },
+          "matchingColumns": [],
           "schema": [
             {
               "id": "tool_name",
               "displayName": "tool_name",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "user_id",
               "displayName": "user_id",
-              "required": true,
+              "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "type": "string"
             },
             {
               "id": "params",
@@ -2345,22 +2416,22 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
+              "canBeUsedToMatch": true,
               "type": "object",
-              "canBeUsedToMatch": false
+              "removed": false
             }
           ],
-          "matchingColumns": [],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         }
       },
-      "id": "cd78a788-7185-48ad-bd67-dde7898ae6dc",
+      "id": "c86bf229-d2df-485a-9beb-cfc963f1f546",
       "name": "tool: generate_chart",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        1504,
-        2080
+        880,
+        4320
       ]
     },
     {
@@ -2369,44 +2440,44 @@
         "text": "={{ $('Concat').first().json.combinedText }}",
         "hasOutputParser": true,
         "options": {
-          "systemMessage": "=Sos **Chefin**, asistente conversacional experto en finanzas personales para WhatsApp en español rioplatense (Argentina).\n\n# CONTEXTO DE LA CONVERSACIÓN\n- Fecha y hora actual: {{ $now.toFormat('yyyy-MM-dd HH:mm') }} (America/Argentina/Buenos_Aires)\n- Día de la semana: {{ $now.toFormat('EEEE') }}\n- Estado de conversación previo: {{ $json.convState || 'ninguno' }}\n- Contexto previo: {{ JSON.stringify($json.convContext || {}) }}\n- Onboarded: {{ $json.onboarded }}\n\n# TU MISIÓN\nResolvés CUALQUIER duda del usuario sobre sus finanzas usando las tools disponibles. Podés encadenar varias tools antes de responder. Sos riguroso con datos destructivos: nunca borrás ni editás sin confirmación cuando hay ambigüedad o son varios items.\n\n# TOOLS DISPONIBLES\nCada tool toma JSON; consultá las descripciones de cada una para entender los parámetros. Algunas reglas globales:\n- `user_id` se inyecta automáticamente — NO lo pongas en `params`.\n- Períodos válidos: today | yesterday | this_week | this_month | last_month | this_year | all | custom.\n- Para búsquedas con DATOS ESPECÍFICOS (monto exacto, fecha exacta, descripción concreta), el período default es `all` salvo que el usuario diga lo contrario.\n- Para totales/resúmenes sin tiempo especificado, default `this_month`.\n\n# ESTRATEGIA DE RAZONAMIENTO\n\n## Para CONSULTAS (lectura)\n1. Si el usuario menciona texto deíctico (\"esos\", \"el primero\", \"los de 3300 que mostraste\") → llamá `get_last_list` PRIMERO.\n2. Para preguntas tipo \"cuánto gasté X\" → `get_total`.\n3. Para \"en qué gasté más / desglosá\" → `get_breakdown` con dimension=category.\n4. Para \"comparame mes a mes\" / \"gasté más que el pasado\" → `compare_periods`.\n5. Para \"mostrame los últimos / los movs\" → `query_transactions`.\n6. Para \"buscame los café / los uber / los de 5000\" → `find_transactions` con filtros determinísticos cuando sean exactos.\n7. Después de mostrar una lista de transacciones (>1 item), llamá `remember_last_list` con sus ids para resolver referencias deícticas en el siguiente turno.\n\n## Para REGISTRO (gasto/ingreso nuevo)\n- Llamá `log_transaction`. Si la tool devuelve `needs_confirmation: 'duplicate'` → preguntá al usuario si quiere registrar de todas formas (y si dice sí, volvés a llamar con `skip_dup_check: true`).\n\n## Para BORRAR / EDITAR\n- 1 transacción específica con monto+fecha exactos:\n  1. `find_transactions` para obtener candidatos con sus ids.\n  2. Si devuelve UN solo match → ejecutás `delete_transaction` o `update_transaction` directo.\n  3. Si devuelve VARIOS matches → mostrás la lista numerada al usuario, llamás `remember_last_list`, pedís que aclare cuál.\n- \"el último\" (sin específicos) → `query_transactions` ordenado por date_desc + límite 1.\n- BULK delete por criterio (\"borrá todos los café del mes pasado\"):\n  1. `bulk_preview` con los filtros para obtener count + sample + ids.\n  2. Mostrás al usuario: \"Voy a borrar N gastos por $X. ¿Confirmás?\". Llamás `set_conv_state` con state='awaiting_bulk_delete' y context={ids:[...]}.\n  3. Cuando responda \"sí\" → `bulk_delete` con esos ids exactos. Llamás `clear_conv_state`.\n- \"Eliminá los gastos repetidos\" → `find_duplicates` → mostrás los clusters → confirmás → `bulk_delete` con los ids elegidos.\n\n## Para CHARLA / FECHAS / IDENTIDAD\n- \"qué fecha es hoy?\" → respondé directo desde el contexto, SIN tools.\n- \"hola / gracias / cómo andás\" → respondé natural, SIN tools.\n- \"ayuda / qué podés hacer\" → enumerá brevemente: registrar, consultar, borrar, editar, gráficos, presupuestos, recurrentes, reportes.\n\n## Para GRÁFICOS\n- \"gráfico de gastos / torta / por categoría\" → `generate_chart` con dimension. Devolverá image_url + caption.\n\n# ESTILO DE RESPUESTA (FORMATO FINAL)\nSIEMPRE devolvé tu respuesta como JSON con esta estructura. Es la ÚNICA forma de responder al usuario:\n\n{\n  \"reply_text\": \"<mensaje en español rioplatense, max 1500 chars salvo que sea una lista>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\nReglas de formato:\n- Listas de transacciones: numerá del 1 al N con formato `N. AAAA-MM-DD · 💸 categoría · $monto — descripción`. Después de la lista decí algo útil tipo \"Decime cuál querés borrar/editar\".\n- Totales: `💸 Gastaste $X en período (N movs).`\n- Breakdowns: lista vertical con %.\n- Comparativas: `Este mes: $X (N) · Mes pasado: $Y (M) · Diferencia: +Δ%`.\n- Confirmaciones bulk: muestra preview de hasta 5 items, total, count, y \"¿confirmás? (sí/no)\".\n- Si NO hay datos: mensaje empático, breve.\n- 1 mensaje por turno. Si supera 1500 chars el wrapper lo parte solo.\n\nReacciones (`should_react: true`):\n- SOLO cuando acabás de loggear gasto (✅) o ingreso (💰), borrar (🗑️), editar (✏️) o generar gráfico (📈).\n- Para queries, charla, ayuda, listas, búsquedas → `should_react: false`.\n\n# LÉXICO ARGENTINO (no afecta clasificación)\nMuletillas que ignorás al clasificar pero respondés en tono natural:\n- \"cucha\", \"che\", \"dale\", \"loco/a\", \"boludo/a\", \"mirá\", \"fijate\", \"viste\", \"ahre\"\n- Diminutivos: \"cafecito\"=café, \"lukita\"=mil pesos\n- Plata = dinero. Luca = mil (\"3 lucas\"=3000). Palo = millón. K=mil (\"30k\"=30000). M=millón.\n\n# FORMATO DE NÚMEROS Y FECHAS (ARGENTINO)\n- Montos en respuestas: `$2.000,50` (punto como separador de miles, coma como decimal). Ejemplo: `$11.900,00`.\n- Fechas en respuestas: relativas si aplica (\"hoy\", \"ayer\", \"el lunes\"); absolutas como \"27 de abril\".\n- Fechas en parámetros de tools: SIEMPRE ISO `YYYY-MM-DD`.\n- Si el usuario dice \"27 de abril\" sin año, asumí el año actual.\n- Si el usuario dice \"el lunes pasado\", calculalo desde la fecha de contexto.\n\n# ESTADOS CONVERSACIONALES HEREDADOS DE V1\nSi `convState` viene con uno de estos valores legacy del workflow viejo, manejalo igual:\n- `awaiting_otros_confirmation`: el usuario confirma o aclara la categoría de un gasto pendiente.\n- `awaiting_dup_confirmation`: el usuario confirma si registra un gasto duplicado.\n- `awaiting_pdf_import`: el usuario confirma importar gastos del PDF.\nCuando el usuario contesta \"sí/dale/ok\" y hay un `convState` activo → tomá la acción pendiente con el contexto que viene en `convContext`. Cuando contesta \"no/cancelá\" → `clear_conv_state` y avisá.\n\n# EJEMPLOS DE RAZONAMIENTO\n\n**Usuario**: \"Mostrame todos mis movimientos\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":20})` → devuelve N items.\n- Si N>0: `remember_last_list({\"kind\":\"transactions\",\"items\":[{position:1,id:..,...}]})` con los ids.\n- Reply: lista numerada con los items + breve resumen del total.\n\n**Usuario**: \"borrá los 3300 del 27 de abril\"\n- Tool: `find_transactions({\"exact_amount\":3300,\"date\":\"2026-04-27\"})` → devuelve 3 matches.\n- Reply numerada con los 3 + `remember_last_list` con sus ids + \"Decime cuál(es) borrar (1, 2, 3 o todos)\".\n- NUNCA borrás directo si hay >1 candidato.\n\n**Usuario** (después): \"borrá los 2 primeros\"\n- Tool: `get_last_list` → recuperás items.\n- Tool: `bulk_delete({\"ids\":[items[0].id, items[1].id]})`.\n- Reply: \"Borré 2 movs por $6.600. Quedó 1 transferencia de $3.300 del 27/04.\"\n\n**Usuario**: \"elimina los gastos repetidos\"\n- Tool: `find_duplicates({\"window_days\":7,\"min_repetitions\":2})` → devuelve clusters.\n- Reply con los clusters + `remember_last_list({kind:'duplicate_clusters',items:[...]})` + \"¿Borro estos? Decime cuáles (1, 2, todos) o 'no' para cancelar\".\n- Cuando confirme → `bulk_delete` con los ids.\n\n**Usuario**: \"gasté más este mes que el pasado?\"\n- Tool: `compare_periods({\"period_a\":\"this_month\",\"period_b\":\"last_month\"})`.\n- Reply: \"Este mes: $X (N movs). Mes pasado: $Y (M movs). +Δ% más.\"\n\n**Usuario**: \"Cuál fue mi último gasto?\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"type\":\"expense\"})`.\n- Reply: descripción del item + \"¿querés borrarlo o editarlo?\"\n\n**Usuario**: \"el último gasto fue de 5000 no de 2000\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"exact_amount\":2000})` → encuentra el item.\n- Tool: `update_transaction({\"transaction_id\":id,\"new_amount\":5000})`.\n- Reply: \"Listo, lo cambié a $5.000,00.\" con `should_react: true, reaction_emoji: \"✏️\"`.\n\n**Usuario**: \"tomé 2500 de café\"\n- Tool: `log_transaction({\"amount\":2500,\"description\":\"café\",\"category_hint\":\"comida\",\"type\":\"expense\"})`.\n- Si retorna `needs_confirmation:duplicate` → preguntá si registra igual.\n- Si `inserted:true` → reply confirmando + `should_react: true, reaction_emoji: \"✅\"`.\n\n**Usuario**: \"gracias!\"\n- Sin tools. Reply breve. `should_react: false`.\n\n**Usuario**: \"qué fecha es hoy?\"\n- Sin tools. Usás la fecha del contexto. Formato: \"Hoy es lunes 29 de abril de 2026\".\n\n**Usuario**: \"que quedo?\" (mensaje ambiguo, sin contexto)\n- Sin tools. Reply breve pidiendo aclaración: \"¿A qué te referís? Si querés saber tu saldo del mes te lo digo, decime 'cuanto gasté'.\"\n- NO mandes 2 mensajes.\n\n# REGLAS FINALES\n- NUNCA inventes datos. Si no tenés certeza, llamá una tool o pedí aclaración.\n- NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.\n- NUNCA mostrás UUIDs al usuario.\n- Si una tool devuelve `ok: false`, leé el error y avisás al usuario en términos amables.\n- Sos breve, directo y cálido. Nada de párrafos largos para preguntas simples.\n- Si el usuario hace varias preguntas en un mismo turno, respondelas todas en UN solo mensaje (jamás mandés 2 mensajes para una pregunta).\n- Si el usuario contradice una respuesta tuya anterior (\"me decís 4 movs y mostrás 2\"), revisá tu razonamiento, releé las tools que llamaste, y corregí sin inventar.\n- Si una operación destructiva afecta >3 items, SIEMPRE pasá por preview + confirmación.\n- Cuando el usuario te ataca o se enoja, reconocelo brevemente, NO te disculpes en exceso, y resolvé el problema.",
+          "systemMessage": "=Sos **Chefin**, asistente conversacional experto en finanzas personales para WhatsApp en español rioplatense (Argentina).\n\n# CONTEXTO DE LA CONVERSACIÓN\n- Fecha y hora actual: {{ $now.toFormat('yyyy-MM-dd HH:mm') }} (America/Argentina/Buenos_Aires)\n- Día de la semana: {{ $now.toFormat('EEEE') }}\n- Estado de conversación previo: {{ $json.convState || 'ninguno' }}\n- Contexto previo: {{ JSON.stringify($json.convContext || {}) }}\n- Onboarded: {{ $json.onboarded }}\n\n# TU MISIÓN\nResolvés CUALQUIER duda del usuario sobre sus finanzas usando las tools disponibles. Podés encadenar varias tools antes de responder. Sos riguroso con datos destructivos: nunca borrás ni editás sin confirmación cuando hay ambigüedad o son varios items.\n\n# TOOLS DISPONIBLES\nCada tool toma JSON; consultá las descripciones de cada una para entender los parámetros. Algunas reglas globales:\n- `user_id` se inyecta automáticamente — NO lo pongas en `params`.\n- Períodos válidos: today | yesterday | this_week | this_month | last_month | this_year | all | custom.\n- Para búsquedas con DATOS ESPECÍFICOS (monto exacto, fecha exacta, descripción concreta), el período default es `all` salvo que el usuario diga lo contrario.\n- Para totales/resúmenes sin tiempo especificado, default `this_month`.\n\n# ESTRATEGIA DE RAZONAMIENTO\n\n## Para CONSULTAS (lectura)\n1. Si el usuario menciona texto deíctico (\"esos\", \"el primero\", \"los de 3300 que mostraste\") → llamá `get_last_list` PRIMERO.\n2. Para preguntas tipo \"cuánto gasté X\" → `get_total`.\n3. Para \"en qué gasté más / desglosá\" → `get_breakdown` con dimension=category.\n4. Para \"comparame mes a mes\" / \"gasté más que el pasado\" → `compare_periods`.\n5. Para \"mostrame los últimos / los movs\" → `query_transactions`.\n6. Para \"buscame los café / los uber / los de 5000\" → `find_transactions` con filtros determinísticos cuando sean exactos.\n7. Después de mostrar una lista de transacciones (>1 item), llamá `remember_last_list` con sus ids para resolver referencias deícticas en el siguiente turno.\n\n## Para REGISTRO (gasto/ingreso nuevo)\n- Llamá `log_transaction`. Si la tool devuelve `needs_confirmation: 'duplicate'` → preguntá al usuario si quiere registrar de todas formas (y si dice sí, volvés a llamar con `skip_dup_check: true`).\n\n## Para BORRAR / EDITAR\n- 1 transacción específica con monto+fecha exactos:\n  1. `find_transactions` para obtener candidatos con sus ids.\n  2. Si devuelve UN solo match → ejecutás `delete_transaction` o `update_transaction` directo.\n  3. Si devuelve VARIOS matches → mostrás la lista numerada al usuario, llamás `remember_last_list`, pedís que aclare cuál.\n- \"el último\" (sin específicos) → `query_transactions` ordenado por date_desc + límite 1.\n- BULK delete por criterio (\"borrá todos los café del mes pasado\"):\n  1. `bulk_preview` con los filtros para obtener count + sample + ids.\n  2. Mostrás al usuario: \"Voy a borrar N gastos por $X. ¿Confirmás?\". Llamás `set_conv_state` con state='awaiting_bulk_delete' y context={ids:[...]}.\n  3. Cuando responda \"sí\" → `bulk_delete` con esos ids exactos. Llamás `clear_conv_state`.\n- \"Eliminá los gastos repetidos\" → `find_duplicates` → mostrás los clusters → confirmás → `bulk_delete` con los ids elegidos.\n\n## Para CHARLA / FECHAS / IDENTIDAD\n- \"qué fecha es hoy?\" → respondé directo desde el contexto, SIN tools.\n- \"hola / gracias / cómo andás\" → respondé natural, SIN tools.\n- \"ayuda / qué podés hacer\" → enumerá brevemente: registrar, consultar, borrar, editar, gráficos, presupuestos, recurrentes, reportes.\n\n## Para GRÁFICOS\n- \"gráfico de gastos / torta / por categoría\" → `generate_chart` con dimension. Devolverá image_url + caption.\n\n# ESTILO DE RESPUESTA (FORMATO FINAL)\nSIEMPRE devolvé tu respuesta como JSON con esta estructura. Es la ÚNICA forma de responder al usuario:\n\n{\n  \"reply_text\": \"<mensaje en español rioplatense, max 1500 chars salvo que sea una lista>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\nReglas de formato (WhatsApp markdown — usalo cuando aporta claridad):\n- *negrita* con asteriscos simples (ej. `*Total*`, `*$2.000,00*`, `*comida*`).\n- _cursiva_ con guiones bajos (ej. `_descripción_`, _notas_).\n- ~tachado~ con virgulilla cuando aplica (poco frecuente).\n- ```monoespaciado``` solo para datos técnicos cortos.\n- Encabezados de listas/resúmenes en *negrita* (ej. `*Estos son los 4 movimientos que tuviste este mes:*`).\n- Listas de transacciones: numerá del 1 al N con formato `N. *<fecha>* · 💸 *<categoría>* · *$monto* — _<descripción>_`.\n  - `<fecha>` SIEMPRE en formato amigable rioplatense, NUNCA `AAAA-MM-DD`. Reglas:\n    - Si es la fecha de hoy → `hoy`.\n    - Si es ayer → `ayer`.\n    - Si es anteayer → `anteayer`.\n    - Si está entre 3 y 6 días atrás (misma semana o anterior reciente) → nombre del día en minúsculas (`lunes`, `martes`, `miércoles`, `jueves`, `viernes`, `sábado`, `domingo`); si es de la semana pasada agregale ` pasado`/`pasada` (ej. `lunes pasado`).\n    - Si es ≥7 días atrás del año actual → `dd/MM` (ej. `27/04`).\n    - Si es de otro año → `dd/MM/yyyy` (ej. `27/04/2025`).\n  - Después de la lista decí algo útil tipo \"Decime cuál querés borrar/editar\".\n- Totales: `💸 Gastaste *$X* en *<período>* (_N movs_).`\n- Breakdowns: lista vertical con `*categoría*` y `%`.\n- Comparativas: `*Este mes:* $X (N) · *Mes pasado:* $Y (M) · *Diferencia:* +Δ%`.\n- Confirmaciones bulk: muestra preview de hasta 5 items con el mismo formato de listas, total, count, y \"¿confirmás? (sí/no)\".\n- Si NO hay datos: mensaje empático, breve.\n- 1 mensaje por turno. Si supera 1500 chars el wrapper lo parte solo.\n\nReacciones (`should_react: true`):\n- SOLO cuando acabás de loggear gasto (✅) o ingreso (💰), borrar (🗑️), editar (✏️) o generar gráfico (📈).\n- Para queries, charla, ayuda, listas, búsquedas → `should_react: false`.\n\n# LÉXICO ARGENTINO (no afecta clasificación)\nMuletillas que ignorás al clasificar pero respondés en tono natural:\n- \"cucha\", \"che\", \"dale\", \"loco/a\", \"boludo/a\", \"mirá\", \"fijate\", \"viste\", \"ahre\"\n- Diminutivos: \"cafecito\"=café, \"lukita\"=mil pesos\n- Plata = dinero. Luca = mil (\"3 lucas\"=3000). Palo = millón. K=mil (\"30k\"=30000). M=millón.\n\n# FORMATO DE NÚMEROS Y FECHAS (ARGENTINO)\n- Montos en respuestas: `$2.000,50` (punto como separador de miles, coma como decimal). Ejemplo: `$11.900,00`. En negrita cuando es un dato clave: `*$11.900,00*`.\n- Fechas en respuestas: SIEMPRE día/mes/año, JAMÁS `AAAA-MM-DD`.\n  - Hoy/ayer/anteayer → `hoy`, `ayer`, `anteayer`.\n  - 3-6 días atrás → nombre del día (`lunes`, `martes`, ...), agregando ` pasado/pasada` si fue la semana anterior.\n  - ≥7 días del año actual → `dd/MM` (ej. `27/04`); si querés ser más natural en frases, podés decir `27 de abril`.\n  - De otro año → `dd/MM/yyyy` (ej. `27/04/2025`).\n- Fechas en parámetros de tools: SIEMPRE ISO `YYYY-MM-DD` (esto es interno, NO se muestra al usuario).\n- Si el usuario dice \"27 de abril\" sin año, asumí el año actual.\n- Si el usuario dice \"el lunes pasado\", calculalo desde la fecha de contexto.\n\n# ESTADOS CONVERSACIONALES HEREDADOS DE V1\nSi `convState` viene con uno de estos valores legacy del workflow viejo, manejalo igual:\n- `awaiting_otros_confirmation`: el usuario confirma o aclara la categoría de un gasto pendiente.\n- `awaiting_dup_confirmation`: el usuario confirma si registra un gasto duplicado.\n- `awaiting_pdf_import`: el usuario confirma importar gastos del PDF.\nCuando el usuario contesta \"sí/dale/ok\" y hay un `convState` activo → tomá la acción pendiente con el contexto que viene en `convContext`. Cuando contesta \"no/cancelá\" → `clear_conv_state` y avisá.\n\n# EJEMPLOS DE RAZONAMIENTO\n\n**Usuario**: \"Mostrame todos mis movimientos\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":20})` → devuelve N items.\n- Si N>0: `remember_last_list({\"kind\":\"transactions\",\"items\":[{position:1,id:..,...}]})` con los ids.\n- Reply: lista numerada con los items + breve resumen del total.\n\n**Usuario**: \"borrá los 3300 del 27 de abril\"\n- Tool: `find_transactions({\"exact_amount\":3300,\"date\":\"2026-04-27\"})` → devuelve 3 matches.\n- Reply numerada con los 3 + `remember_last_list` con sus ids + \"Decime cuál(es) borrar (1, 2, 3 o todos)\".\n- NUNCA borrás directo si hay >1 candidato.\n\n**Usuario**: \"elimina las 2 últimas transferencias a maxi\"\nPasos OBLIGATORIOS:\n1. Tool: `find_transactions({\"description_contains\":\"maxi\",\"sort\":\"date_desc\",\"limit\":20})` → devuelve TODAS las transferencias que mencionen \"maxi\" en descripción, ordenadas por fecha desc.\n2. Si hay ≥2: tomá las primeras 2 (las \"últimas\" cronológicamente = más recientes = primeras en date_desc).\n3. `bulk_preview` NO es necesario porque ya tenés ids exactos. Llamá directamente `bulk_delete({\"ids\":[id1, id2]})`.\n4. Reply: \"🗑️ Borré 2 transferencias a Maxi por $X total. Te queda 1.\" con `should_react: true, reaction_emoji: \"🗑️\"`.\n5. Si el usuario dice \"las últimas N\" sin nombrar una persona, mirá `get_last_list` primero — si tenés contexto fresco, usalo.\nNUNCA borres \"el último\" cuando el usuario claramente identificó un grupo (transferencias a X, gastos de Y, etc).\n\n**Usuario**: \"borrá las 2 últimas transferencias\" (sin nombre)\n- `find_transactions({\"category\":\"otros\",\"description_contains\":\"transferencia\",\"sort\":\"date_desc\",\"limit\":20})` → todas las transferencias.\n- Tomá las 2 más recientes → `bulk_delete`.\n\n**Usuario** (después): \"borrá los 2 primeros\"\n- Tool: `get_last_list` → recuperás items.\n- Tool: `bulk_delete({\"ids\":[items[0].id, items[1].id]})`.\n- Reply: \"Borré 2 movs por *$6.600*. Quedó 1 transferencia de *$3.300* del *27/04*.\"\n\n**Usuario**: \"elimina los gastos repetidos\"\n- Tool: `find_duplicates({\"window_days\":7,\"min_repetitions\":2})` → devuelve clusters.\n- Reply con los clusters + `remember_last_list({kind:'duplicate_clusters',items:[...]})` + \"¿Borro estos? Decime cuáles (1, 2, todos) o 'no' para cancelar\".\n- Cuando confirme → `bulk_delete` con los ids.\n\n**Usuario**: \"gasté más este mes que el pasado?\"\n- Tool: `compare_periods({\"period_a\":\"this_month\",\"period_b\":\"last_month\"})`.\n- Reply: \"Este mes: $X (N movs). Mes pasado: $Y (M movs). +Δ% más.\"\n\n**Usuario**: \"Cuál fue mi último gasto?\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"type\":\"expense\"})`.\n- Reply: descripción del item + \"¿querés borrarlo o editarlo?\"\n\n**Usuario**: \"el último gasto fue de 5000 no de 2000\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"exact_amount\":2000})` → encuentra el item.\n- Tool: `update_transaction({\"transaction_id\":id,\"new_amount\":5000})`.\n- Reply: \"Listo, lo cambié a *$5.000,00*.\" con `should_react: true, reaction_emoji: \"✏️\"`.\n\n**Usuario**: \"tomé 2500 de café\"\n- Tool: `log_transaction({\"amount\":2500,\"description\":\"café\",\"category_hint\":\"comida\",\"type\":\"expense\"})`.\n- Si retorna `needs_confirmation:duplicate` → preguntá si registra igual.\n- Si `inserted:true` → reply confirmando + `should_react: true, reaction_emoji: \"✅\"`.\n\n**Usuario**: \"gracias!\"\n- Sin tools. Reply breve. `should_react: false`.\n\n**Usuario**: \"qué fecha es hoy?\"\n- Sin tools. Usás la fecha del contexto. Formato: \"Hoy es lunes 29 de abril de 2026\".\n\n**Usuario**: \"que quedo?\" (mensaje ambiguo, sin contexto)\n- Sin tools. Reply breve pidiendo aclaración: \"¿A qué te referís? Si querés saber tu saldo del mes te lo digo, decime 'cuanto gasté'.\"\n- NO mandes 2 mensajes.\n\n# REGLAS FINALES\n- NUNCA inventes datos. Si no tenés certeza, llamá una tool o pedí aclaración.\n- NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.\n- NUNCA mostrás UUIDs al usuario.\n- Si una tool devuelve `ok: false`, leé el error y avisás al usuario en términos amables.\n- Sos breve, directo y cálido. Nada de párrafos largos para preguntas simples.\n- Si el usuario hace varias preguntas en un mismo turno, respondelas todas en UN solo mensaje (jamás mandés 2 mensajes para una pregunta).\n- Si el usuario contradice una respuesta tuya anterior (\"me decís 4 movs y mostrás 2\"), revisá tu razonamiento, releé las tools que llamaste, y corregí sin inventar.\n- Si una operación destructiva afecta >3 items, SIEMPRE pasá por preview + confirmación.\n- Cuando el usuario te ataca o se enoja, reconocelo brevemente, NO te disculpes en exceso, y resolvé el problema.",
           "maxIterations": 8,
           "returnIntermediateSteps": false
         }
       },
-      "id": "628a5894-e533-4234-89b6-d54e77eff555",
+      "id": "e15527fe-4ab0-4933-84db-6dab08980231",
       "name": "Chefin Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [
-        -224,
-        1488
+        -784,
+        3680
       ]
     },
     {
       "parameters": {
         "jsCode": "const raw = $input.first().json;\nlet payload = raw.output || raw;\nif (typeof payload === 'string') {\n  try { payload = JSON.parse(payload); } catch { payload = { reply_text: payload, reply_kind: 'text' }; }\n}\nconst ctx = $('Concat').first().json;\nconst replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';\nconst replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';\nconst shouldReact = !!payload.should_react;\nconst emoji = (payload.reaction_emoji || '').toString().slice(0, 4);\nreturn [{ json: {\n  replyText, replyKind,\n  imageUrl: replyKind === 'image' ? (payload.image_url || '') : '',\n  shouldReact, reactionEmoji: shouldReact ? (emoji || '✅') : '',\n  userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,\n  remoteJid: ctx.remoteJid, messageId: ctx.messageId\n} }];"
       },
-      "id": "edcf092a-f7c7-49ae-a199-7be5d9e1ca06",
+      "id": "a7011e11-f52d-46d8-aa39-8c4a62c67b96",
       "name": "Parse Agent Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        176,
-        1488
+        -448,
+        3728
       ]
     },
     {
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst MAX = 1500;\nconst txt = ctx.replyText || '';\nfunction chunk(s) {\n  if (s.length <= MAX) return [s];\n  const parts = [];\n  let buf = '';\n  for (const para of s.split(/\\n\\n/)) {\n    const candidate = buf ? buf + '\\n\\n' + para : para;\n    if (candidate.length > MAX && buf) { parts.push(buf); buf = para; }\n    else if (candidate.length > MAX) { // single para > MAX → hard split\n      for (let i = 0; i < para.length; i += MAX) parts.push(para.slice(i, i + MAX));\n      buf = '';\n    } else buf = candidate;\n  }\n  if (buf) parts.push(buf);\n  return parts;\n}\nconst pieces = chunk(txt);\nreturn pieces.map((p, idx) => ({ json: {\n  ...ctx, replyText: p, chunkIndex: idx, chunkCount: pieces.length,\n  // image only on first chunk; reaction only on last\n  replyKind: (idx === 0 ? ctx.replyKind : 'text'),\n  imageUrl: (idx === 0 ? ctx.imageUrl : ''),\n  shouldReact: ctx.shouldReact && idx === pieces.length - 1,\n  reactionEmoji: (ctx.shouldReact && idx === pieces.length - 1) ? ctx.reactionEmoji : ''\n} }));"
       },
-      "id": "84733b38-859e-43c5-b8dd-ee3d4bd661f6",
+      "id": "a39b03af-87ec-4472-b3e3-344ea9d21503",
       "name": "Chunk Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        384,
-        1488
+        -240,
+        3728
       ]
     },
     {
@@ -2489,14 +2560,39 @@
         },
         "options": {}
       },
-      "id": "1b625c09-37eb-41ca-bf92-2361ccad3911",
+      "id": "d12fb270-c250-4909-9f12-51d961ba63bc",
       "name": "Save Context",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        608,
-        1488
+        -16,
+        3728
       ]
+    },
+    {
+      "parameters": {
+        "resource": "chat-api",
+        "operation": "send-presence",
+        "instanceName": "={{ $('Save Context').first().json.instance }}",
+        "remoteJid": "={{ $('Save Context').first().json.phone }}",
+        "delay": 1600
+      },
+      "id": "c383b0d5-494a-49e0-959a-c20da3924d89",
+      "name": "Send Presence",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        208,
+        3728
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "evolutionApi": {
+          "id": "aodcaexLnhx89vQH",
+          "name": "Evolution account"
+        }
+      },
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -2522,14 +2618,62 @@
         },
         "options": {}
       },
-      "id": "c94a1565-c9f6-45d0-b3aa-b172e2e84971",
+      "id": "919d23fb-963f-4b46-a997-4d81d23b8f7f",
       "name": "IF Image Reply",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1056,
-        1488
+        432,
+        3728
       ]
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "operation": "send-image",
+        "instanceName": "={{ $('Save Context').first().json.instance }}",
+        "remoteJid": "={{ $('Save Context').first().json.phone }}",
+        "media": "={{ $('Save Context').first().json.imageUrl }}",
+        "caption": "={{ $('Save Context').first().json.replyText }}",
+        "options_message": {}
+      },
+      "id": "9be011be-634f-4c12-99da-8a8a4b3258c0",
+      "name": "Send Image",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        640,
+        3632
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "aodcaexLnhx89vQH",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "={{ $('Save Context').first().json.instance }}",
+        "remoteJid": "={{ $('Save Context').first().json.phone }}",
+        "messageText": "={{ $('Save Context').first().json.replyText }}",
+        "options_message": {}
+      },
+      "id": "d996887b-deb4-4e11-8322-28f0d9ab0aa5",
+      "name": "Send Text",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        640,
+        3824
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "aodcaexLnhx89vQH",
+          "name": "Evolution account"
+        }
+      }
     },
     {
       "parameters": {
@@ -2555,109 +2699,14 @@
         },
         "options": {}
       },
-      "id": "0d6a5d52-6123-498e-8f61-b49ab1bdba0d",
+      "id": "57801e91-ef92-469f-9162-379a938487de",
       "name": "IF Should React",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1504,
-        1504
+        864,
+        3728
       ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO messages (user_id, direction, content, processed, raw_payload) VALUES ($1::uuid, 'outbound', $2, TRUE, $3::jsonb);",
-        "options": {
-          "queryReplacement": "={{ $('Save Context').first().json.userId }},={{ $('Save Context').first().json.replyText || '' }},={{ JSON.stringify($('Save Context').first().json) }}"
-        }
-      },
-      "id": "b596eec9-5d68-4db4-9c2c-a5d8dbb6f338",
-      "name": "Log Outbound",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1936,
-        1488
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "33eKBVY731z1Ef4s",
-          "name": "Postgres account"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "resource": "messages-api",
-        "operation": "send-image",
-        "instanceName": "={{ $('Save Context').first().json.instance }}",
-        "remoteJid": "={{ $('Save Context').first().json.phone }}",
-        "media": "={{ $('Save Context').first().json.imageUrl }}",
-        "caption": "={{ $('Save Context').first().json.replyText }}",
-        "options_message": {}
-      },
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        1280,
-        1392
-      ],
-      "id": "3cd06462-ebb1-4566-9fe9-58b5ce5de419",
-      "name": "Send Image",
-      "credentials": {
-        "evolutionApi": {
-          "id": "aodcaexLnhx89vQH",
-          "name": "Evolution account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "resource": "messages-api",
-        "instanceName": "={{ $('Save Context').first().json.instance }}",
-        "remoteJid": "={{ $('Save Context').first().json.phone }}",
-        "messageText": "={{ $('Save Context').first().json.replyText }}",
-        "options_message": {}
-      },
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        1280,
-        1568
-      ],
-      "id": "217a08f5-be8a-40fb-8dfd-8c1e4010ffb5",
-      "name": "Send Text",
-      "credentials": {
-        "evolutionApi": {
-          "id": "aodcaexLnhx89vQH",
-          "name": "Evolution account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "resource": "chat-api",
-        "operation": "send-presence",
-        "instanceName": "={{ $('Save Context').first().json.instance }}",
-        "remoteJid": "={{ $('Save Context').first().json.phone }}",
-        "delay": 1600
-      },
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        832,
-        1488
-      ],
-      "id": "4374eb8d-69b5-474e-a545-a8db62da295b",
-      "name": "Send Presence",
-      "credentials": {
-        "evolutionApi": {
-          "id": "aodcaexLnhx89vQH",
-          "name": "Evolution account"
-        }
-      }
     },
     {
       "parameters": {
@@ -2667,25 +2716,193 @@
         "remoteJid": "={{ $('Save Context').first().json.remoteJid }}",
         "messageId": "={{ $('Save Context').first().json.messageId }}",
         "fromMe": false,
-        "reaction": "{{ $('Save Context').first().json.reactionEmoji || '✅' }}"
+        "reaction": "={{ $('Save Context').first().json.reactionEmoji }}"
       },
+      "id": "53b5a064-ca1b-4721-82db-2e964aa2752b",
+      "name": "Send Reaction",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
       "position": [
-        1728,
-        1376
+        1088,
+        3632
       ],
-      "id": "e791c360-9add-4815-8b39-fa8e0d0cd12d",
-      "name": "Send Reaction1",
       "credentials": {
         "evolutionApi": {
           "id": "aodcaexLnhx89vQH",
           "name": "Evolution account"
         }
-      }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (user_id, direction, content, processed, raw_payload) VALUES ($1::uuid, 'outbound', $2, TRUE, $3::jsonb);",
+        "options": {
+          "queryReplacement": "={{ $('Save Context').first().json.userId }},={{ $('Save Context').first().json.replyText || '' }},={{ JSON.stringify($('Save Context').first().json) }}"
+        }
+      },
+      "id": "59f300f4-2f18-4dd1-9ced-f297f8d3fdf3",
+      "name": "Log Outbound",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1312,
+        3728
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "33eKBVY731z1Ef4s",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true
     }
   ],
-  "pinData": {},
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "accept": "application/json, text/plain, */*",
+            "content-type": "application/json",
+            "user-agent": "axios/1.13.2",
+            "content-length": "1689",
+            "accept-encoding": "gzip, compress, deflate, br",
+            "host": "n8n:8878",
+            "connection": "keep-alive"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "event": "messages.upsert",
+            "instance": "expenses",
+            "data": {
+              "key": {
+                "remoteJid": "5493794619729@s.whatsapp.net",
+                "remoteJidAlt": "5493794619729@s.whatsapp.net",
+                "fromMe": false,
+                "id": "AC758A3C5DE7CCB407F9D38FBA122F8E",
+                "participant": "",
+                "addressingMode": "lid"
+              },
+              "pushName": "Seb 🇨🇴",
+              "status": "DELIVERY_ACK",
+              "message": {
+                "messageContextInfo": {
+                  "threadId": [],
+                  "deviceListMetadata": {
+                    "senderKeyIndexes": [],
+                    "recipientKeyIndexes": [],
+                    "senderKeyHash": {
+                      "0": 141,
+                      "1": 237,
+                      "2": 36,
+                      "3": 203,
+                      "4": 118,
+                      "5": 34,
+                      "6": 235,
+                      "7": 100,
+                      "8": 83,
+                      "9": 50
+                    },
+                    "senderTimestamp": {
+                      "low": 1776991695,
+                      "high": 0,
+                      "unsigned": true
+                    },
+                    "recipientKeyHash": {
+                      "0": 214,
+                      "1": 225,
+                      "2": 121,
+                      "3": 223,
+                      "4": 60,
+                      "5": 251,
+                      "6": 73,
+                      "7": 172,
+                      "8": 6,
+                      "9": 246
+                    },
+                    "recipientTimestamp": {
+                      "low": 1777398877,
+                      "high": 0,
+                      "unsigned": true
+                    }
+                  },
+                  "deviceListMetadataVersion": 2,
+                  "messageSecret": {
+                    "0": 73,
+                    "1": 73,
+                    "2": 196,
+                    "3": 174,
+                    "4": 83,
+                    "5": 53,
+                    "6": 246,
+                    "7": 71,
+                    "8": 88,
+                    "9": 50,
+                    "10": 125,
+                    "11": 207,
+                    "12": 138,
+                    "13": 155,
+                    "14": 178,
+                    "15": 250,
+                    "16": 202,
+                    "17": 9,
+                    "18": 102,
+                    "19": 61,
+                    "20": 246,
+                    "21": 17,
+                    "22": 154,
+                    "23": 63,
+                    "24": 147,
+                    "25": 89,
+                    "26": 149,
+                    "27": 247,
+                    "28": 28,
+                    "29": 98,
+                    "30": 26,
+                    "31": 174
+                  }
+                },
+                "conversation": "me pasas mis movimientos del último mes?"
+              },
+              "contextInfo": {
+                "mentionedJid": [],
+                "groupMentions": [],
+                "statusAttributions": [],
+                "expiration": 86400,
+                "ephemeralSettingTimestamp": {
+                  "low": 1776024846,
+                  "high": 0,
+                  "unsigned": false
+                },
+                "disappearingMode": {
+                  "initiator": 0,
+                  "trigger": 1,
+                  "initiatedByMe": false
+                }
+              },
+              "messageType": "conversation",
+              "messageTimestamp": 1777469730,
+              "instanceId": "f514f01d-0727-4c82-bf03-455a707c736b",
+              "source": "android"
+            },
+            "destination": "http://n8n:8878/webhook/chefin",
+            "date_time": "2026-04-29T10:35:31.043Z",
+            "sender": "5493794945270@s.whatsapp.net",
+            "server_url": "http://212.28.184.128:8880",
+            "apikey": "4AA14881928D-4F33-BE55-28A53A6A1F24"
+          },
+          "webhookUrl": "http://212.28.184.128:8878/webhook/chefin",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
   "connections": {
     "Webhook": {
       "main": [
@@ -2910,14 +3127,14 @@
       "main": [
         [
           {
-            "node": "Mark Processed",
+            "node": "Redis Check",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Mark Processed": {
+    "Redis Check": {
       "main": [
         [
           {
@@ -2929,6 +3146,17 @@
       ]
     },
     "IF First Time": {
+      "main": [
+        [
+          {
+            "node": "Mark Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Processed": {
       "main": [
         [
           {
@@ -3368,29 +3596,22 @@
         ]
       ]
     },
-    "IF Should React": {
+    "Save Context": {
       "main": [
         [
           {
-            "node": "Send Reaction1",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log Outbound",
+            "node": "Send Presence",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Save Context": {
+    "Send Presence": {
       "main": [
         [
           {
-            "node": "Send Presence",
+            "node": "IF Image Reply",
             "type": "main",
             "index": 0
           }
@@ -3437,18 +3658,25 @@
         ]
       ]
     },
-    "Send Presence": {
+    "IF Should React": {
       "main": [
         [
           {
-            "node": "IF Image Reply",
+            "node": "Send Reaction",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Outbound",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send Reaction1": {
+    "Send Reaction": {
       "main": [
         [
           {
@@ -3465,11 +3693,18 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "c9646036-00a6-43a9-9671-28a41711f851",
+  "versionId": "cec7b7a2-ce8e-41eb-b0c8-98d5bedf8cad",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "ffd8d87eee45b45d9d477dc15de2a876d3f5cca56f9cc124ffdf011b7dbd68ec"
   },
   "id": "DcZB3rMPujem4Z5E",
-  "tags": []
+  "tags": [
+    {
+      "updatedAt": "2026-04-29T11:36:20.056Z",
+      "createdAt": "2026-04-29T11:36:20.056Z",
+      "id": "dDB7zCsFzqJ1Zzov",
+      "name": "Chefin"
+    }
+  ]
 }

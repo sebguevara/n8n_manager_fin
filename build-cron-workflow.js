@@ -266,17 +266,17 @@ addNode('Process Due Recurring', 'n8n-nodes-base.postgres', {
 connect(rcLog, 'Process Due Recurring');
 
 addNode('Format Recurring', 'n8n-nodes-base.code', {
-    jsCode: `const items = $input.all().filter(i => i.json.transaction_id);
+    jsCode: `const items = $input.all().filter(i => i.json.out_transaction_id);
 const out = [];
 const fmt = n => Number(n||0).toLocaleString('es-AR');
 for (const it of items) {
   const j = it.json;
   out.push({ json: {
     job_name: 'recurring',
-    user_id: j.user_id, phone: j.phone,
+    user_id: j.out_user_id, phone: j.out_phone,
     instance: '${INSTANCE}',
-    remoteJid: j.phone + '@s.whatsapp.net',
-    replyText: \`🔁 Cargué tu gasto recurrente: $\${fmt(j.amount)} de \${j.category_name||'sin categoría'}\${j.description?' — '+j.description:''}\`
+    remoteJid: j.out_phone + '@s.whatsapp.net',
+    replyText: \`🔁 Cargué tu gasto recurrente: $\${fmt(j.out_amount)} de \${j.out_category_name||'sin categoría'}\${j.out_description?' — '+j.out_description:''}\`
   }});
 }
 return out;`

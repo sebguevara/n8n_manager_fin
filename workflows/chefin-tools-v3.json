@@ -4,8 +4,7 @@
   "nodes": [
     {
       "parameters": {
-        "inputSource": "jsonExample",
-        "jsonExample": "{\n  \"tool_name\": \"get_total\",\n  \"user_id\": \"00000000-0000-0000-0000-000000000000\",\n  \"params\": {\n    \"period\": \"this_month\",\n    \"type\": \"expense\"\n  }\n}"
+        "inputSource": "passthrough"
       },
       "id": "t001",
       "name": "When Called",
@@ -18,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const inp = $input.first().json;\nconst tool_name = inp.tool_name || inp.query?.tool_name || '';\nconst user_id = inp.user_id || inp.query?.user_id || '';\nlet params = inp.params || inp.query?.params || {};\nif (typeof params === 'string') {\n  try { params = JSON.parse(params); } catch { params = {}; }\n}\nif (!user_id) throw new Error('Missing user_id');\nif (!tool_name) throw new Error('Missing tool_name');\nreturn [{ json: { tool_name, user_id, params, params_json: JSON.stringify(params) } }];"
+        "jsCode": "const inp = $input.first().json;\nconst q = inp.query || {};\nconst merged = { ...q, ...inp };\n\nconst tool_name = merged.tool_name || '';\nconst user_id = merged.user_id || '';\nif (!user_id) throw new Error('Missing user_id');\nif (!tool_name) throw new Error('Missing tool_name');\n\n// 1) Try blob-style first\nlet params = merged.params;\nif (typeof params === 'string') {\n  try { params = JSON.parse(params); } catch { params = null; }\n}\nif (params && typeof params !== 'object') params = null;\n\n// 2) params_json legacy\nif (!params && typeof merged.params_json === 'string') {\n  try { params = JSON.parse(merged.params_json || '{}'); } catch { params = {}; }\n}\n\n// 3) Per-field flat (new design): collect everything except control fields\nif (!params) {\n  params = {};\n  const ctrl = new Set(['tool_name', 'user_id', 'query', 'params', 'params_json']);\n  for (const [k, v] of Object.entries(merged)) {\n    if (ctrl.has(k)) continue;\n    // Skip empty strings and 0 numbers (treated as \"field not provided\" defaults)\n    if (v === '' || v === null || v === undefined) continue;\n    if (typeof v === 'number' && v === 0 && k !== 'amount_delta' && k !== 'top_n') continue;\n    if (Array.isArray(v) && v.length === 0) continue;\n    if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) continue;\n    params[k] = v;\n  }\n}\n\nif (!params || typeof params !== 'object') params = {};\n\n// Strip placeholder fields\n['_', 'dummy', 'action'].forEach(k => {\n  if (Object.prototype.hasOwnProperty.call(params, k) && (params[k] === true || params[k] === 'run' || params[k] === 'execute')) {\n    delete params[k];\n  }\n});\n\nreturn [{ json: { tool_name, user_id, params, params_json: JSON.stringify(params) } }];"
       },
       "id": "t002",
       "name": "Normalize Input",
@@ -584,6 +583,86 @@
               },
               "renameOutput": true,
               "outputKey": "generate_chart"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r24",
+                    "operator": { "type": "string", "operation": "equals" },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "get_cashflow"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "get_cashflow"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r25",
+                    "operator": { "type": "string", "operation": "equals" },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "get_safe_to_spend"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "get_safe_to_spend"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r26",
+                    "operator": { "type": "string", "operation": "equals" },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "forecast_month_end"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "forecast_month_end"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r27",
+                    "operator": { "type": "string", "operation": "equals" },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "list_subscriptions"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "list_subscriptions"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r28",
+                    "operator": { "type": "string", "operation": "equals" },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "list_anomalies"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "list_anomalies"
             }
           ]
         },
@@ -604,9 +683,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM query_tx_dynamic($1::uuid, $2::jsonb, $3::int, $4::int);",
+        "query": "SELECT * FROM query_tx_dynamic(\n        $1::uuid,\n        $2::jsonb,\n        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 20),\n        COALESCE(NULLIF($2::jsonb->>'offset','')::int, 0)\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.params?.limit || 20 }},={{ $json.params?.offset || 0 }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t004",
@@ -678,9 +757,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM get_breakdown_dynamic($1::uuid, $2::text, $3::jsonb, $4::int);",
+        "query": "SELECT * FROM get_breakdown_dynamic(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'dimension',''), 'category'),\n        $2::jsonb,\n        COALESCE(NULLIF($2::jsonb->>'top_n','')::int, 10)\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.dimension || 'category' }},={{ $json.params_json }},={{ $json.params?.top_n || 10 }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t008",
@@ -715,9 +794,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM compare_periods($1::uuid, $2::text, $3::text, $4::text);",
+        "query": "SELECT * FROM compare_periods(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'period_a',''), 'this_month'),\n        COALESCE(NULLIF($2::jsonb->>'period_b',''), 'last_month'),\n        COALESCE(NULLIF($2::jsonb->>'type',''), 'expense')\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.period_a || 'this_month' }},={{ $json.params?.period_b || 'last_month' }},={{ $json.params?.type || 'expense' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t010",
@@ -752,9 +831,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM find_matching_tx_v2(\n        $1::uuid,\n        NULLIF($2,'')::text,\n        NULLIF($3,'')::date,\n        NULLIF($4,'')::date,\n        NULLIF($5,'')::date,\n        NULLIF($6,'')::numeric,\n        NULLIF($7,'')::numeric,\n        NULLIF($8,'')::numeric,\n        NULLIF($9,'')::text,\n        NULLIF($10,'')::text,\n        NULLIF($11,'')::text,\n        $12::int\n    );",
+        "query": "SELECT * FROM find_matching_tx_v2(\n        $1::uuid,\n        NULLIF($2::jsonb->>'description_contains','')::text,\n        NULLIF($2::jsonb->>'date','')::date,\n        NULLIF($2::jsonb->>'date_from','')::date,\n        NULLIF($2::jsonb->>'date_to','')::date,\n        NULLIF($2::jsonb->>'exact_amount','')::numeric,\n        NULLIF($2::jsonb->>'min_amount','')::numeric,\n        NULLIF($2::jsonb->>'max_amount','')::numeric,\n        NULLIF($2::jsonb->>'category','')::text,\n        NULLIF($2::jsonb->>'type','')::text,\n        NULLIF($2::jsonb->>'group_name','')::text,\n        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 20)\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.description_contains || '' }},={{ $json.params?.date || '' }},={{ $json.params?.date_from || '' }},={{ $json.params?.date_to || '' }},={{ $json.params?.exact_amount ?? '' }},={{ $json.params?.min_amount ?? '' }},={{ $json.params?.max_amount ?? '' }},={{ $json.params?.category || '' }},={{ $json.params?.type || '' }},={{ $json.params?.group_name || '' }},={{ $json.params?.limit || 20 }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t012",
@@ -789,9 +868,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM find_potential_duplicates($1::uuid, $2::int, $3::int);",
+        "query": "SELECT * FROM find_potential_duplicates(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'window_days','')::int, 7),\n        COALESCE(NULLIF($2::jsonb->>'min_repetitions','')::int, 2)\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.window_days || 7 }},={{ $json.params?.min_repetitions || 2 }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t014",
@@ -863,9 +942,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM bulk_delete_by_ids($1::uuid, $2::uuid[]);",
+        "query": "SELECT * FROM bulk_delete_by_ids(\n        $1::uuid,\n        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'ids'))::uuid[]\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ '{' + ($json.params?.ids || []).join(',') + '}' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t018",
@@ -900,9 +979,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM bulk_update_by_ids(\n        $1::uuid, $2::uuid[],\n        NULLIF($3,'')::uuid,\n        NULLIF($4,'')::date,\n        NULLIF($5,'')::uuid,\n        NULLIF($6,'')::numeric,\n        NULLIF($7,'')::boolean\n    );",
+        "query": "SELECT * FROM bulk_update_by_ids(\n        $1::uuid,\n        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'ids'))::uuid[],\n        NULLIF($2::jsonb->>'new_category_id','')::uuid,\n        NULLIF($2::jsonb->>'new_date','')::date,\n        NULLIF($2::jsonb->>'new_group_id','')::uuid,\n        NULLIF($2::jsonb->>'amount_delta','')::numeric,\n        NULLIF($2::jsonb->>'set_excluded','')::boolean\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ '{' + ($json.params?.ids || []).join(',') + '}' }},={{ $json.params?.new_category_id || '' }},={{ $json.params?.new_date || '' }},={{ $json.params?.new_group_id || '' }},={{ $json.params?.amount_delta ?? '' }},={{ $json.params?.set_excluded ?? '' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t020",
@@ -937,9 +1016,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH cat AS (\n        SELECT * FROM find_best_category(\n            $1::uuid,\n            COALESCE(NULLIF($3,''), NULLIF($2,'')),\n            COALESCE(NULLIF($8,''), 'expense')\n        )\n    ),\n    dup AS (\n        SELECT id, amount, description, transaction_date\n        FROM check_duplicate_tx($1::uuid, $4::numeric,\n            COALESCE(NULLIF($5,'')::date, CURRENT_DATE), 60)\n        WHERE NOT $9::boolean\n    ),\n    grp AS (\n        SELECT CASE WHEN NULLIF($7,'') IS NULL THEN NULL\n               ELSE upsert_group($1::uuid, $7, 'event') END AS gid\n    ),\n    pm AS (\n        SELECT id FROM payment_methods\n        WHERE user_id=$1::uuid AND normalize_text(name) % normalize_text(NULLIF($6,''))\n        ORDER BY similarity(normalize_text(name), normalize_text(COALESCE($6,''))) DESC\n        LIMIT 1\n    ),\n    ins AS (\n        INSERT INTO transactions (user_id, type, amount, description, category_id,\n            payment_method_id, group_id, transaction_date)\n        SELECT $1::uuid, COALESCE(NULLIF($8,''),'expense'), $4::numeric, NULLIF($2,''),\n               (SELECT category_id FROM cat),\n               (SELECT id FROM pm),\n               (SELECT gid FROM grp),\n               COALESCE(NULLIF($5,'')::date, CURRENT_DATE)\n        WHERE NOT EXISTS (SELECT 1 FROM dup)\n        RETURNING id, amount, description, transaction_date, category_id\n    )\n    SELECT\n        (SELECT id FROM ins) AS id,\n        (SELECT amount FROM ins) AS amount,\n        (SELECT description FROM ins) AS description,\n        (SELECT transaction_date FROM ins) AS transaction_date,\n        (SELECT c.name FROM categories c WHERE c.id=(SELECT category_id FROM ins)) AS category_name,\n        (SELECT c.emoji FROM categories c WHERE c.id=(SELECT category_id FROM ins)) AS category_emoji,\n        (SELECT category_id FROM cat) AS matched_category_id,\n        (SELECT category_name FROM cat) AS matched_category_name,\n        (SELECT score FROM cat) AS match_score,\n        (SELECT id FROM dup) AS duplicate_of_id,\n        (SELECT amount FROM dup) AS duplicate_of_amount,\n        (SELECT description FROM dup) AS duplicate_of_description;",
+        "query": "WITH p AS (SELECT $2::jsonb AS j),\n    cat AS (\n        SELECT\n            CASE\n                WHEN COALESCE(((SELECT j->>'create_category_if_missing' FROM p))::boolean, false)\n                THEN (SELECT category_id FROM resolve_or_create_category(\n                    $1::uuid,\n                    COALESCE(NULLIF((SELECT j->>'category_hint' FROM p),''), 'Otros'),\n                    COALESCE(NULLIF((SELECT j->>'type' FROM p),''), 'expense')\n                ))\n                ELSE (SELECT category_id FROM find_best_category(\n                    $1::uuid,\n                    COALESCE(NULLIF((SELECT j->>'category_hint' FROM p),''), NULLIF((SELECT j->>'description' FROM p),'')),\n                    COALESCE(NULLIF((SELECT j->>'type' FROM p),''), 'expense')\n                ))\n            END AS category_id,\n            CASE\n                WHEN COALESCE(((SELECT j->>'create_category_if_missing' FROM p))::boolean, false)\n                THEN (SELECT category_name FROM resolve_or_create_category(\n                    $1::uuid,\n                    COALESCE(NULLIF((SELECT j->>'category_hint' FROM p),''), 'Otros'),\n                    COALESCE(NULLIF((SELECT j->>'type' FROM p),''), 'expense')\n                ))\n                ELSE (SELECT category_name FROM find_best_category(\n                    $1::uuid,\n                    COALESCE(NULLIF((SELECT j->>'category_hint' FROM p),''), NULLIF((SELECT j->>'description' FROM p),'')),\n                    COALESCE(NULLIF((SELECT j->>'type' FROM p),''), 'expense')\n                ))\n            END AS category_name,\n            1::numeric AS score\n    ),\n    dup AS (\n        SELECT id, amount, description, transaction_date\n        FROM check_duplicate_tx(\n            $1::uuid,\n            ((SELECT j->>'amount' FROM p))::numeric,\n            COALESCE(NULLIF((SELECT j->>'date' FROM p),'')::date, CURRENT_DATE),\n            60\n        )\n        WHERE NOT COALESCE(((SELECT j->>'skip_dup_check' FROM p))::boolean, false)\n    ),\n    grp AS (\n        SELECT CASE\n            WHEN NULLIF((SELECT j->>'group_hint' FROM p),'') IS NULL THEN NULL\n            ELSE upsert_group($1::uuid, (SELECT j->>'group_hint' FROM p), 'event')\n        END AS gid\n    ),\n    pm AS (\n        SELECT id FROM payment_methods\n        WHERE user_id=$1::uuid\n          AND normalize_text(name) % normalize_text(COALESCE((SELECT j->>'payment_method_hint' FROM p), ''))\n        ORDER BY similarity(normalize_text(name), normalize_text(COALESCE((SELECT j->>'payment_method_hint' FROM p),''))) DESC\n        LIMIT 1\n    ),\n    ins AS (\n        INSERT INTO transactions (user_id, type, amount, description, category_id,\n            payment_method_id, group_id, transaction_date)\n        SELECT\n            $1::uuid,\n            COALESCE(NULLIF((SELECT j->>'type' FROM p),''),'expense'),\n            ((SELECT j->>'amount' FROM p))::numeric,\n            NULLIF((SELECT j->>'description' FROM p),''),\n            (SELECT category_id FROM cat),\n            (SELECT id FROM pm),\n            (SELECT gid FROM grp),\n            COALESCE(NULLIF((SELECT j->>'date' FROM p),'')::date, CURRENT_DATE)\n        WHERE NOT EXISTS (SELECT 1 FROM dup)\n        RETURNING id, amount, description, transaction_date, category_id\n    )\n    SELECT\n        (SELECT id FROM ins) AS id,\n        (SELECT amount FROM ins) AS amount,\n        (SELECT description FROM ins) AS description,\n        (SELECT transaction_date FROM ins) AS transaction_date,\n        (SELECT c.name FROM categories c WHERE c.id=(SELECT category_id FROM ins)) AS category_name,\n        (SELECT c.emoji FROM categories c WHERE c.id=(SELECT category_id FROM ins)) AS category_emoji,\n        (SELECT category_id FROM cat) AS matched_category_id,\n        (SELECT category_name FROM cat) AS matched_category_name,\n        (SELECT score FROM cat) AS match_score,\n        (SELECT id FROM dup) AS duplicate_of_id,\n        (SELECT amount FROM dup) AS duplicate_of_amount,\n        (SELECT description FROM dup) AS duplicate_of_description;",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.description || '' }},={{ $json.params?.category_hint || '' }},={{ Number($json.params?.amount || 0) }},={{ $json.params?.date || '' }},={{ $json.params?.payment_method_hint || '' }},={{ $json.params?.group_hint || '' }},={{ $json.params?.type || 'expense' }},={{ $json.params?.skip_dup_check ? 'true' : 'false' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t022",
@@ -974,9 +1053,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM update_tx(\n        $1::uuid, $2::uuid,\n        NULLIF($3,'')::date,\n        NULLIF($4,'')::numeric,\n        NULLIF($5,''),\n        NULLIF($6,'')::uuid\n    );",
+        "query": "SELECT * FROM update_tx(\n        $1::uuid,\n        ($2::jsonb->>'transaction_id')::uuid,\n        NULLIF($2::jsonb->>'new_date','')::date,\n        NULLIF($2::jsonb->>'new_amount','')::numeric,\n        NULLIF($2::jsonb->>'new_description',''),\n        NULLIF($2::jsonb->>'new_category_id','')::uuid\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.transaction_id || '' }},={{ $json.params?.new_date || '' }},={{ $json.params?.new_amount ?? '' }},={{ $json.params?.new_description || '' }},={{ $json.params?.new_category_id || '' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t024",
@@ -1011,9 +1090,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM bulk_delete_by_ids($1::uuid, ARRAY[$2::uuid]::uuid[]);",
+        "query": "SELECT * FROM bulk_delete_by_ids(\n        $1::uuid,\n        ARRAY[($2::jsonb->>'transaction_id')::uuid]::uuid[]\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.transaction_id || '' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t026",
@@ -1048,9 +1127,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM list_categories_with_counts($1::uuid, NULLIF($2,''), $3::boolean);",
+        "query": "SELECT * FROM list_categories_with_counts(\n        $1::uuid,\n        NULLIF($2::jsonb->>'type',''),\n        COALESCE(NULLIF($2::jsonb->>'include_excluded','')::boolean, false)\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.type || '' }},={{ $json.params?.include_excluded ? 'true' : 'false' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t028",
@@ -1159,9 +1238,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM set_budget($1::uuid, NULLIF($2,''), $3::numeric, $4::text);",
+        "query": "SELECT * FROM set_budget(\n        $1::uuid,\n        NULLIF($2::jsonb->>'category_hint',''),\n        ($2::jsonb->>'amount')::numeric,\n        COALESCE(NULLIF($2::jsonb->>'period',''), 'monthly')\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.category_hint || '' }},={{ Number($json.params?.amount || 0) }},={{ $json.params?.period || 'monthly' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t034",
@@ -1196,9 +1275,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT name, kind FROM expense_groups WHERE id = upsert_group($1::uuid, $2::text, $3::text);",
+        "query": "SELECT name, kind FROM expense_groups WHERE id = upsert_group(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'name',''), 'Sin nombre'),\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'event')\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.name || 'Sin nombre' }},={{ $json.params?.kind || 'event' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t036",
@@ -1233,9 +1312,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM toggle_category_exclusion($1::uuid, $2::text);",
+        "query": "SELECT * FROM toggle_category_exclusion(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'category_hint',''), '')\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.category_hint || '' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t038",
@@ -1270,9 +1349,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO recurring_transactions (user_id, type, amount, description, category_id,\n        frequency, start_date, is_active)\n     SELECT $1::uuid, 'expense', $2::numeric, NULLIF($3,''),\n            (SELECT category_id FROM find_best_category($1::uuid, COALESCE(NULLIF($3,''), NULLIF($4,'')), 'expense')),\n            $5::text,\n            COALESCE(NULLIF($6,'')::date, CURRENT_DATE),\n            TRUE\n     RETURNING id, amount, description, frequency, start_date;",
+        "query": "WITH p AS (SELECT $2::jsonb AS j)\n     INSERT INTO recurring_transactions (user_id, type, amount, description, category_id,\n        frequency, start_date, is_active)\n     SELECT $1::uuid,\n            'expense',\n            ((SELECT j->>'amount' FROM p))::numeric,\n            NULLIF((SELECT j->>'description' FROM p),''),\n            (SELECT category_id FROM find_best_category(\n                $1::uuid,\n                COALESCE(NULLIF((SELECT j->>'description' FROM p),''), NULLIF((SELECT j->>'category_hint' FROM p),'')),\n                'expense'\n            )),\n            COALESCE(NULLIF((SELECT j->>'frequency' FROM p),''), 'monthly'),\n            COALESCE(NULLIF((SELECT j->>'start_date' FROM p),'')::date, CURRENT_DATE),\n            TRUE\n     RETURNING id, amount, description, frequency, start_date;",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ Number($json.params?.amount || 0) }},={{ $json.params?.description || '' }},={{ $json.params?.category_hint || '' }},={{ $json.params?.frequency || 'monthly' }},={{ $json.params?.start_date || '' }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t040",
@@ -1307,9 +1386,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT remember_last_list($1::uuid, $2::text, $3::jsonb, $4::jsonb, $5::int);",
+        "query": "SELECT remember_last_list(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'transactions'),\n        COALESCE($2::jsonb->'items', '[]'::jsonb),\n        COALESCE($2::jsonb->'filters_applied', '{}'::jsonb),\n        COALESCE(NULLIF($2::jsonb->>'ttl_seconds','')::int, 600)\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.kind || 'transactions' }},={{ JSON.stringify($json.params?.items || []) }},={{ JSON.stringify($json.params?.filters_applied || {}) }},={{ $json.params?.ttl_seconds || 600 }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t042",
@@ -1381,9 +1460,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT set_conv_state($1::uuid, $2::text, $3::jsonb, $4::int);",
+        "query": "SELECT set_conv_state(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'state',''), ''),\n        COALESCE($2::jsonb->'context', '{}'::jsonb),\n        COALESCE(NULLIF($2::jsonb->>'ttl_seconds','')::int, 600)\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.state || '' }},={{ JSON.stringify($json.params?.context || {}) }},={{ $json.params?.ttl_seconds || 600 }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t046",
@@ -1455,9 +1534,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM get_breakdown_dynamic($1::uuid, $2::text, $3::jsonb, $4::int);",
+        "query": "SELECT * FROM get_breakdown_dynamic(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'dimension',''), 'category'),\n        $2::jsonb,\n        COALESCE(NULLIF($2::jsonb->>'top_n','')::int, 10)\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }},={{ $json.params?.dimension || 'category' }},={{ $json.params_json }},={{ $json.params?.top_n || 10 }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t050",
@@ -1478,7 +1557,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows = $input.all().map(i => i.json);\nconst params = $('Normalize Input').first().json.params || {};\nconst kind = params.kind || params.dimension || 'by_category';\nconst period = params.period || 'this_month';\nconst periodLabel = ({this_month:'este mes',last_month:'el mes pasado',this_week:'esta semana',this_year:'este año',today:'hoy',yesterday:'ayer',all:'en total'})[period] || period;\nif (!rows.length) {\n  return [{ json: { ok: true, tool: 'generate_chart', data: { has_data: false, caption: '📭 No tengo datos para ' + periodLabel + '.' } } }];\n}\nconst labels = rows.map(r => r.label);\nconst values = rows.map(r => Number(r.total));\nconst total = values.reduce((s,v) => s+v, 0);\nconst palette = ['#FF6B6B','#4ECDC4','#FFD93D','#6BCB77','#4D96FF','#9D4EDD','#FF9F1C','#2EC4B6','#E71D36','#7209B7','#3A86FF','#FB5607'];\nconst titleByKind = ({by_category:'Gastos por categoría',category:'Gastos por categoría',by_payment_method:'Gastos por método de pago',payment_method:'Gastos por método de pago',by_day:'Gastos diarios',day:'Gastos diarios',trend:'Tendencia mensual'})[kind] || 'Gastos';\nconst isPie = ['by_category','category','by_payment_method','payment_method'].includes(kind);\nconst chart = isPie\n  ? { type:'doughnut', data:{ labels, datasets:[{ data: values, backgroundColor: palette }] }, options:{ plugins:{ title:{display:true, text: titleByKind+' — '+periodLabel}, legend:{position:'right'} } } }\n  : { type:'bar', data:{ labels, datasets:[{ label:'Gasto', data: values, backgroundColor: palette[0] }] }, options:{ plugins:{ title:{display:true, text: titleByKind+' — '+periodLabel}, legend:{display:false} }, scales:{ y:{beginAtZero:true} } } };\nconst url = 'https://quickchart.io/chart?bkg=white&w=900&h=600&c=' + encodeURIComponent(JSON.stringify(chart));\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nreturn [{ json: { ok: true, tool: 'generate_chart', data: {\n  has_data: true, image_url: url,\n  caption: titleByKind + ' — ' + periodLabel + '\\nTotal: $' + fmt(total)\n} } }];"
+        "jsCode": "const rawRows = $input.all().map(i => i.json);\nconst params = $('Normalize Input').first().json.params || {};\nconst kind = params.kind || params.dimension || 'by_category';\nconst period = params.period || 'this_month';\nconst periodLabel = ({this_month:'este mes',last_month:'el mes pasado',this_week:'esta semana',this_year:'este año',today:'hoy',yesterday:'ayer',all:'en total'})[period] || period;\n// Filter rows with null/empty label or zero/null value — happens when there are no transactions\nconst rows = rawRows.filter(r => r && r.label && Number(r.total) > 0);\nif (!rows.length) {\n  return [{ json: { ok: true, tool: 'generate_chart', data: { has_data: false, caption: '📭 No tengo datos para graficar ' + periodLabel + '. Cargá algunos gastos primero.' } } }];\n}\nconst labels = rows.map(r => r.label);\nconst values = rows.map(r => Number(r.total));\nconst total = values.reduce((s,v) => s+v, 0);\nconst palette = ['#FF6B6B','#4ECDC4','#FFD93D','#6BCB77','#4D96FF','#9D4EDD','#FF9F1C','#2EC4B6','#E71D36','#7209B7','#3A86FF','#FB5607'];\nconst titleByKind = ({by_category:'Gastos por categoría',category:'Gastos por categoría',by_payment_method:'Gastos por método de pago',payment_method:'Gastos por método de pago',by_day:'Gastos diarios',day:'Gastos diarios',trend:'Tendencia mensual'})[kind] || 'Gastos';\nconst isPie = ['by_category','category','by_payment_method','payment_method'].includes(kind);\nconst chart = isPie\n  ? { type:'doughnut', data:{ labels, datasets:[{ data: values, backgroundColor: palette }] }, options:{ plugins:{ title:{display:true, text: titleByKind+' — '+periodLabel}, legend:{position:'right'} } } }\n  : { type:'bar', data:{ labels, datasets:[{ label:'Gasto', data: values, backgroundColor: palette[0] }] }, options:{ plugins:{ title:{display:true, text: titleByKind+' — '+periodLabel}, legend:{display:false} }, scales:{ y:{beginAtZero:true} } } };\nconst url = 'https://quickchart.io/chart?bkg=white&w=900&h=600&c=' + encodeURIComponent(JSON.stringify(chart));\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nreturn [{ json: { ok: true, tool: 'generate_chart', data: {\n  has_data: true, image_url: url,\n  caption: titleByKind + ' — ' + periodLabel + '\\nTotal: $' + fmt(total)\n} } }];"
       },
       "id": "t051",
       "name": "Fmt generate_chart",
@@ -1487,6 +1566,191 @@
       "position": [
         880,
         1960
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH p AS (SELECT $2::jsonb AS j),\n     b AS (\n       SELECT COALESCE(NULLIF((SELECT j->>'period' FROM p),''), 'this_month') AS period,\n              NULLIF((SELECT j->>'start_date' FROM p),'')::date AS p_start_in,\n              NULLIF((SELECT j->>'end_date' FROM p),'')::date   AS p_end_in\n     ),\n     dates AS (\n       SELECT\n         CASE b.period\n           WHEN 'today'      THEN CURRENT_DATE\n           WHEN 'yesterday'  THEN (CURRENT_DATE - 1)\n           WHEN 'this_week'  THEN DATE_TRUNC('week', CURRENT_DATE)::DATE\n           WHEN 'last_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '7 days')::DATE\n           WHEN 'this_month' THEN DATE_TRUNC('month', CURRENT_DATE)::DATE\n           WHEN 'last_month' THEN (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month')::DATE\n           WHEN 'this_year'  THEN DATE_TRUNC('year', CURRENT_DATE)::DATE\n           WHEN 'custom'     THEN COALESCE(b.p_start_in, DATE_TRUNC('month', CURRENT_DATE)::DATE)\n           ELSE DATE_TRUNC('month', CURRENT_DATE)::DATE\n         END AS p_start,\n         CASE b.period\n           WHEN 'today'      THEN CURRENT_DATE\n           WHEN 'yesterday'  THEN (CURRENT_DATE - 1)\n           WHEN 'this_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '7 days - 1 day')::DATE\n           WHEN 'last_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day')::DATE\n           WHEN 'this_month' THEN (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE\n           WHEN 'last_month' THEN (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 day')::DATE\n           WHEN 'this_year'  THEN (DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year - 1 day')::DATE\n           WHEN 'custom'     THEN COALESCE(b.p_end_in, CURRENT_DATE)\n           ELSE (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE\n         END AS p_end\n       FROM b\n     )\n     SELECT cf.*, (SELECT period FROM b) AS period\n     FROM dates d, get_cashflow($1::uuid, d.p_start, d.p_end) cf;",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t054",
+      "name": "PG get_cashflow",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2080
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const r = $input.first()?.json || {};\n  if (r.error || (typeof r.message === 'string' && r.message.toLowerCase().includes('error'))) {\n    return [{ json: { ok: false, tool: 'get_cashflow', error: String(r.error || r.message || 'SQL error') } }];\n  }\n  return [{ json: { ok: true, tool: 'get_cashflow', data: {\n    period: r.period || 'this_month',\n    has_income: !!r.has_income,\n    income: r.income !== null && r.income !== undefined ? Number(r.income) : null,\n    expenses: Number(r.expenses || 0),\n    net: r.net !== null && r.net !== undefined ? Number(r.net) : null,\n    days_in_period: Number(r.days_in_period || 0),\n    days_elapsed: Number(r.days_elapsed || 0),\n    days_remaining: Number(r.days_remaining || 0),\n    daily_burn_rate: Number(r.daily_burn_rate || 0)\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'get_cashflow', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t055",
+      "name": "Fmt get_cashflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2080
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM safe_to_spend($1::uuid);",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }}"
+        }
+      },
+      "id": "t056",
+      "name": "PG get_safe_to_spend",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const r = $input.first()?.json || {};\n  if (r.error) return [{ json: { ok: false, tool: 'get_safe_to_spend', error: String(r.error) } }];\n  return [{ json: { ok: true, tool: 'get_safe_to_spend', data: {\n    has_income: !!r.has_income,\n    income: r.income !== null && r.income !== undefined ? Number(r.income) : null,\n    spent: r.spent !== null && r.spent !== undefined ? Number(r.spent) : null,\n    remaining: r.remaining !== null && r.remaining !== undefined ? Number(r.remaining) : null,\n    days_remaining: r.days_remaining !== null && r.days_remaining !== undefined ? Number(r.days_remaining) : null,\n    safe_daily: r.safe_daily !== null && r.safe_daily !== undefined ? Number(r.safe_daily) : null\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'get_safe_to_spend', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t057",
+      "name": "Fmt get_safe_to_spend",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM forecast_month_end($1::uuid, COALESCE(NULLIF($2::jsonb->>'lookback_days','')::int, 14));",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t058",
+      "name": "PG forecast_month_end",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const r = $input.first()?.json || {};\n  if (r.error) return [{ json: { ok: false, tool: 'forecast_month_end', error: String(r.error) } }];\n  return [{ json: { ok: true, tool: 'forecast_month_end', data: {\n    has_data: !!r.has_data,\n    burn_rate_daily: Number(r.burn_rate_daily || 0),\n    spent_so_far: Number(r.spent_so_far || 0),\n    days_remaining: Number(r.days_remaining || 0),\n    forecast_total: Number(r.forecast_total || 0)\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'forecast_month_end', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t059",
+      "name": "Fmt forecast_month_end",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM detect_subscriptions($1::uuid, COALESCE(NULLIF($2::jsonb->>'lookback_days','')::int, 90));",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t060",
+      "name": "PG list_subscriptions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2440
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const rows = $input.all().map(i => i.json).filter(r => r && r.merchant_key);\n  const items = rows.map(r => ({\n    merchant_key: r.merchant_key,\n    description: r.sample_description || r.merchant_key,\n    category: r.category_name || null,\n    avg_amount: Number(r.avg_amount || 0),\n    occurrences: Number(r.occurrences || 0),\n    cadence_days: Number(r.cadence_days || 0),\n    cadence_label: r.cadence_label,\n    last_charge_date: r.last_charge_date,\n    next_estimated_date: r.next_estimated_date,\n    confidence: Number(r.confidence || 0)\n  }));\n  const monthly_total = items\n    .filter(i => i.cadence_days > 0)\n    .reduce((s,i) => s + (i.avg_amount * (30 / i.cadence_days)), 0);\n  return [{ json: { ok: true, tool: 'list_subscriptions', data: {\n    count: items.length,\n    monthly_estimated_total: Math.round(monthly_total * 100) / 100,\n    items\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_subscriptions', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t061",
+      "name": "Fmt list_subscriptions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH p AS (SELECT $2::jsonb AS j),\n     dates AS (\n       SELECT\n         CASE COALESCE(NULLIF((SELECT j->>'period' FROM p),''), 'this_month')\n           WHEN 'today'      THEN CURRENT_DATE\n           WHEN 'yesterday'  THEN (CURRENT_DATE - 1)\n           WHEN 'this_week'  THEN DATE_TRUNC('week', CURRENT_DATE)::DATE\n           WHEN 'last_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '7 days')::DATE\n           WHEN 'this_month' THEN DATE_TRUNC('month', CURRENT_DATE)::DATE\n           WHEN 'last_month' THEN (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month')::DATE\n           WHEN 'this_year'  THEN DATE_TRUNC('year', CURRENT_DATE)::DATE\n           WHEN 'custom'     THEN COALESCE(NULLIF((SELECT j->>'start_date' FROM p),'')::date, DATE_TRUNC('month', CURRENT_DATE)::DATE)\n           ELSE DATE_TRUNC('month', CURRENT_DATE)::DATE\n         END AS p_start,\n         CASE COALESCE(NULLIF((SELECT j->>'period' FROM p),''), 'this_month')\n           WHEN 'today'      THEN CURRENT_DATE\n           WHEN 'yesterday'  THEN (CURRENT_DATE - 1)\n           WHEN 'this_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '7 days - 1 day')::DATE\n           WHEN 'last_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day')::DATE\n           WHEN 'this_month' THEN LEAST((DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE, CURRENT_DATE)\n           WHEN 'last_month' THEN (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 day')::DATE\n           WHEN 'this_year'  THEN LEAST((DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year - 1 day')::DATE, CURRENT_DATE)\n           WHEN 'custom'     THEN COALESCE(NULLIF((SELECT j->>'end_date' FROM p),'')::date, CURRENT_DATE)\n           ELSE CURRENT_DATE\n         END AS p_end\n     )\n     SELECT a.* FROM dates d, list_anomalies($1::uuid, d.p_start, d.p_end) a\n     ORDER BY a.transaction_date DESC, a.amount DESC\n     LIMIT 20;",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t062",
+      "name": "PG list_anomalies",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2560
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const rows = $input.all().map(i => i.json).filter(r => r && r.transaction_id);\n  const items = rows.map(r => ({\n    id: r.transaction_id,\n    category: r.category_name || null,\n    amount: Number(r.amount || 0),\n    baseline: Number(r.baseline || 0),\n    multiplier: Number(r.multiplier || 0),\n    description: r.description || null,\n    date: r.transaction_date\n  }));\n  return [{ json: { ok: true, tool: 'list_anomalies', data: {\n    count: items.length,\n    items\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_anomalies', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t063",
+      "name": "Fmt list_anomalies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2560
       ]
     },
     {
@@ -1705,6 +1969,41 @@
         [
           {
             "node": "PG generate_chart",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG get_cashflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG get_safe_to_spend",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG forecast_month_end",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG list_subscriptions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG list_anomalies",
             "type": "main",
             "index": 0
           }
@@ -2244,6 +2543,56 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "PG get_cashflow": {
+      "main": [
+        [ { "node": "Fmt get_cashflow", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fmt get_cashflow": {
+      "main": [
+        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+      ]
+    },
+    "PG get_safe_to_spend": {
+      "main": [
+        [ { "node": "Fmt get_safe_to_spend", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fmt get_safe_to_spend": {
+      "main": [
+        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+      ]
+    },
+    "PG forecast_month_end": {
+      "main": [
+        [ { "node": "Fmt forecast_month_end", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fmt forecast_month_end": {
+      "main": [
+        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+      ]
+    },
+    "PG list_subscriptions": {
+      "main": [
+        [ { "node": "Fmt list_subscriptions", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fmt list_subscriptions": {
+      "main": [
+        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+      ]
+    },
+    "PG list_anomalies": {
+      "main": [
+        [ { "node": "Fmt list_anomalies", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fmt list_anomalies": {
+      "main": [
+        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
       ]
     },
     "Unknown Tool": {

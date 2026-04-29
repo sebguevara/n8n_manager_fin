@@ -99,7 +99,7 @@ connect('IF Allowed Phone', 'Switch Media Type');
 // IMAGE
 addNode('Download Image', 'n8n-nodes-base.httpRequest', {
     method: 'POST',
-    url: '=http://evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
+    url: '=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
     sendHeaders: true,
     headerParameters: { parameters: [{ name: 'apikey', value: `=${EVO_KEY}` }] },
     sendBody: true, specifyBody: 'json',
@@ -115,7 +115,7 @@ addNode('Vision OCR', 'n8n-nodes-base.httpRequest', {
     sendHeaders: true,
     headerParameters: { parameters: [{ name: 'Content-Type', value: 'application/json' }] },
     sendBody: true, specifyBody: 'json',
-    jsonBody: `={\n  "model": "gpt-4o-mini",\n  "response_format": {"type":"json_object"},\n  "temperature": 0.1, "max_tokens": 1500,\n  "messages": [\n    {"role":"system","content":"Sos un experto leyendo tickets argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. Si no es un comprobante, is_receipt=false. amount=TOTAL final."},\n    {"role":"user","content":[\n      {"type":"text","text":"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}"},\n      {"type":"image_url","image_url":{"url":"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}"}}\n    ]}\n  ]\n}`,
+    jsonBody: `={\n  "model": "gpt-4o-mini",\n  "response_format": {"type":"json_object"},\n  "temperature": 0.1, "max_tokens": 1500,\n  "messages": [\n    {"role":"system","content":"Sos un experto leyendo comprobantes argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. is_receipt=TRUE si la imagen muestra CUALQUIER transacción de plata: ticket de compra, recibo, factura, comprobante de transferencia (Mercado Pago, Banco, etc.), pago de servicio, voucher, captura de movimiento bancario. is_receipt=false SOLO si la imagen no tiene info financiera (selfie, paisaje, meme). amount=monto principal sin signos. category_hint para transferencias salientes='transferencias'."},\n    {"role":"user","content":[\n      {"type":"text","text":"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}"},\n      {"type":"image_url","image_url":{"url":"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}"}}\n    ]}\n  ]\n}`,
     options: {}
 }, 1320, -200, { tv: 4.2, creds: { openAiApi: OPENAI } });
 connect('Download Image', 'Vision OCR');
@@ -124,10 +124,12 @@ addNode('Receipt to Text', 'n8n-nodes-base.code', {
     jsCode: `const resp=$input.first().json;const ctx=$('Extract Fields').first().json;
 let payload;try{payload=JSON.parse(resp.choices?.[0]?.message?.content||'{}');}catch{payload={is_receipt:false,human_reply:'No pude leer el comprobante.'};}
 let syntheticText;
-if(payload.is_receipt && Number(payload.amount) > 0){
+// Trust amount over is_receipt flag — vision often marks transferencias as is_receipt:false but extracts the data perfectly
+const amount = Number(payload.amount || 0);
+if (amount > 0) {
   const dateOnly = payload.transaction_date_iso ? String(payload.transaction_date_iso).slice(0,10) : '';
   const desc = payload.description || (payload.merchant ? 'pago a '+payload.merchant : 'comprobante');
-  const parts = ['pagué', String(payload.amount), 'de', payload.category_hint||'otros'];
+  const parts = ['pagué', String(amount), 'de', payload.category_hint||'otros'];
   if(payload.payment_method_hint) parts.push('con', payload.payment_method_hint);
   if(dateOnly) parts.push('el', dateOnly);
   parts.push('—', desc);
@@ -140,7 +142,7 @@ connect('Vision OCR', 'Receipt to Text');
 // AUDIO
 addNode('Download Audio', 'n8n-nodes-base.httpRequest', {
     method: 'POST',
-    url: '=http://evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
+    url: '=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
     sendHeaders: true,
     headerParameters: { parameters: [{ name: 'apikey', value: `=${EVO_KEY}` }] },
     sendBody: true, specifyBody: 'json',
@@ -167,7 +169,7 @@ connect('Audio to Binary', 'Whisper Transcribe');
 // (full PDF bulk import flow can be added later if needed)
 addNode('Download PDF', 'n8n-nodes-base.httpRequest', {
     method: 'POST',
-    url: '=http://evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
+    url: '=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
     sendHeaders: true,
     headerParameters: { parameters: [{ name: 'apikey', value: `=${EVO_KEY}` }] },
     sendBody: true, specifyBody: 'json',
@@ -243,28 +245,40 @@ addNode('Merge Ctx', 'n8n-nodes-base.set', {
 }, 2640, 0, { tv: 3.4 });
 connect('Get Conv State', 'Merge Ctx');
 
-// Dedup with atomic INCR (the fix from the previous session)
-addNode('Mark Processed', 'n8n-nodes-base.redis', {
-    operation: 'incr', key: '=processed:{{ $json.messageId }}',
-    expire: true, ttl: 3600, propertyName: 'procCount', options: {}
-}, 2860, 0, { tv: 1, creds: { redis: REDIS } });
-connect('Merge Ctx', 'Mark Processed');
+// Dedup: read existing key, branch on empty (first time) vs set (already processed).
+addNode('Redis Check', 'n8n-nodes-base.redis', {
+    operation: 'get', propertyName: 'alreadyProcessed',
+    key: '=processed:{{ $json.messageId }}', options: {}
+}, 2860, 0, { tv: 1, creds: { redis: REDIS }, always: true });
+connect('Merge Ctx', 'Redis Check');
 
 addNode('IF First Time', 'n8n-nodes-base.if', {
-    conditions: cond('and', [{
-        id: 'c1', operator: { type: 'number', operation: 'equals' },
-        leftValue: '={{ Number($json.procCount) }}', rightValue: 1
-    }]), options: {}
+    conditions: {
+        options: { caseSensitive: true, typeValidation: 'loose', version: 1 },
+        combinator: 'and',
+        conditions: [{
+            id: 'c1', operator: { type: 'string', operation: 'empty' },
+            leftValue: '={{ $json.alreadyProcessed }}', rightValue: ''
+        }]
+    },
+    options: {}
 }, 3080, 0);
-connect('Mark Processed', 'IF First Time');
+connect('Redis Check', 'IF First Time');
+
+// Mark processed (set) only when first time
+addNode('Mark Processed', 'n8n-nodes-base.redis', {
+    operation: 'set', key: '=processed:{{ $json.messageId }}',
+    value: '1', expire: true, ttl: 3600
+}, 3300, -100, { tv: 1, creds: { redis: REDIS } });
+connect('IF First Time', 'Mark Processed', 0);
 
 // Buffer + Lock + Wait + Concat (debounce)
 addNode('Buffer Push', 'n8n-nodes-base.redis', {
     operation: 'push',
     list: "=buffer:{{ $('Merge Ctx').first().json.phone }}",
     messageData: "={{ $('Merge Ctx').first().json.text }}", tail: true
-}, 3300, 0, { tv: 1, creds: { redis: REDIS } });
-connect('IF First Time', 'Buffer Push', 0);
+}, 3520, -100, { tv: 1, creds: { redis: REDIS } });
+connect('Mark Processed', 'Buffer Push');
 
 addNode('Lock Token', 'n8n-nodes-base.set', {
     assignments: { assignments: [
@@ -339,13 +353,41 @@ const SYSTEM_PROMPT = `=Sos **Chefin**, asistente conversacional experto en fina
 Resolvés CUALQUIER duda del usuario sobre sus finanzas usando las tools disponibles. Podés encadenar varias tools antes de responder. Sos riguroso con datos destructivos: nunca borrás ni editás sin confirmación cuando hay ambigüedad o son varios items.
 
 # TOOLS DISPONIBLES
-Cada tool toma JSON; consultá las descripciones de cada una para entender los parámetros. Algunas reglas globales:
-- \`user_id\` se inyecta automáticamente — NO lo pongas en \`params\`.
+Cada tool tiene **campos directos** (no un blob \`params\`). Llená cada campo con su tipo correspondiente cuando llamás la tool:
+
+- Cada parámetro se ve como un campo individual (amount, description, period, etc).
+- \`user_id\` se inyecta automáticamente — no lo pongas.
+- **EXTRAÉ los valores del mensaje del usuario**. Si el mensaje dice "pagué 3300 de transferencias el 27/4", llená \`amount=3300\`, \`category_hint="transferencias"\`, \`date="2026-04-27"\`.
+- Si un campo es opcional y no aplica, dejalo en su default. No es necesario escribir cada campo.
+- Para tools sin parámetros (\`get_last_list\`, \`clear_conv_state\`, \`list_groups\`, \`list_budgets\`), llamalas sin args.
 - Períodos válidos: today | yesterday | this_week | this_month | last_month | this_year | all | custom.
 - Para búsquedas con DATOS ESPECÍFICOS (monto exacto, fecha exacta, descripción concreta), el período default es \`all\` salvo que el usuario diga lo contrario.
 - Para totales/resúmenes sin tiempo especificado, default \`this_month\`.
 
-# ESTRATEGIA DE RAZONAMIENTO
+"># ESTRATEGIA DE RAZONAMIENTO
+
+## REGLA OBLIGATORIA: PERÍODO EXPLÍCITO
+**Antes de CUALQUIER consulta de información (charts, totales, breakdowns, listas, comparativas, búsquedas)**, el período DEBE estar claro. Si el usuario NO menciona explícitamente un período, **PREGUNTÁ ANTES de llamar tools**:
+
+✅ Mensaje del usuario tiene período explícito → usá ese, no preguntes:
+   - "este mes", "mes pasado", "esta semana", "hoy", "ayer", "este año", "todo", "histórico"
+   - "del 1 al 15 de abril", "entre el 5 y el 10", "desde abril", "hasta el 20", "en marzo"
+   - "los últimos 7 días", "últimos 3 meses"
+
+❌ Mensaje sin período → PREGUNTÁ:
+   - "haceme un gráfico" → "¿De qué período querés el gráfico? (hoy, esta semana, este mes, un rango específico, desde una fecha, etc.)"
+   - "cuánto gasté" → "¿De qué período? Decime hoy, este mes, una fecha, un rango..."
+   - "mostrame los movs" → "¿De qué período te los muestro?"
+   - "en qué gasté más" → "¿En qué período querés ver el desglose?"
+
+Sin período NO LLAMÁS NINGUNA TOOL DE LECTURA. Es regla dura, no la rompas.
+
+## REGLA GENERAL: encadená tools como un humano lo haría
+- ANTES de generar charts/reportes/comparativas → verificá primero que haya data con \`get_total\` o \`query_transactions\`. No charts vacíos.
+- ANTES de borrar/editar por hint → \`find_transactions\` primero, mostrar al usuario, confirmar.
+- ANTES de bulk_delete por criterio → \`bulk_preview\` siempre.
+- DESPUÉS de mostrar una lista de transacciones → \`remember_last_list\` para deícticos.
+- Si una tool retorna empty/has_data:false → adapta tu respuesta, NO sigas como si tuvieras datos.
 
 ## Para CONSULTAS (lectura)
 1. Si el usuario menciona texto deíctico ("esos", "el primero", "los de 3300 que mostraste") → llamá \`get_last_list\` PRIMERO.
@@ -357,19 +399,75 @@ Cada tool toma JSON; consultá las descripciones de cada una para entender los p
 7. Después de mostrar una lista de transacciones (>1 item), llamá \`remember_last_list\` con sus ids para resolver referencias deícticas en el siguiente turno.
 
 ## Para REGISTRO (gasto/ingreso nuevo)
-- Llamá \`log_transaction\`. Si la tool devuelve \`needs_confirmation: 'duplicate'\` → preguntá al usuario si quiere registrar de todas formas (y si dice sí, volvés a llamar con \`skip_dup_check: true\`).
+
+### REGLA DE CATEGORÍA (CRÍTICA)
+- NO existe la categoría "transferencias". Eso es método de pago, NO categoría.
+- Cuando el usuario manda algo donde la categoría es **ambigua** (ej. transferencia, "pagué 3000 algo", "te envié plata", recibí transferencia, etc.), **NO la registres todavía**:
+  1. Llamá \`set_conv_state\` con \`state="awaiting_category"\` y \`context\` = \`{amount, description, date, payment_method_hint, type, group_hint}\` (todos los datos que ya tenés del mensaje).
+  2. Reply al usuario: "¿En qué categoría querés guardar este \\\${tipo} de $X? Decime el nombre (puede ser una nueva, ej. salidas, regalos, etc.) o respondé 'otros' si no aplica a ninguna específica."
+  3. Esperá la respuesta.
+- Cuando el usuario responde con la categoría:
+  1. Si está en \`convState="awaiting_category"\` con datos pendientes en \`convContext\`, recuperalos.
+  2. Llamá \`log_transaction\` con TODOS los campos pendientes + \`category_hint=<lo que dijo>\` + \`create_category_if_missing=true\` (esto crea la categoría si no existe).
+  3. Llamá \`clear_conv_state\`.
+  4. Confirmá: "✅ Anotado: $X en \\\${categoria} \\\${descripción}".
+
+### Cuándo SÍ registrar directo (sin preguntar categoría)
+- Mensaje claro tipo "2500 café" → category_hint="café" (existe), no necesita preguntar.
+- "30k nafta" → "transporte" (clarísimo).
+- "compré supermercado 12000" → "supermercado".
+- En estos casos, \`create_category_if_missing=false\` (no querés crear duplicados por typo del LLM).
+
+### Si log_transaction devuelve duplicado
+- \`needs_confirmation: 'duplicate'\` → preguntá si registra igual. Si dice sí, volvés con \`skip_dup_check: true\`.
 
 ## Para BORRAR / EDITAR
-- 1 transacción específica con monto+fecha exactos:
-  1. \`find_transactions\` para obtener candidatos con sus ids.
-  2. Si devuelve UN solo match → ejecutás \`delete_transaction\` o \`update_transaction\` directo.
-  3. Si devuelve VARIOS matches → mostrás la lista numerada al usuario, llamás \`remember_last_list\`, pedís que aclare cuál.
-- "el último" (sin específicos) → \`query_transactions\` ordenado por date_desc + límite 1.
-- BULK delete por criterio ("borrá todos los café del mes pasado"):
-  1. \`bulk_preview\` con los filtros para obtener count + sample + ids.
-  2. Mostrás al usuario: "Voy a borrar N gastos por $X. ¿Confirmás?". Llamás \`set_conv_state\` con state='awaiting_bulk_delete' y context={ids:[...]}.
-  3. Cuando responda "sí" → \`bulk_delete\` con esos ids exactos. Llamás \`clear_conv_state\`.
-- "Eliminá los gastos repetidos" → \`find_duplicates\` → mostrás los clusters → confirmás → \`bulk_delete\` con los ids elegidos.
+
+### 🚨 REGLA UNIVERSAL DE CONFIRMACIÓN (CRÍTICA)
+
+Cuando vas a pedir confirmación al usuario para borrar/editar (ej. "¿confirmás que los elimino?"), **EN EL MISMO TURNO** tenés que:
+
+1. **Obtener los UUIDs reales** llamando \`find_transactions\` o \`query_transactions\` con los filtros apropiados.
+2. **Guardar esos UUIDs en \`set_conv_state\`** con \`state="awaiting_bulk_delete"\` (o \`awaiting_bulk_update\`) y \`context={ids: ["uuid_real_1", "uuid_real_2", ...]}\`. Los UUIDs deben ser los QUE TE DEVOLVIERON las tools, NUNCA inventes.
+3. Recién entonces mostrás la lista al usuario y preguntás "¿confirmás?".
+
+Cuando el usuario responde "sí/dale/ok/confirmo/hacelo":
+1. Leés \`convContext.ids\` que ya tenés.
+2. Llamás \`bulk_delete({ids: convContext.ids})\` con esos UUIDs reales.
+3. Llamás \`clear_conv_state\`.
+4. Confirmás al usuario.
+
+🚨 **NUNCA INVENTES UUIDs**. Strings como "uuid1", "uuid_de_cafe", "abc-123" están PROHIBIDOS. Si no tenés UUIDs reales, primero llamá una tool de búsqueda.
+
+### Casos específicos
+
+- **1 transacción con monto+fecha exactos**:
+  1. \`find_transactions\` → obtenés candidatos con sus UUIDs.
+  2. Si UN match → ejecutás \`delete_transaction\` directo (no hace falta confirmación).
+  3. Si VARIOS matches → mostrás lista numerada + \`set_conv_state\` con state="awaiting_bulk_delete" y context.ids con esos UUIDs reales + pedís cuál(es).
+
+- **"el último" / "los últimos N"** → \`query_transactions\` con \`sort=date_desc, limit=N\` → guardás los UUIDs en conv_state → confirmás → bulk_delete.
+
+- **BULK por criterio ("todos los cafés del mes pasado")** → \`bulk_preview\` → guardás ids del preview en conv_state → confirmás → bulk_delete.
+
+- **"Los repetidos"** → \`find_duplicates\` → guardás transaction_ids del cluster en conv_state → confirmás → bulk_delete.
+
+EJEMPLO COMPLETO del flujo "borrá los últimos 2 cafés":
+
+Turno 1 — Usuario: "podés borrar los últimos 2 cafés"
+- Tool: \`find_transactions({description_contains:"café", sort:"date_desc", limit:2})\` → devuelve [{id:"a1b2-real-uuid", date:"2026-04-29",...}, {id:"c3d4-real-uuid", date:"2026-04-28",...}]
+- Tool: \`set_conv_state({state:"awaiting_bulk_delete", context:{ids:["a1b2-real-uuid","c3d4-real-uuid"], action:"delete"}, ttl_seconds:300})\`
+- Reply: "Voy a borrar 2 cafés:\\n1. 2026-04-29 · 🍽️ comida · $2.000\\n2. 2026-04-28 · 🍽️ comida · $2.000\\n¿Confirmás? (sí/no)" — should_react:false.
+
+Turno 2 — Usuario: "sí, hacelo"
+- convState="awaiting_bulk_delete", convContext.ids=["a1b2-real-uuid","c3d4-real-uuid"]
+- Tool: \`bulk_delete({ids:["a1b2-real-uuid","c3d4-real-uuid"]})\` — usás los IDs del context, NO inventes.
+- Tool: \`clear_conv_state()\`
+- Reply: "🗑️ Borré 2 cafés por $4.000. Te quedan 2 movimientos en abril." — should_react:true, reaction_emoji:"🗑️".
+
+Turno 2 alternativo — Usuario: "no, dejá"
+- Tool: \`clear_conv_state()\`
+- Reply: "👍 Listo, no borré nada."
 
 ## Para CHARLA / FECHAS / IDENTIDAD
 - "qué fecha es hoy?" → respondé directo desde el contexto, SIN tools.
@@ -377,7 +475,22 @@ Cada tool toma JSON; consultá las descripciones de cada una para entender los p
 - "ayuda / qué podés hacer" → enumerá brevemente: registrar, consultar, borrar, editar, gráficos, presupuestos, recurrentes, reportes.
 
 ## Para GRÁFICOS
-- "gráfico de gastos / torta / por categoría" → \`generate_chart\` con dimension. Devolverá image_url + caption.
+**REGLA**: ANTES de llamar \`generate_chart\`, **siempre** verificá que haya datos:
+1. Llamá \`get_total\` con el mismo período/tipo que el usuario pidió.
+2. Si \`total === 0\` o \`count === 0\` → NO generes el gráfico. Reply: "📭 No tenés gastos cargados \\\${periodo} para graficar. Cargá algunos primero."
+3. Si hay datos → llamá \`generate_chart\` con la dimensión apropiada.
+4. Cuando \`generate_chart\` retorna \`has_data: false\` (chequeo redundante) → idéntica respuesta sin imagen.
+5. Cuando hay imagen → reply MUY corto (caption + emoji), reply_kind="image", image_url. El URL NO va en reply_text — solo en image_url.
+
+Ejemplo:
+- Usuario: "haceme un gráfico de mis gastos"
+- Agente:
+  1. \`get_total({period:"this_month", type:"expense"})\` → \`{total: 0, count: 0}\`
+  2. Reply: "📭 No tenés gastos este mes para graficar. Cargá algunos y volvé a pedirlo." (sin tools de chart)
+- Si total>0:
+  1. \`get_total\` → \`{total: 11900, count: 4}\`
+  2. \`generate_chart({dimension:"category", period:"this_month"})\` → \`{has_data:true, image_url:..., caption:...}\`
+  3. Reply: \`{reply_text: "📈 Gastos por categoría — este mes", reply_kind:"image", image_url:"<url>", should_react:true, reaction_emoji:"📈"}\`. **NO embebas el URL en reply_text**, va separado.
 
 # ESTILO DE RESPUESTA (FORMATO FINAL)
 SIEMPRE devolvé tu respuesta como JSON con esta estructura. Es la ÚNICA forma de responder al usuario:
@@ -425,10 +538,35 @@ Cuando el usuario contesta "sí/dale/ok" y hay un \`convState\` activo → tomá
 
 # EJEMPLOS DE RAZONAMIENTO
 
-**Usuario**: "Mostrame todos mis movimientos"
-- Tool: \`query_transactions({"period":"all","limit":20})\` → devuelve N items.
+**Usuario**: "haceme un gráfico de mis gastos" (SIN período)
+- NO llames generate_chart todavía.
+- Reply: "📊 ¿De qué período querés el gráfico? Decime hoy, esta semana, este mes, un rango (ej. del 1 al 15 de abril), desde una fecha, etc."
+- \`should_react: false\`. Esperá la respuesta.
+
+**Usuario** responde: "este mes"
+- Ahora sí: \`get_total({period:"this_month",type:"expense"})\` para verificar data.
+- Si total=0: "📭 No tenés gastos cargados este mes para graficar. Cargá algunos y volvé a pedirlo."
+- Si total>0: \`generate_chart({dimension:"category", period:"this_month"})\` y devolvés image_url.
+
+**Usuario**: "Mostrame mis movimientos" (SIN período)
+- NO llames query_transactions todavía.
+- Reply: "📅 ¿De qué período te muestro? (hoy, este mes, un rango, etc.)"
+
+**Usuario**: "Mostrame mis movimientos del mes pasado" (CON período)
+- Período explícito = last_month. Procedé directo:
+- Tool: \`query_transactions({"period":"last_month","limit":20})\` → devuelve N items.
 - Si N>0: \`remember_last_list({"kind":"transactions","items":[{position:1,id:..,...}]})\` con los ids.
 - Reply: lista numerada con los items + breve resumen del total.
+
+**Usuario**: "qué gasté el 15 de abril" (CON fecha específica)
+- Período = custom con start_date=2026-04-15, end_date=2026-04-15.
+- Tool: \`query_transactions({"period":"custom","start_date":"2026-04-15","end_date":"2026-04-15"})\`.
+
+**Usuario**: "del 1 al 15 de abril" (CON rango)
+- \`{period:"custom","start_date":"2026-04-01","end_date":"2026-04-15"}\`.
+
+**Usuario**: "Mostrame todos mis movimientos" (CON "todos")
+- Período = all. \`query_transactions({"period":"all","limit":20})\`.
 
 **Usuario**: "borrá los 3300 del 27 de abril"
 - Tool: \`find_transactions({"exact_amount":3300,"date":"2026-04-27"})\` → devuelve 3 matches.
@@ -472,9 +610,27 @@ NUNCA borres "el último" cuando el usuario claramente identificó un grupo (tra
 - Reply: "Listo, lo cambié a $5.000,00." con \`should_react: true, reaction_emoji: "✏️"\`.
 
 **Usuario**: "tomé 2500 de café"
-- Tool: \`log_transaction({"amount":2500,"description":"café","category_hint":"comida","type":"expense"})\`.
+- Tool: \`log_transaction(amount=2500, description="café", category_hint="café", type="expense")\` — categoría clarísima, registra directo.
 - Si retorna \`needs_confirmation:duplicate\` → preguntá si registra igual.
 - Si \`inserted:true\` → reply confirmando + \`should_react: true, reaction_emoji: "✅"\`.
+
+**Usuario** (manda comprobante de transferencia $3.300 a Maximiliano):
+- Mensaje sintetizado: "pagué 3300 con transferencia el 2026-04-27 — Transferencia a Maximiliano"
+- Categoría AMBIGUA → NO registres directo.
+- Tool: \`set_conv_state(state="awaiting_category", context={amount:3300, description:"Transferencia a Maximiliano", date:"2026-04-27", payment_method_hint:"transferencia", type:"expense"}, ttl_seconds=600)\`
+- Reply: "💸 Detecté una transferencia de $3.300 a Maximiliano del 27/04. ¿En qué categoría la guardo? Decime el nombre (puede ser nueva, ej. 'familia', 'préstamos', 'salidas') o 'otros' si no aplica."
+- \`should_react: false\`.
+
+**Usuario** responde: "ponelo en familia"
+- convState es "awaiting_category" con context.
+- Tool: \`log_transaction(amount=3300, description="Transferencia a Maximiliano", date="2026-04-27", payment_method_hint="transferencia", type="expense", category_hint="familia", create_category_if_missing=true)\`
+- Tool: \`clear_conv_state()\`
+- Reply: "✅ Anotado: $3.300 en Familia — Transferencia a Maximiliano · 27/04". \`should_react: true, reaction_emoji: "✅"\`.
+
+**Usuario** responde: "otros"
+- Tool: \`log_transaction(...mismos campos..., category_hint="otros", create_category_if_missing=false)\`
+- Tool: \`clear_conv_state()\`
+- Reply confirmando.
 
 **Usuario**: "gracias!"
 - Sin tools. Reply breve. \`should_react: false\`.
@@ -488,8 +644,9 @@ NUNCA borres "el último" cuando el usuario claramente identificó un grupo (tra
 
 # REGLAS FINALES
 - NUNCA inventes datos. Si no tenés certeza, llamá una tool o pedí aclaración.
-- NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.
-- NUNCA mostrás UUIDs al usuario.
+- 🚨 **NUNCA inventes UUIDs**. Strings como "uuid1", "uuid_real", "abc-123-fake" están ABSOLUTAMENTE PROHIBIDOS. Solo usás los UUIDs que te devuelven las tools, exactamente como vinieron.
+- 🚨 **CONFIRMACIÓN = SIEMPRE GUARDAR IDs**: si vas a pedir "¿confirmás?", primero buscás los UUIDs reales con find_transactions/query_transactions/bulk_preview, después los guardás en \`set_conv_state\` con \`context.ids=[<uuids reales>]\`, recién después preguntás. Sin esto, cuando el usuario diga "sí" no vas a tener los UUIDs y todo se rompe.
+- NUNCA mostrás UUIDs al usuario (son internos).
 - Si una tool devuelve \`ok: false\`, leé el error y avisás al usuario en términos amables.
 - Sos breve, directo y cálido. Nada de párrafos largos para preguntas simples.
 - Si el usuario hace varias preguntas en un mismo turno, respondelas todas en UN solo mensaje (jamás mandés 2 mensajes para una pregunta).
@@ -525,102 +682,245 @@ addNode('Reply Schema', '@n8n/n8n-nodes-langchain.outputParserStructured', {
 // =========================================================================
 // TOOL NODES (each calls the sub-workflow with the right tool_name)
 // =========================================================================
+// Each tool exposes its own typed fields directly to the LLM via individual
+// $fromAI calls. The LLM fills each field with the correct type — no JSON
+// string construction needed. Sub-workflow Normalize Input bundles them into
+// the `params` object based on `tool_name`.
+//
+// Field shape: { name, desc, type, default? }
+//   type: 'string'|'number'|'boolean'|'json'   (json = nested object/array)
+//   default: provided when LLM omits → also makes Zod treat as optional
+
 const TOOL_DEFS = [
     {
         name: 'query_transactions',
-        description: 'Lista transacciones con filtros y paginación. Úsala para "mostrame los movs", "los últimos", "todos los gastos del mes". Filtros opcionales: period, category, description_contains, exact_amount, min_amount, max_amount, type (expense/income/both), group_name, payment_method, sort (date_desc default). Devuelve items con id, date, amount, description, category, emoji.'
+        description: 'Lista transacciones con filtros y paginación. Úsala para "mostrame los movs", "los últimos", "todos los gastos del mes".',
+        fields: [
+            { name: 'period', desc: 'today|yesterday|this_week|this_month|last_month|this_year|all|custom. Default this_month si no especifican; all si pidieron datos específicos por monto/fecha.', type: 'string', default: 'this_month' },
+            { name: 'start_date', desc: 'YYYY-MM-DD (solo si period=custom)', type: 'string', default: '' },
+            { name: 'end_date', desc: 'YYYY-MM-DD (solo si period=custom)', type: 'string', default: '' },
+            { name: 'category', desc: 'Filtro por categoría', type: 'string', default: '' },
+            { name: 'description_contains', desc: 'Busca texto en la descripción. SOLO si el usuario menciona texto explícito (ej. "café", "uber").', type: 'string', default: '' },
+            { name: 'type', desc: 'expense|income|both', type: 'string', default: 'both' },
+            { name: 'group_name', desc: 'Nombre de grupo/viaje', type: 'string', default: '' },
+            { name: 'payment_method', desc: 'Método de pago', type: 'string', default: '' },
+            { name: 'exact_amount', desc: 'Monto exacto', type: 'number', default: 0 },
+            { name: 'min_amount', desc: 'Monto mínimo', type: 'number', default: 0 },
+            { name: 'max_amount', desc: 'Monto máximo', type: 'number', default: 0 },
+            { name: 'sort', desc: 'date_desc|date_asc|amount_desc|amount_asc', type: 'string', default: 'date_desc' },
+            { name: 'limit', desc: 'Cantidad de resultados', type: 'number', default: 20 },
+            { name: 'offset', desc: 'Paginación offset', type: 'number', default: 0 }
+        ]
     },
     {
         name: 'get_total',
-        description: 'Total y count de gastos/ingresos en un período. Para "cuánto gasté", "total del mes", "cuánto en comida". Filtros: period (default this_month), type (default expense), category, group_name.'
+        description: 'Total y count de gastos/ingresos en un período. Para "cuánto gasté", "total del mes", "cuánto en comida".',
+        fields: [
+            { name: 'period', desc: 'today|yesterday|this_week|this_month|last_month|this_year|all|custom', type: 'string', default: 'this_month' },
+            { name: 'type', desc: 'expense|income|both', type: 'string', default: 'expense' },
+            { name: 'category', desc: 'Filtro por categoría', type: 'string', default: '' },
+            { name: 'group_name', desc: 'Filtro por grupo', type: 'string', default: '' }
+        ]
     },
     {
         name: 'get_breakdown',
-        description: 'Desglose agrupado por dimensión. Para "en qué gasté más", "por categoría", "por método de pago", "por día". Params: dimension (category|day|week|month|payment_method|group), period (default this_month), type (default expense), top_n (default 10).'
+        description: 'Desglose agrupado por dimensión. Para "en qué gasté más", "por categoría", "por día".',
+        fields: [
+            { name: 'dimension', desc: 'category|day|week|month|payment_method|group', type: 'string', default: 'category' },
+            { name: 'period', desc: 'today|yesterday|this_week|this_month|last_month|this_year|all', type: 'string', default: 'this_month' },
+            { name: 'type', desc: 'expense|income', type: 'string', default: 'expense' },
+            { name: 'top_n', desc: 'Top N filas', type: 'number', default: 10 }
+        ]
     },
     {
         name: 'compare_periods',
-        description: 'Compara totales entre dos períodos. Para "este mes vs el pasado", "estoy gastando más que antes". Params: period_a, period_b (mismos enums), type (expense/income).'
+        description: 'Compara totales entre dos períodos. Para "este mes vs el pasado".',
+        fields: [
+            { name: 'period_a', desc: 'Período A', type: 'string', default: 'this_month' },
+            { name: 'period_b', desc: 'Período B', type: 'string', default: 'last_month' },
+            { name: 'type', desc: 'expense|income', type: 'string', default: 'expense' }
+        ]
     },
     {
         name: 'find_transactions',
-        description: 'Busca transacciones específicas para luego borrarlas/editarlas. Devuelve TODAS las que matchean con score y match_reasons. Filtros determinísticos AND: exact_amount, date, date_from, date_to, min_amount, max_amount, type. Filtros fuzzy (rankean): description_contains, category, group_name. Llamá esta antes de cualquier delete/update por hint.'
+        description: 'Busca transacciones específicas para luego borrarlas/editarlas. Devuelve TODAS las matches con score. Llamá ANTES de cualquier delete/update por hint.',
+        fields: [
+            { name: 'description_contains', desc: 'Texto a buscar en descripción', type: 'string', default: '' },
+            { name: 'exact_amount', desc: 'Monto exacto', type: 'number', default: 0 },
+            { name: 'min_amount', desc: 'Monto mínimo', type: 'number', default: 0 },
+            { name: 'max_amount', desc: 'Monto máximo', type: 'number', default: 0 },
+            { name: 'date', desc: 'Fecha exacta YYYY-MM-DD', type: 'string', default: '' },
+            { name: 'date_from', desc: 'Desde fecha YYYY-MM-DD', type: 'string', default: '' },
+            { name: 'date_to', desc: 'Hasta fecha YYYY-MM-DD', type: 'string', default: '' },
+            { name: 'category', desc: 'Categoría', type: 'string', default: '' },
+            { name: 'type', desc: 'expense|income', type: 'string', default: '' },
+            { name: 'group_name', desc: 'Grupo', type: 'string', default: '' },
+            { name: 'limit', desc: 'Max resultados', type: 'number', default: 20 }
+        ]
     },
     {
         name: 'find_duplicates',
-        description: 'Detecta gastos repetidos (mismo monto + categoría dentro de N días). Para "elimina los repetidos", "tengo gastos duplicados". Params: window_days (default 7), min_repetitions (default 2). Devuelve clusters con sus transaction_ids.'
+        description: 'Detecta gastos repetidos. Para "elimina los repetidos", "tengo gastos duplicados".',
+        fields: [
+            { name: 'window_days', desc: 'Ventana de días para considerar duplicado', type: 'number', default: 7 },
+            { name: 'min_repetitions', desc: 'Mínimo de repeticiones', type: 'number', default: 2 }
+        ]
     },
     {
         name: 'bulk_preview',
-        description: 'Cuenta y muestra preview ANTES de borrar/editar masivo. Acepta los mismos filtros que query_transactions. Devuelve count, total, ids, preview (10 sample). USALA OBLIGATORIAMENTE antes de bulk_delete por criterio.'
+        description: 'Preview ANTES de borrar/editar masivo. USALA OBLIGATORIAMENTE antes de bulk_delete por criterio.',
+        fields: [
+            { name: 'period', desc: 'Período', type: 'string', default: 'all' },
+            { name: 'category', desc: 'Filtro categoría', type: 'string', default: '' },
+            { name: 'description_contains', desc: 'Texto a buscar', type: 'string', default: '' },
+            { name: 'exact_amount', desc: 'Monto exacto', type: 'number', default: 0 },
+            { name: 'date', desc: 'Fecha exacta', type: 'string', default: '' },
+            { name: 'type', desc: 'expense|income', type: 'string', default: '' }
+        ]
     },
     {
         name: 'bulk_delete',
-        description: 'Borra múltiples transacciones por una lista explícita de UUIDs. Solo usar después de bulk_preview + confirmación del usuario. Params: ids (array de UUIDs).'
+        description: 'Borra múltiples transacciones por lista de UUIDs. Solo después de bulk_preview o find_transactions + confirmación.',
+        fields: [
+            { name: 'ids', desc: 'Array JSON de UUIDs (string). Ejemplo: ["uuid1","uuid2"]', type: 'json', default: [] }
+        ]
     },
     {
         name: 'bulk_update',
-        description: 'Actualiza múltiples transacciones por UUIDs. Params: ids (array), new_category_id?, new_date?, new_group_id?, amount_delta?, set_excluded?.'
+        description: 'Actualiza múltiples transacciones por UUIDs.',
+        fields: [
+            { name: 'ids', desc: 'Array JSON de UUIDs', type: 'json', default: [] },
+            { name: 'new_category_id', desc: 'Nueva categoría UUID', type: 'string', default: '' },
+            { name: 'new_date', desc: 'Nueva fecha YYYY-MM-DD', type: 'string', default: '' },
+            { name: 'new_group_id', desc: 'Nuevo grupo UUID', type: 'string', default: '' },
+            { name: 'amount_delta', desc: 'Suma/resta al monto', type: 'number', default: 0 },
+            { name: 'set_excluded', desc: 'Marcar excluidas', type: 'boolean', default: false }
+        ]
     },
     {
         name: 'log_transaction',
-        description: 'Registra UN gasto o ingreso nuevo. Params: amount (number), description, category_hint, type (expense|income, default expense), date (YYYY-MM-DD opcional), payment_method_hint (efectivo|debito|credito|transferencia|mercado_pago|otro), group_hint (nombre de viaje/evento opcional), skip_dup_check (bool, solo si el usuario confirmó duplicado). Devuelve needs_confirmation:duplicate si detectó uno.'
+        description: 'Registra UN gasto o ingreso nuevo. SIEMPRE extraé del mensaje el monto, descripción y categoría antes de llamar.',
+        fields: [
+            { name: 'amount', desc: 'Monto en pesos (número entero o decimal, sin signos ni separadores). Ej: 3300', type: 'number', default: 0 },
+            { name: 'description', desc: 'Descripción del gasto/ingreso', type: 'string', default: '' },
+            { name: 'category_hint', desc: 'Nombre de categoría existente o nueva (ej. comida, salud, salidas, viajes). NO uses "transferencias" — eso es método de pago, no categoría.', type: 'string', default: '' },
+            { name: 'type', desc: 'expense|income', type: 'string', default: 'expense' },
+            { name: 'date', desc: 'Fecha YYYY-MM-DD si fue mencionada explícitamente. Vacío para hoy.', type: 'string', default: '' },
+            { name: 'payment_method_hint', desc: 'efectivo|debito|credito|transferencia|mercado_pago|otro. Si fue transferencia, va ACÁ — NO en category_hint.', type: 'string', default: '' },
+            { name: 'group_hint', desc: 'Nombre del viaje/evento al que pertenece', type: 'string', default: '' },
+            { name: 'skip_dup_check', desc: 'true solo si el usuario confirmó registrar duplicado', type: 'boolean', default: false },
+            { name: 'create_category_if_missing', desc: 'true cuando el usuario aclaró la categoría (puede ser nueva, hay que crearla). false en flujos automáticos donde solo querés matchear con existentes.', type: 'boolean', default: false }
+        ]
     },
     {
         name: 'update_transaction',
-        description: 'Edita UNA transacción por UUID exacto. Params: transaction_id (UUID), new_date?, new_amount?, new_description?, new_category_id?.'
+        description: 'Edita UNA transacción por UUID exacto.',
+        fields: [
+            { name: 'transaction_id', desc: 'UUID de la transacción a editar', type: 'string', default: '' },
+            { name: 'new_date', desc: 'Nueva fecha YYYY-MM-DD', type: 'string', default: '' },
+            { name: 'new_amount', desc: 'Nuevo monto', type: 'number', default: 0 },
+            { name: 'new_description', desc: 'Nueva descripción', type: 'string', default: '' },
+            { name: 'new_category_id', desc: 'Nueva categoría UUID', type: 'string', default: '' }
+        ]
     },
     {
         name: 'delete_transaction',
-        description: 'Borra UNA transacción por UUID. Params: transaction_id (UUID). Para borrar varias usá bulk_delete.'
+        description: 'Borra UNA transacción por UUID.',
+        fields: [
+            { name: 'transaction_id', desc: 'UUID de la transacción a borrar', type: 'string', default: '' }
+        ]
     },
     {
         name: 'list_categories',
-        description: 'Lista todas las categorías del usuario con sus emojis y conteos. Params: type (expense|income|both opcional), include_excluded (bool).'
+        description: 'Lista todas las categorías del usuario con sus emojis y conteos.',
+        fields: [
+            { name: 'type', desc: 'expense|income|both', type: 'string', default: 'both' },
+            { name: 'include_excluded', desc: 'Incluir categorías excluidas', type: 'boolean', default: false }
+        ]
     },
     {
         name: 'list_groups',
-        description: 'Lista grupos (viajes/eventos/proyectos) con totales.'
+        description: 'Lista grupos (viajes/eventos/proyectos) con totales.',
+        fields: []
     },
     {
         name: 'list_budgets',
-        description: 'Lista presupuestos activos con consumo actual y % usado.'
+        description: 'Lista presupuestos activos con consumo actual y % usado.',
+        fields: []
     },
     {
         name: 'set_budget',
-        description: 'Crea o actualiza un presupuesto para una categoría. Params: category_hint, amount (number), period (weekly|monthly|yearly).'
+        description: 'Crea o actualiza un presupuesto para una categoría.',
+        fields: [
+            { name: 'category_hint', desc: 'Categoría', type: 'string', default: '' },
+            { name: 'amount', desc: 'Monto del presupuesto', type: 'number', default: 0 },
+            { name: 'period', desc: 'weekly|monthly|yearly', type: 'string', default: 'monthly' }
+        ]
     },
     {
         name: 'create_group',
-        description: 'Crea un grupo (viaje/evento/proyecto). Params: name, kind (trip|event|emergency|project|other).'
+        description: 'Crea un grupo (viaje/evento/proyecto).',
+        fields: [
+            { name: 'name', desc: 'Nombre del grupo', type: 'string', default: '' },
+            { name: 'kind', desc: 'trip|event|emergency|project|other', type: 'string', default: 'event' }
+        ]
     },
     {
         name: 'toggle_category_exclusion',
-        description: 'Excluye/incluye una categoría de los reportes. Params: category_hint.'
+        description: 'Excluye/incluye una categoría de los reportes.',
+        fields: [
+            { name: 'category_hint', desc: 'Categoría a excluir/incluir', type: 'string', default: '' }
+        ]
     },
     {
         name: 'set_recurring',
-        description: 'Crea una transacción recurrente (Netflix, alquiler, etc). Params: amount, description, category_hint, frequency (daily|weekly|biweekly|monthly|yearly), start_date?.'
+        description: 'Crea una transacción recurrente (Netflix, alquiler, etc).',
+        fields: [
+            { name: 'amount', desc: 'Monto recurrente', type: 'number', default: 0 },
+            { name: 'description', desc: 'Descripción', type: 'string', default: '' },
+            { name: 'category_hint', desc: 'Categoría', type: 'string', default: 'otros' },
+            { name: 'frequency', desc: 'daily|weekly|biweekly|monthly|yearly', type: 'string', default: 'monthly' },
+            { name: 'start_date', desc: 'YYYY-MM-DD', type: 'string', default: '' }
+        ]
     },
     {
         name: 'remember_last_list',
-        description: 'Guarda la última lista mostrada al usuario para resolver referencias deícticas ("el primero", "esos dos"). LLAMALA después de query_transactions / find_transactions cuando muestres una lista. Params: kind, items (array con id+position), filters_applied, ttl_seconds (default 600).'
+        description: 'Guarda la última lista mostrada al usuario para resolver referencias deícticas. LLAMALA después de query_transactions / find_transactions cuando muestres una lista.',
+        fields: [
+            { name: 'kind', desc: 'transactions|duplicate_clusters|categories|groups', type: 'string', default: 'transactions' },
+            { name: 'items', desc: 'Array de objetos. Ej: [{"position":1,"id":"uuid","date":"...","amount":123}]', type: 'json', default: [] },
+            { name: 'filters_applied', desc: 'Filtros aplicados (objeto JSON)', type: 'json', default: {} },
+            { name: 'ttl_seconds', desc: 'TTL en segundos', type: 'number', default: 600 }
+        ]
     },
     {
         name: 'get_last_list',
-        description: 'Recupera la última lista mostrada al usuario. Devuelve items y si está fresca. Llamala cuando el usuario use deícticos.'
+        description: 'Recupera la última lista mostrada al usuario. Llamala cuando el usuario use deícticos como "el primero", "esos dos".',
+        fields: []
     },
     {
         name: 'set_conv_state',
-        description: 'Setea estado conversacional pendiente (ej. awaiting_bulk_delete antes de confirmar). Params: state, context (objeto), ttl_seconds (default 600).'
+        description: 'Setea estado conversacional pendiente (ej. awaiting_bulk_delete antes de confirmar).',
+        fields: [
+            { name: 'state', desc: 'Nombre del estado', type: 'string', default: '' },
+            { name: 'context', desc: 'Contexto (objeto JSON)', type: 'json', default: {} },
+            { name: 'ttl_seconds', desc: 'TTL en segundos', type: 'number', default: 600 }
+        ]
     },
     {
         name: 'clear_conv_state',
-        description: 'Limpia el estado conversacional. Llamala después de resolver una confirmación.'
+        description: 'Limpia el estado conversacional. Llamala después de resolver una confirmación.',
+        fields: []
     },
     {
         name: 'generate_chart',
-        description: 'Genera un gráfico (URL de imagen) con datos del usuario. Params: dimension (category|day|payment_method), period, type. Devuelve image_url + caption. Cuando uses esta tool, en tu reply final usá reply_kind="image" e image_url.'
+        description: 'Genera un gráfico (URL de imagen). En tu reply final usá reply_kind="image" e image_url.',
+        fields: [
+            { name: 'dimension', desc: 'category|day|payment_method', type: 'string', default: 'category' },
+            { name: 'period', desc: 'today|this_week|this_month|last_month|this_year', type: 'string', default: 'this_month' },
+            { name: 'type', desc: 'expense|income', type: 'string', default: 'expense' },
+            { name: 'top_n', desc: 'Top N', type: 'number', default: 10 }
+        ]
     }
 ];
 
@@ -630,26 +930,65 @@ const toolY = 400;
 const TOOL_DX = 200;
 const toolNames = [];
 
+// Build a tool node with one $fromAI per field, fully typed.
+// The schema reflects each field with the proper Zod type the agent will use.
+const escapeBackticks = (s) => String(s).replace(/`/g, '\\`');
+const escapeQuotes = (s) => String(s).replace(/"/g, '\\"');
+
+const buildFieldExpression = (f) => {
+    const desc = escapeBackticks(escapeQuotes(f.desc || ''));
+    let defaultExpr = '';
+    if (f.default !== undefined) {
+        if (f.type === 'string') defaultExpr = `, '${escapeQuotes(String(f.default))}'`;
+        else if (f.type === 'number') defaultExpr = `, ${Number(f.default)}`;
+        else if (f.type === 'boolean') defaultExpr = `, ${Boolean(f.default)}`;
+        else if (f.type === 'json') defaultExpr = `, ${JSON.stringify(f.default).replace(/'/g, "\\'")}`;
+    }
+    return `={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('${f.name}', \`${desc}\`, '${f.type}'${defaultExpr}) }}`;
+};
+
 TOOL_DEFS.forEach((t, i) => {
     const nodeName = `tool: ${t.name}`;
     toolNames.push(nodeName);
+
+    // Build value object: tool_name (static) + user_id (from context) + each field via $fromAI
+    const value = {
+        tool_name: t.name,
+        user_id: "={{ $('Concat').first().json.userId }}"
+    };
+    const schema = [
+        { id: 'tool_name', displayName: 'tool_name', required: false, defaultMatch: false, display: true, canBeUsedToMatch: true, type: 'string' },
+        { id: 'user_id', displayName: 'user_id', required: false, defaultMatch: false, display: true, canBeUsedToMatch: true, type: 'string' }
+    ];
+
+    (t.fields || []).forEach(f => {
+        value[f.name] = buildFieldExpression(f);
+        schema.push({
+            id: f.name,
+            displayName: f.name,
+            required: false,
+            defaultMatch: false,
+            display: true,
+            canBeUsedToMatch: true,
+            type: f.type === 'json' ? 'object' : f.type,
+            removed: false
+        });
+    });
+
     addNode(nodeName, '@n8n/n8n-nodes-langchain.toolWorkflow', {
         name: t.name,
         description: t.description,
-        workflowId: { __rl: true, mode: 'id', value: TOOLS_WF_ID },
+        workflowId: {
+            __rl: true,
+            mode: 'id',
+            value: TOOLS_WF_ID,
+            cachedResultName: 'Chefin Agent Tools v3'
+        },
         workflowInputs: {
             mappingMode: 'defineBelow',
-            value: {
-                tool_name: t.name,
-                user_id: "={{ $('Concat').first().json.userId }}",
-                params: "={{ $fromAI('params', 'JSON object with tool parameters', 'json') }}"
-            },
-            schema: [
-                { id: 'tool_name', displayName: 'tool_name', required: true, defaultMatch: false, display: true, type: 'string', canBeUsedToMatch: true },
-                { id: 'user_id', displayName: 'user_id', required: true, defaultMatch: false, display: true, type: 'string', canBeUsedToMatch: true },
-                { id: 'params', displayName: 'params', required: false, defaultMatch: false, display: true, type: 'object', canBeUsedToMatch: false }
-            ],
+            value,
             matchingColumns: [],
+            schema,
             attemptToConvertTypes: false,
             convertFieldsToString: false
         }
@@ -668,7 +1007,36 @@ addNode('Chefin Agent', '@n8n/n8n-nodes-langchain.agent', {
     hasOutputParser: true
 }, 5940, 0, { tv: 1.7 });
 
-connect('Concat', 'Chefin Agent');
+// Pre-agent: detect heavy operations (charts, reports, comparisons) and send
+// an immediate "aguardame" message so the user knows we're processing.
+addNode('Detect Heavy Op', 'n8n-nodes-base.code', {
+    jsCode: `const ctx = $input.first().json;
+const text = (ctx.combinedText || '').toLowerCase();
+const heavyKeywords = ['gráfico','grafico','chart','reporte','reporta','informe','pdf','comparame','comparar','compará','comparativa','grafica','graficar','torta','breakdown','desglose','desglosá'];
+const isHeavy = heavyKeywords.some(k => text.includes(k));
+return [{ json: { ...ctx, isHeavy } }];`
+}, 5170, 0);
+connect('Concat', 'Detect Heavy Op');
+
+addNode('IF Heavy', 'n8n-nodes-base.if', {
+    conditions: cond('and', [{
+        id: 'c1', operator: { type: 'boolean', operation: 'true' },
+        leftValue: '={{ $json.isHeavy }}', rightValue: true
+    }]), options: {}
+}, 5390, 0);
+connect('Detect Heavy Op', 'IF Heavy');
+
+addNode('Send Aguardame', 'n8n-nodes-evolution-api.evolutionApi', {
+    resource: 'messages-api',
+    instanceName: '={{ $json.instance }}',
+    remoteJid: '={{ $json.phone }}',
+    messageText: '💭 Aguardame un toque, te armo eso...',
+    options_message: {}
+}, 5610, -100, { tv: 1, creds: { evolutionApi: EVO }, cof: true });
+connect('IF Heavy', 'Send Aguardame', 0);
+
+connect('IF Heavy', 'Chefin Agent', 1);   // skip path
+connect('Send Aguardame', 'Chefin Agent');
 
 // Wire ai_* connections to the agent
 connect('OpenAI Chat Model', 'Chefin Agent', 0, 0, 'ai_languageModel');
@@ -686,13 +1054,30 @@ if (typeof payload === 'string') {
   try { payload = JSON.parse(payload); } catch { payload = { reply_text: payload, reply_kind: 'text' }; }
 }
 const ctx = $('Concat').first().json;
-const replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';
+let replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';
 const replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';
+const imageUrl = replyKind === 'image' ? (payload.image_url || '') : '';
+
+// If sending image, strip the URL out of the caption — agent often
+// echoes it inside markdown ![text](url) which makes WhatsApp send a
+// huge text blob alongside the image.
+if (replyKind === 'image' && imageUrl) {
+  // Remove markdown image syntax: ![...](url)
+  replyText = replyText.replace(/!\\[[^\\]]*\\]\\([^)]+\\)/g, '').trim();
+  // Remove bare URLs that match the image url
+  replyText = replyText.replace(new RegExp(imageUrl.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&'), 'g'), '').trim();
+  // Remove any remaining quickchart URL
+  replyText = replyText.replace(/https?:\\/\\/[^\\s)]*quickchart\\.io[^\\s)]*/g, '').trim();
+  // Collapse multiple newlines/spaces
+  replyText = replyText.replace(/\\n{3,}/g, '\\n\\n').trim();
+  if (!replyText) replyText = '📈 Acá tenés el gráfico.';
+}
+
 const shouldReact = !!payload.should_react;
 const emoji = (payload.reaction_emoji || '').toString().slice(0, 4);
 return [{ json: {
   replyText, replyKind,
-  imageUrl: replyKind === 'image' ? (payload.image_url || '') : '',
+  imageUrl,
   shouldReact, reactionEmoji: shouldReact ? (emoji || '✅') : '',
   userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,
   remoteJid: ctx.remoteJid, messageId: ctx.messageId
