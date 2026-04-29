@@ -94,9 +94,6 @@ services:
     ports:
       - "${PORT_N8N:-5678}:${PORT_N8N:-5678}"
     environment:
-      # Core — HTTP, no SSL
-      # IMPORTANT: N8N_PORT must equal the external port so the Origin
-      # check (used by /rest/push) builds the same URL the browser sends.
       N8N_HOST: ${VPS_IP}
       N8N_PORT: ${PORT_N8N:-5678}
       N8N_PROTOCOL: http
@@ -106,35 +103,19 @@ services:
       GENERIC_TIMEZONE: ${TZ}
       TZ: ${TZ}
 
-      # Allow this for HTTP-only access (otherwise n8n insists on HTTPS for some flows)
       N8N_SECURE_COOKIE: "false"
-
-      # Phone whitelist — used by the workflow (read via $env.ALLOWED_PHONES)
       ALLOWED_PHONES: ${ALLOWED_PHONES}
-
-      # Evolution API key — used by HTTP Request nodes that call Evolution
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
 
-      # Security
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       N8N_USER_MANAGEMENT_JWT_SECRET: ${N8N_JWT_SECRET}
-      # Must be false so $env.ALLOWED_PHONES is reachable from Code/IF nodes
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
-
-      # CORS / Origin allow-list — necesario al acceder por IP:puerto en HTTP
-      # sin reverse proxy. Sin estas variables, n8n bloquea las llamadas del
-      # editor (activar workflow, /rest/push websocket) por Origin inválido,
-      # y el navegador lo reporta como error de CORS.
       N8N_DEFAULT_CORS: "true"
       N8N_CORS_ALLOW_ORIGIN: http://${VPS_IP}:${PORT_N8N:-5678}
       N8N_CORS_ALLOW_CREDENTIALS: "true"
       N8N_ALLOW_CONNECTIONS_FROM: http://${VPS_IP}:${PORT_N8N:-5678}
 
-      # Push backend — websocket (en 2.18 SSE rompe la validación de Origin
-      # cuando se accede por IP:puerto sin proxy).
       N8N_PUSH_BACKEND: websocket
-
-      # Database (Postgres)
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n_postgres
       DB_POSTGRESDB_PORT: 5432
@@ -142,12 +123,8 @@ services:
       DB_POSTGRESDB_USER: ${POSTGRES_USER}
       DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
 
-      # Misc
-      # Diagnostics MUST be true for the Community Edition "Unlock" flow on
-      # Settings → Usage and plan to work — the free license registration
-      # piggybacks on the same telemetry pipeline.
       N8N_DIAGNOSTICS_ENABLED: "true"
-      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "true"
       N8N_DEFAULT_BINARY_DATA_MODE: filesystem
       EXECUTIONS_DATA_PRUNE: "true"
       EXECUTIONS_DATA_MAX_AGE: 720

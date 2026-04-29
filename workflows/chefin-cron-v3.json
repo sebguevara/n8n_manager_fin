@@ -648,7 +648,7 @@
       "id": "c027",
       "name": "Send WhatsApp",
       "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [
         1980,
         200

@@ -247,7 +247,7 @@ connect('Get Conv State', 'Merge Ctx');
 addNode('Mark Processed', 'n8n-nodes-base.redis', {
     operation: 'incr', key: '=processed:{{ $json.messageId }}',
     expire: true, ttl: 3600, propertyName: 'procCount', options: {}
-}, 2860, 0, { creds: { redis: REDIS } });
+}, 2860, 0, { tv: 1, creds: { redis: REDIS } });
 connect('Merge Ctx', 'Mark Processed');
 
 addNode('IF First Time', 'n8n-nodes-base.if', {
@@ -263,7 +263,7 @@ addNode('Buffer Push', 'n8n-nodes-base.redis', {
     operation: 'push',
     list: "=buffer:{{ $('Merge Ctx').first().json.phone }}",
     messageData: "={{ $('Merge Ctx').first().json.text }}", tail: true
-}, 3300, 0, { creds: { redis: REDIS } });
+}, 3300, 0, { tv: 1, creds: { redis: REDIS } });
 connect('IF First Time', 'Buffer Push', 0);
 
 addNode('Lock Token', 'n8n-nodes-base.set', {
@@ -277,7 +277,7 @@ connect('Buffer Push', 'Lock Token');
 addNode('Lock Set', 'n8n-nodes-base.redis', {
     operation: 'set', key: '=lock:{{ $json.phone }}',
     value: '={{ $json.lockToken }}', expire: true, ttl: 30
-}, 3740, 0, { creds: { redis: REDIS } });
+}, 3740, 0, { tv: 1, creds: { redis: REDIS } });
 connect('Lock Token', 'Lock Set');
 
 addNode('Wait', 'n8n-nodes-base.wait', { amount: 6 },
@@ -287,7 +287,7 @@ connect('Lock Set', 'Wait');
 addNode('Lock Get', 'n8n-nodes-base.redis', {
     operation: 'get', propertyName: 'currentLock',
     key: "=lock:{{ $('Lock Token').first().json.phone }}", options: {}
-}, 4180, 0, { creds: { redis: REDIS } });
+}, 4180, 0, { tv: 1, creds: { redis: REDIS } });
 connect('Wait', 'Lock Get');
 
 addNode('IF Won Race', 'n8n-nodes-base.if', {
@@ -303,13 +303,13 @@ addNode('Buffer Get', 'n8n-nodes-base.redis', {
     operation: 'get', propertyName: 'bufferedMessages',
     key: "=buffer:{{ $('Lock Token').first().json.phone }}",
     keyType: 'list', options: {}
-}, 4620, 0, { creds: { redis: REDIS } });
+}, 4620, 0, { tv: 1, creds: { redis: REDIS } });
 connect('IF Won Race', 'Buffer Get', 0);
 
 addNode('Buffer Delete', 'n8n-nodes-base.redis', {
     operation: 'delete',
     key: "=buffer:{{ $('Lock Token').first().json.phone }}"
-}, 4840, 0, { creds: { redis: REDIS } });
+}, 4840, 0, { tv: 1, creds: { redis: REDIS } });
 connect('Buffer Get', 'Buffer Delete');
 
 addNode('Concat', 'n8n-nodes-base.code', {
@@ -434,6 +434,19 @@ Cuando el usuario contesta "sí/dale/ok" y hay un \`convState\` activo → tomá
 - Tool: \`find_transactions({"exact_amount":3300,"date":"2026-04-27"})\` → devuelve 3 matches.
 - Reply numerada con los 3 + \`remember_last_list\` con sus ids + "Decime cuál(es) borrar (1, 2, 3 o todos)".
 - NUNCA borrás directo si hay >1 candidato.
+
+**Usuario**: "elimina las 2 últimas transferencias a maxi"
+Pasos OBLIGATORIOS:
+1. Tool: \`find_transactions({"description_contains":"maxi","sort":"date_desc","limit":20})\` → devuelve TODAS las transferencias que mencionen "maxi" en descripción, ordenadas por fecha desc.
+2. Si hay ≥2: tomá las primeras 2 (las "últimas" cronológicamente = más recientes = primeras en date_desc).
+3. \`bulk_preview\` NO es necesario porque ya tenés ids exactos. Llamá directamente \`bulk_delete({"ids":[id1, id2]})\`.
+4. Reply: "🗑️ Borré 2 transferencias a Maxi por $X total. Te queda 1." con \`should_react: true, reaction_emoji: "🗑️"\`.
+5. Si el usuario dice "las últimas N" sin nombrar una persona, mirá \`get_last_list\` primero — si tenés contexto fresco, usalo.
+NUNCA borres "el último" cuando el usuario claramente identificó un grupo (transferencias a X, gastos de Y, etc).
+
+**Usuario**: "borrá las 2 últimas transferencias" (sin nombre)
+- \`find_transactions({"category":"otros","description_contains":"transferencia","sort":"date_desc","limit":20})\` → todas las transferencias.
+- Tomá las 2 más recientes → \`bulk_delete\`.
 
 **Usuario** (después): "borrá los 2 primeros"
 - Tool: \`get_last_list\` → recuperás items.
@@ -742,8 +755,8 @@ addNode('Send Presence', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'chat-api', operation: 'send-presence',
     instanceName: "={{ $('Save Context').first().json.instance }}",
     remoteJid: "={{ $('Save Context').first().json.phone }}",
-    presence: 'composing', delay: 800, options_message: {}
-}, 6820, 0, { creds: { evolutionApi: EVO }, cof: true, always: true });
+    delay: 1600
+}, 6820, 0, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
 connect('Save Context', 'Send Presence');
 
 addNode('IF Image Reply', 'n8n-nodes-base.if', {
@@ -759,7 +772,7 @@ addNode('Send Image', 'n8n-nodes-evolution-api.evolutionApi', {
     media: "={{ $('Save Context').first().json.imageUrl }}",
     caption: "={{ $('Save Context').first().json.replyText }}",
     options_message: {}
-}, 7260, -100, { creds: { evolutionApi: EVO } });
+}, 7260, -100, { tv: 1, creds: { evolutionApi: EVO } });
 connect('IF Image Reply', 'Send Image', 0);
 
 addNode('Send Text', 'n8n-nodes-evolution-api.evolutionApi', {
@@ -768,7 +781,7 @@ addNode('Send Text', 'n8n-nodes-evolution-api.evolutionApi', {
     remoteJid: "={{ $('Save Context').first().json.phone }}",
     messageText: "={{ $('Save Context').first().json.replyText }}",
     options_message: {}
-}, 7260, 100, { creds: { evolutionApi: EVO } });
+}, 7260, 100, { tv: 1, creds: { evolutionApi: EVO } });
 connect('IF Image Reply', 'Send Text', 1);
 
 addNode('IF Should React', 'n8n-nodes-base.if', {
@@ -786,9 +799,8 @@ addNode('Send Reaction', 'n8n-nodes-evolution-api.evolutionApi', {
     remoteJid: "={{ $('Save Context').first().json.remoteJid }}",
     messageId: "={{ $('Save Context').first().json.messageId }}",
     fromMe: false,
-    reaction: "={{ $('Save Context').first().json.reactionEmoji }}",
-    options_message: {}
-}, 7700, -100, { creds: { evolutionApi: EVO }, cof: true });
+    reaction: "={{ $('Save Context').first().json.reactionEmoji }}"
+}, 7700, -100, { tv: 1, creds: { evolutionApi: EVO }, cof: true });
 connect('IF Should React', 'Send Reaction', 0);
 
 addNode('Log Outbound', 'n8n-nodes-base.postgres', {

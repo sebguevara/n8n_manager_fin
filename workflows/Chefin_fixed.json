@@ -1,5 +1,4 @@
 {
-  "id": "chefin_agent_v3",
   "name": "Chefin Agent v3",
   "nodes": [
     {
@@ -8,13 +7,13 @@
         "path": "chefin",
         "options": {}
       },
-      "id": "n001",
+      "id": "fd20a805-6596-4d95-8531-ada80348fd66",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        0,
-        0
+        -752,
+        736
       ],
       "webhookId": "b8b4a1c2-3e1f-4a3b-9d99-c8c2c2c2c2c2"
     },
@@ -23,6 +22,7 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "leftValue": "",
             "typeValidation": "strict",
             "version": 1
           },
@@ -50,13 +50,13 @@
         },
         "options": {}
       },
-      "id": "n002",
+      "id": "39ffdf60-e442-4dba-b20a-d3d7c298ce49",
       "name": "IF Valid Inbound",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        220,
-        0
+        -528,
+        736
       ]
     },
     {
@@ -115,13 +115,13 @@
         },
         "options": {}
       },
-      "id": "n003",
+      "id": "d84ad078-a06e-4b2f-ba6b-95ca6cfb992b",
       "name": "Extract Fields",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        440,
-        0
+        -304,
+        736
       ]
     },
     {
@@ -129,6 +129,7 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "leftValue": "",
             "typeValidation": "strict",
             "version": 1
           },
@@ -147,13 +148,13 @@
         },
         "options": {}
       },
-      "id": "n004",
+      "id": "803b8e34-68f5-457a-8e62-097bcd19689e",
       "name": "IF Allowed Phone",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        660,
-        0
+        -96,
+        736
       ]
     },
     {
@@ -164,6 +165,7 @@
               "conditions": {
                 "options": {
                   "caseSensitive": true,
+                  "leftValue": "",
                   "typeValidation": "strict",
                   "version": 1
                 },
@@ -187,6 +189,7 @@
               "conditions": {
                 "options": {
                   "caseSensitive": true,
+                  "leftValue": "",
                   "typeValidation": "strict",
                   "version": 1
                 },
@@ -210,6 +213,7 @@
               "conditions": {
                 "options": {
                   "caseSensitive": true,
+                  "leftValue": "",
                   "typeValidation": "strict",
                   "version": 1
                 },
@@ -236,13 +240,13 @@
           "renameFallbackOutput": "text"
         }
       },
-      "id": "n005",
+      "id": "ef27e0fa-a829-453d-b9a6-d21227100cbb",
       "name": "Switch Media Type",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
       "position": [
-        880,
-        0
+        144,
+        736
       ]
     },
     {
@@ -263,13 +267,13 @@
         "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
         "options": {}
       },
-      "id": "n006",
+      "id": "6965c39f-e05d-4568-9101-21c992f4114d",
       "name": "Download Image",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
-        -200
+        352,
+        528
       ]
     },
     {
@@ -292,17 +296,17 @@
         "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"response_format\": {\"type\":\"json_object\"},\n  \"temperature\": 0.1, \"max_tokens\": 1500,\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Sos un experto leyendo tickets argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. Si no es un comprobante, is_receipt=false. amount=TOTAL final.\"},\n    {\"role\":\"user\",\"content\":[\n      {\"type\":\"text\",\"text\":\"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}\"},\n      {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}\"}}\n    ]}\n  ]\n}",
         "options": {}
       },
-      "id": "n007",
+      "id": "eceb9819-00ea-459b-9925-e71db2588a01",
       "name": "Vision OCR",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1320,
-        -200
+        576,
+        528
       ],
       "credentials": {
         "openAiApi": {
-          "id": "0ErbOR5W4QIYaohV",
+          "id": "yWzjxEHJ670U5FFO",
           "name": "OpenAI account"
         }
       }
@@ -311,13 +315,13 @@
       "parameters": {
         "jsCode": "const resp=$input.first().json;const ctx=$('Extract Fields').first().json;\nlet payload;try{payload=JSON.parse(resp.choices?.[0]?.message?.content||'{}');}catch{payload={is_receipt:false,human_reply:'No pude leer el comprobante.'};}\nlet syntheticText;\nif(payload.is_receipt && Number(payload.amount) > 0){\n  const dateOnly = payload.transaction_date_iso ? String(payload.transaction_date_iso).slice(0,10) : '';\n  const desc = payload.description || (payload.merchant ? 'pago a '+payload.merchant : 'comprobante');\n  const parts = ['pagué', String(payload.amount), 'de', payload.category_hint||'otros'];\n  if(payload.payment_method_hint) parts.push('con', payload.payment_method_hint);\n  if(dateOnly) parts.push('el', dateOnly);\n  parts.push('—', desc);\n  syntheticText = parts.join(' ');\n} else { syntheticText = payload.human_reply || 'No pude leer el comprobante.'; }\nreturn [{ json: { text: syntheticText, phone: ctx.phone, remoteJid: ctx.remoteJid, instance: ctx.instance, messageId: ctx.messageId, pushName: ctx.pushName, receipt_data: payload } }];"
       },
-      "id": "n008",
+      "id": "77e76edd-3f8b-4416-8ade-d32eecb26de3",
       "name": "Receipt to Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
-        -200
+        800,
+        528
       ]
     },
     {
@@ -338,26 +342,26 @@
         "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
         "options": {}
       },
-      "id": "n009",
+      "id": "fc6e090e-f0a8-4045-80c3-e6d78f1f8e5c",
       "name": "Download Audio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
-        0
+        352,
+        736
       ]
     },
     {
       "parameters": {
         "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst b64=item.base64||'';if(!b64)throw new Error('Empty audio base64');\nconst buf=Buffer.from(b64,'base64');\nconst bin=await this.helpers.prepareBinaryData(buf,'audio.ogg',item.mimetype||'audio/ogg');\nreturn [{ json:{phone:ctx.phone,remoteJid:ctx.remoteJid,instance:ctx.instance,messageId:ctx.messageId,pushName:ctx.pushName}, binary:{data:bin} }];"
       },
-      "id": "n010",
+      "id": "2de75542-5a35-4576-90c4-01acc80e028f",
       "name": "Audio to Binary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
-        0
+        576,
+        736
       ]
     },
     {
@@ -368,17 +372,17 @@
           "language": "es"
         }
       },
-      "id": "n011",
+      "id": "d5f7fa99-e2cf-4578-ba18-48a47f33aeb7",
       "name": "Whisper Transcribe",
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 1.8,
       "position": [
-        1540,
-        0
+        800,
+        736
       ],
       "credentials": {
         "openAiApi": {
-          "id": "0ErbOR5W4QIYaohV",
+          "id": "yWzjxEHJ670U5FFO",
           "name": "OpenAI account"
         }
       }
@@ -401,54 +405,53 @@
         "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
         "options": {}
       },
-      "id": "n012",
+      "id": "b0dee17a-19e5-4738-9eb7-7c8f7ab5757b",
       "name": "Download PDF",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
-        200
+        352,
+        928
       ]
     },
     {
       "parameters": {
         "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst b64=item.base64||'';if(!b64)throw new Error('Empty PDF base64');\nconst buf=Buffer.from(b64,'base64');\nconst bin=await this.helpers.prepareBinaryData(buf,'document.pdf','application/pdf');\nreturn [{ json:{phone:ctx.phone,remoteJid:ctx.remoteJid,instance:ctx.instance,messageId:ctx.messageId,pushName:ctx.pushName}, binary:{data:bin} }];"
       },
-      "id": "n013",
+      "id": "3fa6e6d7-d1d1-49e8-8a38-89e408af314a",
       "name": "PDF to Binary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
-        200
+        576,
+        928
       ]
     },
     {
       "parameters": {
         "operation": "pdf",
-        "binaryPropertyName": "data",
         "options": {}
       },
-      "id": "n014",
+      "id": "cd4de097-1f7a-47ef-ac0a-f84a3a033511",
       "name": "Extract PDF Text",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        1540,
-        200
+        800,
+        928
       ]
     },
     {
       "parameters": {
         "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst txt = (item.text || '').slice(0, 4000);\nreturn [{ json: { text: 'Adjunté un PDF. Contenido relevante:\\n\\n' + txt, phone: ctx.phone, remoteJid: ctx.remoteJid, instance: ctx.instance, messageId: ctx.messageId, pushName: ctx.pushName } }];"
       },
-      "id": "n015",
+      "id": "fab75d24-1240-41be-9dd7-e01b75dd07d4",
       "name": "PDF Stub Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1760,
-        200
+        1024,
+        928
       ]
     },
     {
@@ -495,13 +498,13 @@
         },
         "options": {}
       },
-      "id": "n016",
+      "id": "becc3c2e-cf77-4b9b-a335-0c2607579af3",
       "name": "Pass Text",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        1980,
-        0
+        1232,
+        736
       ]
     },
     {
@@ -512,17 +515,17 @@
           "queryReplacement": "={{ $json.phone }},={{ $json.pushName }}"
         }
       },
-      "id": "n017",
+      "id": "32c15214-ab2d-48f8-99f5-8178f7f3baef",
       "name": "Bootstrap User",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        2200,
-        0
+        -768,
+        1120
       ],
       "credentials": {
         "postgres": {
-          "id": "f8CCpjEZRkcHEaJI",
+          "id": "33eKBVY731z1Ef4s",
           "name": "Postgres account"
         }
       }
@@ -535,21 +538,21 @@
           "queryReplacement": "={{ $json.user_id }}"
         }
       },
-      "id": "n018",
+      "id": "7d31a3ea-bd1f-4d78-8169-56dbde621bca",
       "name": "Get Conv State",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        2420,
-        0
+        -544,
+        1120
       ],
+      "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "f8CCpjEZRkcHEaJI",
+          "id": "33eKBVY731z1Ef4s",
           "name": "Postgres account"
         }
-      },
-      "alwaysOutputData": true
+      }
     },
     {
       "parameters": {
@@ -619,13 +622,13 @@
         },
         "options": {}
       },
-      "id": "n019",
+      "id": "90ff342a-bb2b-48f3-9bd1-93c1bef19db9",
       "name": "Merge Ctx",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        2640,
-        0
+        -320,
+        1120
       ]
     },
     {
@@ -633,21 +636,19 @@
         "operation": "incr",
         "key": "=processed:{{ $json.messageId }}",
         "expire": true,
-        "ttl": 3600,
-        "propertyName": "procCount",
-        "options": {}
+        "ttl": 3600
       },
-      "id": "n020",
+      "id": "8877cc42-8329-48c0-b9e2-977487bc0e35",
       "name": "Mark Processed",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        2860,
-        0
+        -112,
+        1120
       ],
       "credentials": {
         "redis": {
-          "id": "igDqU9rqRBlmVQGc",
+          "id": "8L0NBLL6RmeFiu74",
           "name": "Redis account"
         }
       }
@@ -657,6 +658,7 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "leftValue": "",
             "typeValidation": "strict",
             "version": 1
           },
@@ -675,13 +677,13 @@
         },
         "options": {}
       },
-      "id": "n021",
+      "id": "e17d366a-caea-4b25-9a3d-753c487baa8b",
       "name": "IF First Time",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        3080,
-        0
+        112,
+        1120
       ]
     },
     {
@@ -691,17 +693,17 @@
         "messageData": "={{ $('Merge Ctx').first().json.text }}",
         "tail": true
       },
-      "id": "n022",
+      "id": "bfe62157-3c05-41b1-81fb-496ed398ba01",
       "name": "Buffer Push",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        3300,
-        0
+        336,
+        1120
       ],
       "credentials": {
         "redis": {
-          "id": "igDqU9rqRBlmVQGc",
+          "id": "8L0NBLL6RmeFiu74",
           "name": "Redis account"
         }
       }
@@ -727,13 +729,13 @@
         "includeOtherFields": true,
         "options": {}
       },
-      "id": "n023",
+      "id": "48740cfc-c5eb-4d55-9541-3a46aa6d3938",
       "name": "Lock Token",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        3520,
-        0
+        560,
+        1120
       ]
     },
     {
@@ -744,32 +746,32 @@
         "expire": true,
         "ttl": 30
       },
-      "id": "n024",
+      "id": "5118f050-ef77-4232-9a5a-ee95ff8dfcd6",
       "name": "Lock Set",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        3740,
-        0
+        768,
+        1120
       ],
       "credentials": {
         "redis": {
-          "id": "igDqU9rqRBlmVQGc",
+          "id": "8L0NBLL6RmeFiu74",
           "name": "Redis account"
         }
       }
     },
     {
       "parameters": {
-        "amount": 6
+        "amount": 4
       },
-      "id": "n025",
+      "id": "61d0f3eb-58be-49c1-aac4-297d1f5911fd",
       "name": "Wait",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        3960,
-        0
+        992,
+        1120
       ],
       "webhookId": "7e7eaba2-f851-4e37-8748-2c03cc8144aa"
     },
@@ -780,17 +782,17 @@
         "key": "=lock:{{ $('Lock Token').first().json.phone }}",
         "options": {}
       },
-      "id": "n026",
+      "id": "5314af2f-561b-46b7-82bf-40b3538bc51a",
       "name": "Lock Get",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        4180,
-        0
+        1216,
+        1120
       ],
       "credentials": {
         "redis": {
-          "id": "igDqU9rqRBlmVQGc",
+          "id": "8L0NBLL6RmeFiu74",
           "name": "Redis account"
         }
       }
@@ -800,6 +802,7 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "leftValue": "",
             "typeValidation": "strict",
             "version": 1
           },
@@ -818,13 +821,13 @@
         },
         "options": {}
       },
-      "id": "n027",
+      "id": "0f212dce-cb10-40f8-961a-1940cf6b1f7f",
       "name": "IF Won Race",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        4400,
-        0
+        1440,
+        1120
       ]
     },
     {
@@ -835,17 +838,17 @@
         "keyType": "list",
         "options": {}
       },
-      "id": "n028",
+      "id": "b36fb3e7-4426-4bc6-9051-5ddc6b920094",
       "name": "Buffer Get",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        4620,
-        0
+        1648,
+        1120
       ],
       "credentials": {
         "redis": {
-          "id": "igDqU9rqRBlmVQGc",
+          "id": "8L0NBLL6RmeFiu74",
           "name": "Redis account"
         }
       }
@@ -855,17 +858,17 @@
         "operation": "delete",
         "key": "=buffer:{{ $('Lock Token').first().json.phone }}"
       },
-      "id": "n029",
+      "id": "8949a57a-efae-4148-b7bc-196409032531",
       "name": "Buffer Delete",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        4840,
-        0
+        1872,
+        1120
       ],
       "credentials": {
         "redis": {
-          "id": "igDqU9rqRBlmVQGc",
+          "id": "8L0NBLL6RmeFiu74",
           "name": "Redis account"
         }
       }
@@ -874,13 +877,13 @@
       "parameters": {
         "jsCode": "const buf=$input.first().json.bufferedMessages||[];\nconst ctx=$('Merge Ctx').first().json;\nconst combined=buf.filter(Boolean).map(s=>String(s).trim()).join(' \\n ').trim();\nreturn [{ json:{ userId:ctx.userId, phone:ctx.phone, remoteJid:ctx.remoteJid, instance:ctx.instance, messageId:ctx.messageId, pushName:ctx.pushName, combinedText:combined, bufferLength:buf.length, convState:ctx.convState, convContext:ctx.convContext, onboarded:ctx.onboarded }}];"
       },
-      "id": "n030",
+      "id": "d6a84d53-0b22-4dbd-a57c-f9c46835a281",
       "name": "Concat",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5060,
-        0
+        -928,
+        1488
       ]
     },
     {
@@ -891,21 +894,21 @@
           "value": "gpt-4o-mini"
         },
         "options": {
-          "temperature": 0.2,
-          "maxTokens": 1500
+          "maxTokens": 1500,
+          "temperature": 0.2
         }
       },
-      "id": "n031",
+      "id": "04f56803-e3d3-45f0-96ce-a299e70dc05d",
       "name": "OpenAI Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [
-        5500,
-        200
+        -496,
+        1680
       ],
       "credentials": {
         "openAiApi": {
-          "id": "0ErbOR5W4QIYaohV",
+          "id": "yWzjxEHJ670U5FFO",
           "name": "OpenAI account"
         }
       }
@@ -914,20 +917,19 @@
       "parameters": {
         "sessionIdType": "customKey",
         "sessionKey": "={{ $('Concat').first().json.userId }}",
-        "contextWindowLength": 12,
-        "tableName": "n8n_chat_histories"
+        "contextWindowLength": 12
       },
-      "id": "n032",
+      "id": "f525fa43-c808-478c-b32c-9181749bd495",
       "name": "Postgres Chat Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1.3,
       "position": [
-        5720,
-        200
+        -272,
+        1680
       ],
       "credentials": {
         "postgres": {
-          "id": "f8CCpjEZRkcHEaJI",
+          "id": "33eKBVY731z1Ef4s",
           "name": "Postgres account"
         }
       }
@@ -936,13 +938,13 @@
       "parameters": {
         "jsonSchemaExample": "{\n  \"reply_text\": \"Hola! ¿en qué te ayudo?\",\n  \"reply_kind\": \"text\",\n  \"image_url\": \"\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}"
       },
-      "id": "n033",
+      "id": "8ef9c774-b5af-4924-8de9-b07c15de75f6",
       "name": "Reply Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
       "position": [
-        5940,
-        200
+        -48,
+        1680
       ]
     },
     {
@@ -995,13 +997,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n034",
+      "id": "7351722f-a091-49e2-a2a4-b2fa0affe37b",
       "name": "tool: query_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        5300,
-        400
+        -688,
+        1888
       ]
     },
     {
@@ -1054,13 +1056,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n035",
+      "id": "8aa6eac7-5e18-4e7e-9e48-cff4ebccd7e1",
       "name": "tool: get_total",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        5500,
-        400
+        -496,
+        1888
       ]
     },
     {
@@ -1113,13 +1115,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n036",
+      "id": "f77f4cc2-eb71-4f58-9fe6-ae9b5eb1e811",
       "name": "tool: get_breakdown",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        5700,
-        400
+        -288,
+        1888
       ]
     },
     {
@@ -1172,13 +1174,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n037",
+      "id": "df1f6fdc-916f-436d-804d-7fcea34667b3",
       "name": "tool: compare_periods",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        5900,
-        400
+        -96,
+        1888
       ]
     },
     {
@@ -1231,13 +1233,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n038",
+      "id": "1fb8566b-4517-4e17-a23c-d332cc693120",
       "name": "tool: find_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6100,
-        400
+        112,
+        1888
       ]
     },
     {
@@ -1290,13 +1292,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n039",
+      "id": "e6659e7a-e115-41a0-8953-ebbd214b078a",
       "name": "tool: find_duplicates",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6300,
-        400
+        304,
+        1888
       ]
     },
     {
@@ -1349,13 +1351,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n040",
+      "id": "d6364650-42aa-4ae0-8f4f-41ee6ec7bae9",
       "name": "tool: bulk_preview",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6500,
-        400
+        512,
+        1888
       ]
     },
     {
@@ -1408,13 +1410,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n041",
+      "id": "c7b56168-55cc-487d-bc45-65af64c071a2",
       "name": "tool: bulk_delete",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6700,
-        400
+        704,
+        1888
       ]
     },
     {
@@ -1467,13 +1469,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n042",
+      "id": "249ccb59-e08f-4381-851f-c003bc894d8e",
       "name": "tool: bulk_update",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6900,
-        400
+        912,
+        1888
       ]
     },
     {
@@ -1526,13 +1528,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n043",
+      "id": "c8b0ee23-e9fe-40cd-95f3-230da0700767",
       "name": "tool: log_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        7100,
-        400
+        1104,
+        1888
       ]
     },
     {
@@ -1585,13 +1587,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n044",
+      "id": "a2c79cc3-a3da-4aea-a8b1-2d004fbdb232",
       "name": "tool: update_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        7300,
-        400
+        1312,
+        1888
       ]
     },
     {
@@ -1644,13 +1646,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n045",
+      "id": "8e1fd259-1357-4ae9-b48b-d100fb4ea242",
       "name": "tool: delete_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        7500,
-        400
+        1504,
+        1888
       ]
     },
     {
@@ -1703,13 +1705,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n046",
+      "id": "515c1266-d218-4ab2-9a0c-0aa11bc7b80f",
       "name": "tool: list_categories",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        5300,
-        600
+        -688,
+        2080
       ]
     },
     {
@@ -1762,13 +1764,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n047",
+      "id": "f9ba58a5-a8ea-4b58-a254-1d54d88bd53a",
       "name": "tool: list_groups",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        5500,
-        600
+        -496,
+        2080
       ]
     },
     {
@@ -1821,13 +1823,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n048",
+      "id": "f983a912-357d-4028-813c-046f3921618d",
       "name": "tool: list_budgets",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        5700,
-        600
+        -288,
+        2080
       ]
     },
     {
@@ -1880,13 +1882,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n049",
+      "id": "b1fd21be-c7f1-4bce-b6eb-976a86538100",
       "name": "tool: set_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        5900,
-        600
+        -96,
+        2080
       ]
     },
     {
@@ -1939,13 +1941,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n050",
+      "id": "1cf9b4c9-6af6-4c2b-8e1d-4ece8b88eeb7",
       "name": "tool: create_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6100,
-        600
+        112,
+        2080
       ]
     },
     {
@@ -1998,13 +2000,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n051",
+      "id": "16b7e38a-2c68-462b-8c2f-996455990a75",
       "name": "tool: toggle_category_exclusion",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6300,
-        600
+        304,
+        2080
       ]
     },
     {
@@ -2057,13 +2059,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n052",
+      "id": "b0393f25-3f6d-45f3-b8cd-3b959bf91b7d",
       "name": "tool: set_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6500,
-        600
+        512,
+        2080
       ]
     },
     {
@@ -2116,13 +2118,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n053",
+      "id": "5cd203e6-624e-4970-bdd3-88ddc81c44b4",
       "name": "tool: remember_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6700,
-        600
+        704,
+        2080
       ]
     },
     {
@@ -2175,13 +2177,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n054",
+      "id": "6918dba6-83b9-47f9-8b7d-aef965fd431e",
       "name": "tool: get_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        6900,
-        600
+        912,
+        2080
       ]
     },
     {
@@ -2234,13 +2236,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n055",
+      "id": "6fd27dc6-c03b-4d76-9625-22a1ee871098",
       "name": "tool: set_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        7100,
-        600
+        1104,
+        2080
       ]
     },
     {
@@ -2293,13 +2295,13 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n056",
+      "id": "4d54d59c-5614-409f-8432-5cf754a894de",
       "name": "tool: clear_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        7300,
-        600
+        1312,
+        2080
       ]
     },
     {
@@ -2352,59 +2354,59 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n057",
+      "id": "cd78a788-7185-48ad-bd67-dde7898ae6dc",
       "name": "tool: generate_chart",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
       "position": [
-        7500,
-        600
+        1504,
+        2080
       ]
     },
     {
       "parameters": {
         "promptType": "define",
         "text": "={{ $('Concat').first().json.combinedText }}",
+        "hasOutputParser": true,
         "options": {
-          "systemMessage": "=Sos **Chefin**, asistente conversacional experto en finanzas personales para WhatsApp en español rioplatense (Argentina).\n\n# CONTEXTO DE LA CONVERSACIÓN\n- Fecha y hora actual: {{ $now.toFormat('yyyy-MM-dd HH:mm') }} (America/Argentina/Buenos_Aires)\n- Día de la semana: {{ $now.toFormat('EEEE') }}\n- Estado de conversación previo: {{ $json.convState || 'ninguno' }}\n- Contexto previo: {{ JSON.stringify($json.convContext || {}) }}\n- Onboarded: {{ $json.onboarded }}\n\n# TU MISIÓN\nResolvés CUALQUIER duda del usuario sobre sus finanzas usando las tools disponibles. Podés encadenar varias tools antes de responder. Sos riguroso con datos destructivos: nunca borrás ni editás sin confirmación cuando hay ambigüedad o son varios items.\n\n# TOOLS DISPONIBLES\nCada tool toma JSON; consultá las descripciones de cada una para entender los parámetros. Algunas reglas globales:\n- `user_id` se inyecta automáticamente — NO lo pongas en `params`.\n- Períodos válidos: today | yesterday | this_week | this_month | last_month | this_year | all | custom.\n- Para búsquedas con DATOS ESPECÍFICOS (monto exacto, fecha exacta, descripción concreta), el período default es `all` salvo que el usuario diga lo contrario.\n- Para totales/resúmenes sin tiempo especificado, default `this_month`.\n\n# ESTRATEGIA DE RAZONAMIENTO\n\n## Para CONSULTAS (lectura)\n1. Si el usuario menciona texto deíctico (\"esos\", \"el primero\", \"los de 3300 que mostraste\") → llamá `get_last_list` PRIMERO.\n2. Para preguntas tipo \"cuánto gasté X\" → `get_total`.\n3. Para \"en qué gasté más / desglosá\" → `get_breakdown` con dimension=category.\n4. Para \"comparame mes a mes\" / \"gasté más que el pasado\" → `compare_periods`.\n5. Para \"mostrame los últimos / los movs\" → `query_transactions`.\n6. Para \"buscame los café / los uber / los de 5000\" → `find_transactions` con filtros determinísticos cuando sean exactos.\n7. Después de mostrar una lista de transacciones (>1 item), llamá `remember_last_list` con sus ids para resolver referencias deícticas en el siguiente turno.\n\n## Para REGISTRO (gasto/ingreso nuevo)\n- Llamá `log_transaction`. Si la tool devuelve `needs_confirmation: 'duplicate'` → preguntá al usuario si quiere registrar de todas formas (y si dice sí, volvés a llamar con `skip_dup_check: true`).\n\n## Para BORRAR / EDITAR\n- 1 transacción específica con monto+fecha exactos:\n  1. `find_transactions` para obtener candidatos con sus ids.\n  2. Si devuelve UN solo match → ejecutás `delete_transaction` o `update_transaction` directo.\n  3. Si devuelve VARIOS matches → mostrás la lista numerada al usuario, llamás `remember_last_list`, pedís que aclare cuál.\n- \"el último\" (sin específicos) → `query_transactions` ordenado por date_desc + límite 1.\n- BULK delete por criterio (\"borrá todos los café del mes pasado\"):\n  1. `bulk_preview` con los filtros para obtener count + sample + ids.\n  2. Mostrás al usuario: \"Voy a borrar N gastos por $X. ¿Confirmás?\". Llamás `set_conv_state` con state='awaiting_bulk_delete' y context={ids:[...]}.\n  3. Cuando responda \"sí\" → `bulk_delete` con esos ids exactos. Llamás `clear_conv_state`.\n- \"Eliminá los gastos repetidos\" → `find_duplicates` → mostrás los clusters → confirmás → `bulk_delete` con los ids elegidos.\n\n## Para CHARLA / FECHAS / IDENTIDAD\n- \"qué fecha es hoy?\" → respondé directo desde el contexto, SIN tools.\n- \"hola / gracias / cómo andás\" → respondé natural, SIN tools.\n- \"ayuda / qué podés hacer\" → enumerá brevemente: registrar, consultar, borrar, editar, gráficos, presupuestos, recurrentes, reportes.\n\n## Para GRÁFICOS\n- \"gráfico de gastos / torta / por categoría\" → `generate_chart` con dimension. Devolverá image_url + caption.\n\n# ESTILO DE RESPUESTA (FORMATO FINAL)\nSIEMPRE devolvé tu respuesta como JSON con esta estructura. Es la ÚNICA forma de responder al usuario:\n\n{\n  \"reply_text\": \"<mensaje en español rioplatense, max 1500 chars salvo que sea una lista>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\nReglas de formato:\n- Listas de transacciones: numerá del 1 al N con formato `N. AAAA-MM-DD · 💸 categoría · $monto — descripción`. Después de la lista decí algo útil tipo \"Decime cuál querés borrar/editar\".\n- Totales: `💸 Gastaste $X en período (N movs).`\n- Breakdowns: lista vertical con %.\n- Comparativas: `Este mes: $X (N) · Mes pasado: $Y (M) · Diferencia: +Δ%`.\n- Confirmaciones bulk: muestra preview de hasta 5 items, total, count, y \"¿confirmás? (sí/no)\".\n- Si NO hay datos: mensaje empático, breve.\n- 1 mensaje por turno. Si supera 1500 chars el wrapper lo parte solo.\n\nReacciones (`should_react: true`):\n- SOLO cuando acabás de loggear gasto (✅) o ingreso (💰), borrar (🗑️), editar (✏️) o generar gráfico (📈).\n- Para queries, charla, ayuda, listas, búsquedas → `should_react: false`.\n\n# LÉXICO ARGENTINO (no afecta clasificación)\nMuletillas que ignorás al clasificar pero respondés en tono natural:\n- \"cucha\", \"che\", \"dale\", \"loco/a\", \"boludo/a\", \"mirá\", \"fijate\", \"viste\", \"ahre\"\n- Diminutivos: \"cafecito\"=café, \"lukita\"=mil pesos\n- Plata = dinero. Luca = mil (\"3 lucas\"=3000). Palo = millón. K=mil (\"30k\"=30000). M=millón.\n\n# FORMATO DE NÚMEROS Y FECHAS (ARGENTINO)\n- Montos en respuestas: `$2.000,50` (punto como separador de miles, coma como decimal). Ejemplo: `$11.900,00`.\n- Fechas en respuestas: relativas si aplica (\"hoy\", \"ayer\", \"el lunes\"); absolutas como \"27 de abril\".\n- Fechas en parámetros de tools: SIEMPRE ISO `YYYY-MM-DD`.\n- Si el usuario dice \"27 de abril\" sin año, asumí el año actual.\n- Si el usuario dice \"el lunes pasado\", calculalo desde la fecha de contexto.\n\n# ESTADOS CONVERSACIONALES HEREDADOS DE V1\nSi `convState` viene con uno de estos valores legacy del workflow viejo, manejalo igual:\n- `awaiting_otros_confirmation`: el usuario confirma o aclara la categoría de un gasto pendiente.\n- `awaiting_dup_confirmation`: el usuario confirma si registra un gasto duplicado.\n- `awaiting_pdf_import`: el usuario confirma importar gastos del PDF.\nCuando el usuario contesta \"sí/dale/ok\" y hay un `convState` activo → tomá la acción pendiente con el contexto que viene en `convContext`. Cuando contesta \"no/cancelá\" → `clear_conv_state` y avisá.\n\n# EJEMPLOS DE RAZONAMIENTO\n\n**Usuario**: \"Mostrame todos mis movimientos\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":20})` → devuelve N items.\n- Si N>0: `remember_last_list({\"kind\":\"transactions\",\"items\":[{position:1,id:..,...}]})` con los ids.\n- Reply: lista numerada con los items + breve resumen del total.\n\n**Usuario**: \"borrá los 3300 del 27 de abril\"\n- Tool: `find_transactions({\"exact_amount\":3300,\"date\":\"2026-04-27\"})` → devuelve 3 matches.\n- Reply numerada con los 3 + `remember_last_list` con sus ids + \"Decime cuál(es) borrar (1, 2, 3 o todos)\".\n- NUNCA borrás directo si hay >1 candidato.\n\n**Usuario**: \"elimina las 2 últimas transferencias a maxi\"\nPasos OBLIGATORIOS:\n1. Tool: `find_transactions({\"description_contains\":\"maxi\",\"sort\":\"date_desc\",\"limit\":20})` → devuelve TODAS las transferencias que mencionen \"maxi\" en descripción, ordenadas por fecha desc.\n2. Si hay ≥2: tomá las primeras 2 (las \"últimas\" cronológicamente = más recientes = primeras en date_desc).\n3. `bulk_preview` NO es necesario porque ya tenés ids exactos. Llamá directamente `bulk_delete({\"ids\":[id1, id2]})`.\n4. Reply: \"🗑️ Borré 2 transferencias a Maxi por $X total. Te queda 1.\" con `should_react: true, reaction_emoji: \"🗑️\"`.\n5. Si el usuario dice \"las últimas N\" sin nombrar una persona, mirá `get_last_list` primero — si tenés contexto fresco, usalo.\nNUNCA borres \"el último\" cuando el usuario claramente identificó un grupo (transferencias a X, gastos de Y, etc).\n\n**Usuario**: \"borrá las 2 últimas transferencias\" (sin nombre)\n- `find_transactions({\"category\":\"otros\",\"description_contains\":\"transferencia\",\"sort\":\"date_desc\",\"limit\":20})` → todas las transferencias.\n- Tomá las 2 más recientes → `bulk_delete`.\n\n**Usuario** (después): \"borrá los 2 primeros\"\n- Tool: `get_last_list` → recuperás items.\n- Tool: `bulk_delete({\"ids\":[items[0].id, items[1].id]})`.\n- Reply: \"Borré 2 movs por $6.600. Quedó 1 transferencia de $3.300 del 27/04.\"\n\n**Usuario**: \"elimina los gastos repetidos\"\n- Tool: `find_duplicates({\"window_days\":7,\"min_repetitions\":2})` → devuelve clusters.\n- Reply con los clusters + `remember_last_list({kind:'duplicate_clusters',items:[...]})` + \"¿Borro estos? Decime cuáles (1, 2, todos) o 'no' para cancelar\".\n- Cuando confirme → `bulk_delete` con los ids.\n\n**Usuario**: \"gasté más este mes que el pasado?\"\n- Tool: `compare_periods({\"period_a\":\"this_month\",\"period_b\":\"last_month\"})`.\n- Reply: \"Este mes: $X (N movs). Mes pasado: $Y (M movs). +Δ% más.\"\n\n**Usuario**: \"Cuál fue mi último gasto?\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"type\":\"expense\"})`.\n- Reply: descripción del item + \"¿querés borrarlo o editarlo?\"\n\n**Usuario**: \"el último gasto fue de 5000 no de 2000\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"exact_amount\":2000})` → encuentra el item.\n- Tool: `update_transaction({\"transaction_id\":id,\"new_amount\":5000})`.\n- Reply: \"Listo, lo cambié a $5.000,00.\" con `should_react: true, reaction_emoji: \"✏️\"`.\n\n**Usuario**: \"tomé 2500 de café\"\n- Tool: `log_transaction({\"amount\":2500,\"description\":\"café\",\"category_hint\":\"comida\",\"type\":\"expense\"})`.\n- Si retorna `needs_confirmation:duplicate` → preguntá si registra igual.\n- Si `inserted:true` → reply confirmando + `should_react: true, reaction_emoji: \"✅\"`.\n\n**Usuario**: \"gracias!\"\n- Sin tools. Reply breve. `should_react: false`.\n\n**Usuario**: \"qué fecha es hoy?\"\n- Sin tools. Usás la fecha del contexto. Formato: \"Hoy es lunes 29 de abril de 2026\".\n\n**Usuario**: \"que quedo?\" (mensaje ambiguo, sin contexto)\n- Sin tools. Reply breve pidiendo aclaración: \"¿A qué te referís? Si querés saber tu saldo del mes te lo digo, decime 'cuanto gasté'.\"\n- NO mandes 2 mensajes.\n\n# REGLAS FINALES\n- NUNCA inventes datos. Si no tenés certeza, llamá una tool o pedí aclaración.\n- NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.\n- NUNCA mostrás UUIDs al usuario.\n- Si una tool devuelve `ok: false`, leé el error y avisás al usuario en términos amables.\n- Sos breve, directo y cálido. Nada de párrafos largos para preguntas simples.\n- Si el usuario hace varias preguntas en un mismo turno, respondelas todas en UN solo mensaje (jamás mandés 2 mensajes para una pregunta).\n- Si el usuario contradice una respuesta tuya anterior (\"me decís 4 movs y mostrás 2\"), revisá tu razonamiento, releé las tools que llamaste, y corregí sin inventar.\n- Si una operación destructiva afecta >3 items, SIEMPRE pasá por preview + confirmación.\n- Cuando el usuario te ataca o se enoja, reconocelo brevemente, NO te disculpes en exceso, y resolvé el problema.",
+          "systemMessage": "=Sos **Chefin**, asistente conversacional experto en finanzas personales para WhatsApp en español rioplatense (Argentina).\n\n# CONTEXTO DE LA CONVERSACIÓN\n- Fecha y hora actual: {{ $now.toFormat('yyyy-MM-dd HH:mm') }} (America/Argentina/Buenos_Aires)\n- Día de la semana: {{ $now.toFormat('EEEE') }}\n- Estado de conversación previo: {{ $json.convState || 'ninguno' }}\n- Contexto previo: {{ JSON.stringify($json.convContext || {}) }}\n- Onboarded: {{ $json.onboarded }}\n\n# TU MISIÓN\nResolvés CUALQUIER duda del usuario sobre sus finanzas usando las tools disponibles. Podés encadenar varias tools antes de responder. Sos riguroso con datos destructivos: nunca borrás ni editás sin confirmación cuando hay ambigüedad o son varios items.\n\n# TOOLS DISPONIBLES\nCada tool toma JSON; consultá las descripciones de cada una para entender los parámetros. Algunas reglas globales:\n- `user_id` se inyecta automáticamente — NO lo pongas en `params`.\n- Períodos válidos: today | yesterday | this_week | this_month | last_month | this_year | all | custom.\n- Para búsquedas con DATOS ESPECÍFICOS (monto exacto, fecha exacta, descripción concreta), el período default es `all` salvo que el usuario diga lo contrario.\n- Para totales/resúmenes sin tiempo especificado, default `this_month`.\n\n# ESTRATEGIA DE RAZONAMIENTO\n\n## Para CONSULTAS (lectura)\n1. Si el usuario menciona texto deíctico (\"esos\", \"el primero\", \"los de 3300 que mostraste\") → llamá `get_last_list` PRIMERO.\n2. Para preguntas tipo \"cuánto gasté X\" → `get_total`.\n3. Para \"en qué gasté más / desglosá\" → `get_breakdown` con dimension=category.\n4. Para \"comparame mes a mes\" / \"gasté más que el pasado\" → `compare_periods`.\n5. Para \"mostrame los últimos / los movs\" → `query_transactions`.\n6. Para \"buscame los café / los uber / los de 5000\" → `find_transactions` con filtros determinísticos cuando sean exactos.\n7. Después de mostrar una lista de transacciones (>1 item), llamá `remember_last_list` con sus ids para resolver referencias deícticas en el siguiente turno.\n\n## Para REGISTRO (gasto/ingreso nuevo)\n- Llamá `log_transaction`. Si la tool devuelve `needs_confirmation: 'duplicate'` → preguntá al usuario si quiere registrar de todas formas (y si dice sí, volvés a llamar con `skip_dup_check: true`).\n\n## Para BORRAR / EDITAR\n- 1 transacción específica con monto+fecha exactos:\n  1. `find_transactions` para obtener candidatos con sus ids.\n  2. Si devuelve UN solo match → ejecutás `delete_transaction` o `update_transaction` directo.\n  3. Si devuelve VARIOS matches → mostrás la lista numerada al usuario, llamás `remember_last_list`, pedís que aclare cuál.\n- \"el último\" (sin específicos) → `query_transactions` ordenado por date_desc + límite 1.\n- BULK delete por criterio (\"borrá todos los café del mes pasado\"):\n  1. `bulk_preview` con los filtros para obtener count + sample + ids.\n  2. Mostrás al usuario: \"Voy a borrar N gastos por $X. ¿Confirmás?\". Llamás `set_conv_state` con state='awaiting_bulk_delete' y context={ids:[...]}.\n  3. Cuando responda \"sí\" → `bulk_delete` con esos ids exactos. Llamás `clear_conv_state`.\n- \"Eliminá los gastos repetidos\" → `find_duplicates` → mostrás los clusters → confirmás → `bulk_delete` con los ids elegidos.\n\n## Para CHARLA / FECHAS / IDENTIDAD\n- \"qué fecha es hoy?\" → respondé directo desde el contexto, SIN tools.\n- \"hola / gracias / cómo andás\" → respondé natural, SIN tools.\n- \"ayuda / qué podés hacer\" → enumerá brevemente: registrar, consultar, borrar, editar, gráficos, presupuestos, recurrentes, reportes.\n\n## Para GRÁFICOS\n- \"gráfico de gastos / torta / por categoría\" → `generate_chart` con dimension. Devolverá image_url + caption.\n\n# ESTILO DE RESPUESTA (FORMATO FINAL)\nSIEMPRE devolvé tu respuesta como JSON con esta estructura. Es la ÚNICA forma de responder al usuario:\n\n{\n  \"reply_text\": \"<mensaje en español rioplatense, max 1500 chars salvo que sea una lista>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\nReglas de formato:\n- Listas de transacciones: numerá del 1 al N con formato `N. AAAA-MM-DD · 💸 categoría · $monto — descripción`. Después de la lista decí algo útil tipo \"Decime cuál querés borrar/editar\".\n- Totales: `💸 Gastaste $X en período (N movs).`\n- Breakdowns: lista vertical con %.\n- Comparativas: `Este mes: $X (N) · Mes pasado: $Y (M) · Diferencia: +Δ%`.\n- Confirmaciones bulk: muestra preview de hasta 5 items, total, count, y \"¿confirmás? (sí/no)\".\n- Si NO hay datos: mensaje empático, breve.\n- 1 mensaje por turno. Si supera 1500 chars el wrapper lo parte solo.\n\nReacciones (`should_react: true`):\n- SOLO cuando acabás de loggear gasto (✅) o ingreso (💰), borrar (🗑️), editar (✏️) o generar gráfico (📈).\n- Para queries, charla, ayuda, listas, búsquedas → `should_react: false`.\n\n# LÉXICO ARGENTINO (no afecta clasificación)\nMuletillas que ignorás al clasificar pero respondés en tono natural:\n- \"cucha\", \"che\", \"dale\", \"loco/a\", \"boludo/a\", \"mirá\", \"fijate\", \"viste\", \"ahre\"\n- Diminutivos: \"cafecito\"=café, \"lukita\"=mil pesos\n- Plata = dinero. Luca = mil (\"3 lucas\"=3000). Palo = millón. K=mil (\"30k\"=30000). M=millón.\n\n# FORMATO DE NÚMEROS Y FECHAS (ARGENTINO)\n- Montos en respuestas: `$2.000,50` (punto como separador de miles, coma como decimal). Ejemplo: `$11.900,00`.\n- Fechas en respuestas: relativas si aplica (\"hoy\", \"ayer\", \"el lunes\"); absolutas como \"27 de abril\".\n- Fechas en parámetros de tools: SIEMPRE ISO `YYYY-MM-DD`.\n- Si el usuario dice \"27 de abril\" sin año, asumí el año actual.\n- Si el usuario dice \"el lunes pasado\", calculalo desde la fecha de contexto.\n\n# ESTADOS CONVERSACIONALES HEREDADOS DE V1\nSi `convState` viene con uno de estos valores legacy del workflow viejo, manejalo igual:\n- `awaiting_otros_confirmation`: el usuario confirma o aclara la categoría de un gasto pendiente.\n- `awaiting_dup_confirmation`: el usuario confirma si registra un gasto duplicado.\n- `awaiting_pdf_import`: el usuario confirma importar gastos del PDF.\nCuando el usuario contesta \"sí/dale/ok\" y hay un `convState` activo → tomá la acción pendiente con el contexto que viene en `convContext`. Cuando contesta \"no/cancelá\" → `clear_conv_state` y avisá.\n\n# EJEMPLOS DE RAZONAMIENTO\n\n**Usuario**: \"Mostrame todos mis movimientos\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":20})` → devuelve N items.\n- Si N>0: `remember_last_list({\"kind\":\"transactions\",\"items\":[{position:1,id:..,...}]})` con los ids.\n- Reply: lista numerada con los items + breve resumen del total.\n\n**Usuario**: \"borrá los 3300 del 27 de abril\"\n- Tool: `find_transactions({\"exact_amount\":3300,\"date\":\"2026-04-27\"})` → devuelve 3 matches.\n- Reply numerada con los 3 + `remember_last_list` con sus ids + \"Decime cuál(es) borrar (1, 2, 3 o todos)\".\n- NUNCA borrás directo si hay >1 candidato.\n\n**Usuario** (después): \"borrá los 2 primeros\"\n- Tool: `get_last_list` → recuperás items.\n- Tool: `bulk_delete({\"ids\":[items[0].id, items[1].id]})`.\n- Reply: \"Borré 2 movs por $6.600. Quedó 1 transferencia de $3.300 del 27/04.\"\n\n**Usuario**: \"elimina los gastos repetidos\"\n- Tool: `find_duplicates({\"window_days\":7,\"min_repetitions\":2})` → devuelve clusters.\n- Reply con los clusters + `remember_last_list({kind:'duplicate_clusters',items:[...]})` + \"¿Borro estos? Decime cuáles (1, 2, todos) o 'no' para cancelar\".\n- Cuando confirme → `bulk_delete` con los ids.\n\n**Usuario**: \"gasté más este mes que el pasado?\"\n- Tool: `compare_periods({\"period_a\":\"this_month\",\"period_b\":\"last_month\"})`.\n- Reply: \"Este mes: $X (N movs). Mes pasado: $Y (M movs). +Δ% más.\"\n\n**Usuario**: \"Cuál fue mi último gasto?\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"type\":\"expense\"})`.\n- Reply: descripción del item + \"¿querés borrarlo o editarlo?\"\n\n**Usuario**: \"el último gasto fue de 5000 no de 2000\"\n- Tool: `query_transactions({\"period\":\"all\",\"limit\":1,\"sort\":\"date_desc\",\"exact_amount\":2000})` → encuentra el item.\n- Tool: `update_transaction({\"transaction_id\":id,\"new_amount\":5000})`.\n- Reply: \"Listo, lo cambié a $5.000,00.\" con `should_react: true, reaction_emoji: \"✏️\"`.\n\n**Usuario**: \"tomé 2500 de café\"\n- Tool: `log_transaction({\"amount\":2500,\"description\":\"café\",\"category_hint\":\"comida\",\"type\":\"expense\"})`.\n- Si retorna `needs_confirmation:duplicate` → preguntá si registra igual.\n- Si `inserted:true` → reply confirmando + `should_react: true, reaction_emoji: \"✅\"`.\n\n**Usuario**: \"gracias!\"\n- Sin tools. Reply breve. `should_react: false`.\n\n**Usuario**: \"qué fecha es hoy?\"\n- Sin tools. Usás la fecha del contexto. Formato: \"Hoy es lunes 29 de abril de 2026\".\n\n**Usuario**: \"que quedo?\" (mensaje ambiguo, sin contexto)\n- Sin tools. Reply breve pidiendo aclaración: \"¿A qué te referís? Si querés saber tu saldo del mes te lo digo, decime 'cuanto gasté'.\"\n- NO mandes 2 mensajes.\n\n# REGLAS FINALES\n- NUNCA inventes datos. Si no tenés certeza, llamá una tool o pedí aclaración.\n- NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.\n- NUNCA mostrás UUIDs al usuario.\n- Si una tool devuelve `ok: false`, leé el error y avisás al usuario en términos amables.\n- Sos breve, directo y cálido. Nada de párrafos largos para preguntas simples.\n- Si el usuario hace varias preguntas en un mismo turno, respondelas todas en UN solo mensaje (jamás mandés 2 mensajes para una pregunta).\n- Si el usuario contradice una respuesta tuya anterior (\"me decís 4 movs y mostrás 2\"), revisá tu razonamiento, releé las tools que llamaste, y corregí sin inventar.\n- Si una operación destructiva afecta >3 items, SIEMPRE pasá por preview + confirmación.\n- Cuando el usuario te ataca o se enoja, reconocelo brevemente, NO te disculpes en exceso, y resolvé el problema.",
           "maxIterations": 8,
           "returnIntermediateSteps": false
-        },
-        "hasOutputParser": true
+        }
       },
-      "id": "n058",
+      "id": "628a5894-e533-4234-89b6-d54e77eff555",
       "name": "Chefin Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [
-        5940,
-        0
+        -224,
+        1488
       ]
     },
     {
       "parameters": {
         "jsCode": "const raw = $input.first().json;\nlet payload = raw.output || raw;\nif (typeof payload === 'string') {\n  try { payload = JSON.parse(payload); } catch { payload = { reply_text: payload, reply_kind: 'text' }; }\n}\nconst ctx = $('Concat').first().json;\nconst replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';\nconst replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';\nconst shouldReact = !!payload.should_react;\nconst emoji = (payload.reaction_emoji || '').toString().slice(0, 4);\nreturn [{ json: {\n  replyText, replyKind,\n  imageUrl: replyKind === 'image' ? (payload.image_url || '') : '',\n  shouldReact, reactionEmoji: shouldReact ? (emoji || '✅') : '',\n  userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,\n  remoteJid: ctx.remoteJid, messageId: ctx.messageId\n} }];"
       },
-      "id": "n059",
+      "id": "edcf092a-f7c7-49ae-a199-7be5d9e1ca06",
       "name": "Parse Agent Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6160,
-        0
+        176,
+        1488
       ]
     },
     {
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst MAX = 1500;\nconst txt = ctx.replyText || '';\nfunction chunk(s) {\n  if (s.length <= MAX) return [s];\n  const parts = [];\n  let buf = '';\n  for (const para of s.split(/\\n\\n/)) {\n    const candidate = buf ? buf + '\\n\\n' + para : para;\n    if (candidate.length > MAX && buf) { parts.push(buf); buf = para; }\n    else if (candidate.length > MAX) { // single para > MAX → hard split\n      for (let i = 0; i < para.length; i += MAX) parts.push(para.slice(i, i + MAX));\n      buf = '';\n    } else buf = candidate;\n  }\n  if (buf) parts.push(buf);\n  return parts;\n}\nconst pieces = chunk(txt);\nreturn pieces.map((p, idx) => ({ json: {\n  ...ctx, replyText: p, chunkIndex: idx, chunkCount: pieces.length,\n  // image only on first chunk; reaction only on last\n  replyKind: (idx === 0 ? ctx.replyKind : 'text'),\n  imageUrl: (idx === 0 ? ctx.imageUrl : ''),\n  shouldReact: ctx.shouldReact && idx === pieces.length - 1,\n  reactionEmoji: (ctx.shouldReact && idx === pieces.length - 1) ? ctx.reactionEmoji : ''\n} }));"
       },
-      "id": "n060",
+      "id": "84733b38-859e-43c5-b8dd-ee3d4bd661f6",
       "name": "Chunk Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6380,
-        0
+        384,
+        1488
       ]
     },
     {
@@ -2487,45 +2489,21 @@
         },
         "options": {}
       },
-      "id": "n061",
+      "id": "1b625c09-37eb-41ca-bf92-2361ccad3911",
       "name": "Save Context",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        6600,
-        0
+        608,
+        1488
       ]
-    },
-    {
-      "parameters": {
-        "resource": "chat-api",
-        "operation": "send-presence",
-        "instanceName": "={{ $('Save Context').first().json.instance }}",
-        "remoteJid": "={{ $('Save Context').first().json.phone }}",
-        "delay": 1600
-      },
-      "id": "n062",
-      "name": "Send Presence",
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        6820,
-        0
-      ],
-      "credentials": {
-        "evolutionApi": {
-          "id": "FgeqqvxAqTER4oeD",
-          "name": "Evolution account"
-        }
-      },
-      "continueOnFail": true,
-      "alwaysOutputData": true
     },
     {
       "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "leftValue": "",
             "typeValidation": "strict",
             "version": 1
           },
@@ -2544,68 +2522,21 @@
         },
         "options": {}
       },
-      "id": "n063",
+      "id": "c94a1565-c9f6-45d0-b3aa-b172e2e84971",
       "name": "IF Image Reply",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        7040,
-        0
+        1056,
+        1488
       ]
-    },
-    {
-      "parameters": {
-        "resource": "messages-api",
-        "operation": "send-image",
-        "instanceName": "={{ $('Save Context').first().json.instance }}",
-        "remoteJid": "={{ $('Save Context').first().json.phone }}",
-        "media": "={{ $('Save Context').first().json.imageUrl }}",
-        "caption": "={{ $('Save Context').first().json.replyText }}",
-        "options_message": {}
-      },
-      "id": "n064",
-      "name": "Send Image",
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        7260,
-        -100
-      ],
-      "credentials": {
-        "evolutionApi": {
-          "id": "FgeqqvxAqTER4oeD",
-          "name": "Evolution account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "resource": "messages-api",
-        "instanceName": "={{ $('Save Context').first().json.instance }}",
-        "remoteJid": "={{ $('Save Context').first().json.phone }}",
-        "messageText": "={{ $('Save Context').first().json.replyText }}",
-        "options_message": {}
-      },
-      "id": "n065",
-      "name": "Send Text",
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        7260,
-        100
-      ],
-      "credentials": {
-        "evolutionApi": {
-          "id": "FgeqqvxAqTER4oeD",
-          "name": "Evolution account"
-        }
-      }
     },
     {
       "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
+            "leftValue": "",
             "typeValidation": "strict",
             "version": 1
           },
@@ -2624,40 +2555,14 @@
         },
         "options": {}
       },
-      "id": "n066",
+      "id": "0d6a5d52-6123-498e-8f61-b49ab1bdba0d",
       "name": "IF Should React",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        7480,
-        0
+        1504,
+        1504
       ]
-    },
-    {
-      "parameters": {
-        "resource": "messages-api",
-        "operation": "send-reaction",
-        "instanceName": "={{ $('Save Context').first().json.instance }}",
-        "remoteJid": "={{ $('Save Context').first().json.remoteJid }}",
-        "messageId": "={{ $('Save Context').first().json.messageId }}",
-        "fromMe": false,
-        "reaction": "={{ $('Save Context').first().json.reactionEmoji }}"
-      },
-      "id": "n067",
-      "name": "Send Reaction",
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        7700,
-        -100
-      ],
-      "credentials": {
-        "evolutionApi": {
-          "id": "FgeqqvxAqTER4oeD",
-          "name": "Evolution account"
-        }
-      },
-      "continueOnFail": true
     },
     {
       "parameters": {
@@ -2667,23 +2572,120 @@
           "queryReplacement": "={{ $('Save Context').first().json.userId }},={{ $('Save Context').first().json.replyText || '' }},={{ JSON.stringify($('Save Context').first().json) }}"
         }
       },
-      "id": "n068",
+      "id": "b596eec9-5d68-4db4-9c2c-a5d8dbb6f338",
       "name": "Log Outbound",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        7920,
-        0
+        1936,
+        1488
       ],
       "credentials": {
         "postgres": {
-          "id": "f8CCpjEZRkcHEaJI",
+          "id": "33eKBVY731z1Ef4s",
           "name": "Postgres account"
         }
       },
       "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "operation": "send-image",
+        "instanceName": "={{ $('Save Context').first().json.instance }}",
+        "remoteJid": "={{ $('Save Context').first().json.phone }}",
+        "media": "={{ $('Save Context').first().json.imageUrl }}",
+        "caption": "={{ $('Save Context').first().json.replyText }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        1392
+      ],
+      "id": "3cd06462-ebb1-4566-9fe9-58b5ce5de419",
+      "name": "Send Image",
+      "credentials": {
+        "evolutionApi": {
+          "id": "aodcaexLnhx89vQH",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "={{ $('Save Context').first().json.instance }}",
+        "remoteJid": "={{ $('Save Context').first().json.phone }}",
+        "messageText": "={{ $('Save Context').first().json.replyText }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        1568
+      ],
+      "id": "217a08f5-be8a-40fb-8dfd-8c1e4010ffb5",
+      "name": "Send Text",
+      "credentials": {
+        "evolutionApi": {
+          "id": "aodcaexLnhx89vQH",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "chat-api",
+        "operation": "send-presence",
+        "instanceName": "={{ $('Save Context').first().json.instance }}",
+        "remoteJid": "={{ $('Save Context').first().json.phone }}",
+        "delay": 1600
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        832,
+        1488
+      ],
+      "id": "4374eb8d-69b5-474e-a545-a8db62da295b",
+      "name": "Send Presence",
+      "credentials": {
+        "evolutionApi": {
+          "id": "aodcaexLnhx89vQH",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "operation": "send-reaction",
+        "instanceName": "={{ $('Save Context').first().json.instance }}",
+        "remoteJid": "={{ $('Save Context').first().json.remoteJid }}",
+        "messageId": "={{ $('Save Context').first().json.messageId }}",
+        "fromMe": false,
+        "reaction": "{{ $('Save Context').first().json.reactionEmoji || '✅' }}"
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        1728,
+        1376
+      ],
+      "id": "e791c360-9add-4815-8b39-fa8e0d0cd12d",
+      "name": "Send Reaction1",
+      "credentials": {
+        "evolutionApi": {
+          "id": "aodcaexLnhx89vQH",
+          "name": "Evolution account"
+        }
+      }
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook": {
       "main": [
@@ -3366,22 +3368,29 @@
         ]
       ]
     },
-    "Save Context": {
+    "IF Should React": {
       "main": [
         [
           {
-            "node": "Send Presence",
+            "node": "Send Reaction1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Outbound",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send Presence": {
+    "Save Context": {
       "main": [
         [
           {
-            "node": "IF Image Reply",
+            "node": "Send Presence",
             "type": "main",
             "index": 0
           }
@@ -3428,25 +3437,18 @@
         ]
       ]
     },
-    "IF Should React": {
+    "Send Presence": {
       "main": [
         [
           {
-            "node": "Send Reaction",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log Outbound",
+            "node": "IF Image Reply",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send Reaction": {
+    "Send Reaction1": {
       "main": [
         [
           {
@@ -3458,15 +3460,16 @@
       ]
     }
   },
-  "pinData": {},
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate",
-    "timezone": "America/Argentina/Buenos_Aires"
+    "binaryMode": "separate"
   },
+  "versionId": "c9646036-00a6-43a9-9671-28a41711f851",
   "meta": {
-    "templateCredsSetupCompleted": true
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ffd8d87eee45b45d9d477dc15de2a876d3f5cca56f9cc124ffdf011b7dbd68ec"
   },
+  "id": "DcZB3rMPujem4Z5E",
   "tags": []
 }

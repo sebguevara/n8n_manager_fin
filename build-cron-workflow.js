@@ -394,7 +394,7 @@ addNode('Send WhatsApp', 'n8n-nodes-evolution-api.evolutionApi', {
     remoteJid: '={{ $json.remoteJid || ($json.phone + "@s.whatsapp.net") }}',
     messageText: '={{ $json.replyText }}',
     options_message: {}
-}, 1980, 200, { creds: { evolutionApi: EVO }, cof: true });
+}, 1980, 200, { tv: 1, creds: { evolutionApi: EVO }, cof: true });
 connect('Loop Batches', 'Send WhatsApp', 1);
 
 addNode('Mark Sent (if budget)', 'n8n-nodes-base.postgres', {
