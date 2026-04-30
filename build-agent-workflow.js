@@ -87,19 +87,9 @@ addNode('IF Allowed Phone', 'n8n-nodes-base.if', {
 }, 660, 0);
 connect('Extract Fields', 'IF Allowed Phone');
 
-// Ack inmediato con 👀: el usuario ve "leído + reaccionado" en ~200ms en vez
-// de esperar 10-15s sin ninguna señal. Fire-and-forget — al final del flow
-// la reacción se reemplaza por ✅/🗑️/✏️/📈 según la operación.
-addNode('Send Initial Ack', 'n8n-nodes-evolution-api.evolutionApi', {
-    resource: 'messages-api', operation: 'send-reaction',
-    instanceName: "={{ $json.instance }}",
-    remoteJid: "={{ $json.remoteJid }}",
-    messageId: "={{ $json.messageId }}",
-    fromMe: false,
-    reaction: "👀"
-}, 880, -200, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
-connect('IF Allowed Phone', 'Send Initial Ack');
-
+// Sin ack inmediato con 👀 — sentía spammy una reacción a cada mensaje.
+// El typing-indicator (Send Presence más abajo) ya marca actividad mientras
+// procesamos. La reacción final (✅/🗑️/✏️/📈) la decide el agente cuando aplica.
 addNode('Switch Media Type', 'n8n-nodes-base.switch', {
     rules: { values: [
         { conditions: cond('and', [eqStr('r1','={{ $json.messageType }}','imageMessage')]), renameOutput: true, outputKey: 'image' },
@@ -107,22 +97,13 @@ addNode('Switch Media Type', 'n8n-nodes-base.switch', {
         { conditions: cond('and', [eqStr('r3','={{ $json.messageType }}','documentMessage')]), renameOutput: true, outputKey: 'document' }
     ] }, options: { fallbackOutput: 'extra', renameFallbackOutput: 'text' }
 }, 880, 0, { tv: 3 });
-// IF Allowed Phone tiene 2 outputs (true/false). El "true" va a DOS nodos:
-// la reacción 👀 (paralelo) y el Switch Media Type (flujo principal).
 connect('IF Allowed Phone', 'Switch Media Type');
 
 // IMAGE
-// Notice de progreso: OCR de Vision tarda 2-5s; el usuario ve el mensaje
-// "leyendo el comprobante" mientras se descarga + procesa.
-addNode('Notice Image', 'n8n-nodes-evolution-api.evolutionApi', {
-    resource: 'messages-api',
-    instanceName: '={{ $json.instance }}',
-    remoteJid: '={{ $json.remoteJid }}',
-    messageText: '📸 Leyendo el comprobante...',
-    options_message: {}
-}, 1100, -350, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
-connect('Switch Media Type', 'Notice Image', 0);
-
+// Sin "Notice" pre-mensaje para image/audio/PDF — esos se procesan en silencio.
+// El typing-indicator + Send Aguardame (solo para heavy ops) ya cubren la espera.
+// Antes había un mensaje "📸 Leyendo el comprobante" en paralelo que llegaba tarde
+// y rompía el orden de los mensajes en WhatsApp.
 addNode('Download Image', 'n8n-nodes-base.httpRequest', {
     method: 'POST',
     url: '=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
@@ -165,16 +146,7 @@ return [{ json: { text: syntheticText, phone: ctx.phone, remoteJid: ctx.remoteJi
 }, 1540, -200);
 connect('Vision OCR', 'Receipt to Text');
 
-// AUDIO
-addNode('Notice Audio', 'n8n-nodes-evolution-api.evolutionApi', {
-    resource: 'messages-api',
-    instanceName: '={{ $json.instance }}',
-    remoteJid: '={{ $json.remoteJid }}',
-    messageText: '🎙️ Transcribiendo el audio...',
-    options_message: {}
-}, 1100, 80, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
-connect('Switch Media Type', 'Notice Audio', 1);
-
+// AUDIO — sin "Notice", procesamos silencioso.
 addNode('Download Audio', 'n8n-nodes-base.httpRequest', {
     method: 'POST',
     url: '=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
@@ -200,17 +172,7 @@ addNode('Whisper Transcribe', '@n8n/n8n-nodes-langchain.openAi', {
 }, 1540, 0, { tv: 1.8, creds: { openAiApi: OPENAI } });
 connect('Audio to Binary', 'Whisper Transcribe');
 
-// PDF — simplified: convert to text, then synth `pagué ...` style messages
-// (full PDF bulk import flow can be added later if needed)
-addNode('Notice PDF', 'n8n-nodes-evolution-api.evolutionApi', {
-    resource: 'messages-api',
-    instanceName: '={{ $json.instance }}',
-    remoteJid: '={{ $json.remoteJid }}',
-    messageText: '📄 Leyendo el PDF, dame un toque...',
-    options_message: {}
-}, 1100, 350, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
-connect('Switch Media Type', 'Notice PDF', 2);
-
+// PDF — sin "Notice", procesamos silencioso.
 addNode('Download PDF', 'n8n-nodes-base.httpRequest', {
     method: 'POST',
     url: '=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}',
@@ -2239,7 +2201,7 @@ addNode('Send Presence', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'chat-api', operation: 'send-presence',
     instanceName: "={{ $('Save Context').first().json.instance }}",
     remoteJid: "={{ $('Save Context').first().json.phone }}",
-    delay: 800
+    delay: 1000
 }, 6820, 0, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
 connect('Save Context', 'Send Presence');
 

@@ -158,33 +158,6 @@
     },
     {
       "parameters": {
-        "resource": "messages-api",
-        "operation": "send-reaction",
-        "instanceName": "={{ $json.instance }}",
-        "remoteJid": "={{ $json.remoteJid }}",
-        "messageId": "={{ $json.messageId }}",
-        "fromMe": false,
-        "reaction": "👀"
-      },
-      "id": "n005",
-      "name": "Send Initial Ack",
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        880,
-        -200
-      ],
-      "credentials": {
-        "evolutionApi": {
-          "id": "FgeqqvxAqTER4oeD",
-          "name": "Evolution account"
-        }
-      },
-      "continueOnFail": true,
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
         "rules": {
           "values": [
             {
@@ -263,7 +236,7 @@
           "renameFallbackOutput": "text"
         }
       },
-      "id": "n006",
+      "id": "n005",
       "name": "Switch Media Type",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
@@ -271,31 +244,6 @@
         880,
         0
       ]
-    },
-    {
-      "parameters": {
-        "resource": "messages-api",
-        "instanceName": "={{ $json.instance }}",
-        "remoteJid": "={{ $json.remoteJid }}",
-        "messageText": "📸 Leyendo el comprobante...",
-        "options_message": {}
-      },
-      "id": "n007",
-      "name": "Notice Image",
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        1100,
-        -350
-      ],
-      "credentials": {
-        "evolutionApi": {
-          "id": "FgeqqvxAqTER4oeD",
-          "name": "Evolution account"
-        }
-      },
-      "continueOnFail": true,
-      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -315,7 +263,7 @@
         "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
         "options": {}
       },
-      "id": "n008",
+      "id": "n006",
       "name": "Download Image",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -344,7 +292,7 @@
         "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"response_format\": {\"type\":\"json_object\"},\n  \"temperature\": 0.1, \"max_tokens\": 1500,\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Sos un experto leyendo comprobantes argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. is_receipt=TRUE si la imagen muestra CUALQUIER transacción de plata: ticket de compra, recibo, factura, comprobante de transferencia (Mercado Pago, Banco, etc.), pago de servicio, voucher, captura de movimiento bancario. is_receipt=false SOLO si la imagen no tiene info financiera (selfie, paisaje, meme). amount=monto principal sin signos. category_hint para transferencias salientes='transferencias'.\"},\n    {\"role\":\"user\",\"content\":[\n      {\"type\":\"text\",\"text\":\"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}\"},\n      {\"type\":\"image_url\",\"image_url\":{\"url\":\"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}\"}}\n    ]}\n  ]\n}",
         "options": {}
       },
-      "id": "n009",
+      "id": "n007",
       "name": "Vision OCR",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -363,7 +311,7 @@
       "parameters": {
         "jsCode": "const resp=$input.first().json;const ctx=$('Extract Fields').first().json;\nlet payload;try{payload=JSON.parse(resp.choices?.[0]?.message?.content||'{}');}catch{payload={is_receipt:false,human_reply:'No pude leer el comprobante.'};}\nlet syntheticText;\n// Trust amount over is_receipt flag — vision often marks transferencias as is_receipt:false but extracts the data perfectly\nconst amount = Number(payload.amount || 0);\nif (amount > 0) {\n  const dateOnly = payload.transaction_date_iso ? String(payload.transaction_date_iso).slice(0,10) : '';\n  const desc = payload.description || (payload.merchant ? 'pago a '+payload.merchant : 'comprobante');\n  const parts = ['pagué', String(amount), 'de', payload.category_hint||'otros'];\n  if(payload.payment_method_hint) parts.push('con', payload.payment_method_hint);\n  if(dateOnly) parts.push('el', dateOnly);\n  parts.push('—', desc);\n  syntheticText = parts.join(' ');\n} else { syntheticText = payload.human_reply || 'No pude leer el comprobante.'; }\nreturn [{ json: { text: syntheticText, phone: ctx.phone, remoteJid: ctx.remoteJid, instance: ctx.instance, messageId: ctx.messageId, pushName: ctx.pushName, receipt_data: payload } }];"
       },
-      "id": "n010",
+      "id": "n008",
       "name": "Receipt to Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -374,28 +322,66 @@
     },
     {
       "parameters": {
-        "resource": "messages-api",
-        "instanceName": "={{ $json.instance }}",
-        "remoteJid": "={{ $json.remoteJid }}",
-        "messageText": "🎙️ Transcribiendo el audio...",
-        "options_message": {}
+        "method": "POST",
+        "url": "=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=ddc0c55de962f185e21f5bb18e1233b1f443417772e1f4c16c8a630bf902fcef"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
+        "options": {}
       },
-      "id": "n011",
-      "name": "Notice Audio",
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
+      "id": "n009",
+      "name": "Download Audio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         1100,
-        80
-      ],
-      "credentials": {
-        "evolutionApi": {
-          "id": "FgeqqvxAqTER4oeD",
-          "name": "Evolution account"
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst b64=item.base64||'';if(!b64)throw new Error('Empty audio base64');\nconst buf=Buffer.from(b64,'base64');\nconst bin=await this.helpers.prepareBinaryData(buf,'audio.ogg',item.mimetype||'audio/ogg');\nreturn [{ json:{phone:ctx.phone,remoteJid:ctx.remoteJid,instance:ctx.instance,messageId:ctx.messageId,pushName:ctx.pushName}, binary:{data:bin} }];"
+      },
+      "id": "n010",
+      "name": "Audio to Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {
+          "language": "es"
         }
       },
-      "continueOnFail": true,
-      "alwaysOutputData": true
+      "id": "n011",
+      "name": "Whisper Transcribe",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1540,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      }
     },
     {
       "parameters": {
@@ -416,94 +402,6 @@
         "options": {}
       },
       "id": "n012",
-      "name": "Download Audio",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst b64=item.base64||'';if(!b64)throw new Error('Empty audio base64');\nconst buf=Buffer.from(b64,'base64');\nconst bin=await this.helpers.prepareBinaryData(buf,'audio.ogg',item.mimetype||'audio/ogg');\nreturn [{ json:{phone:ctx.phone,remoteJid:ctx.remoteJid,instance:ctx.instance,messageId:ctx.messageId,pushName:ctx.pushName}, binary:{data:bin} }];"
-      },
-      "id": "n013",
-      "name": "Audio to Binary",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1320,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "resource": "audio",
-        "operation": "transcribe",
-        "options": {
-          "language": "es"
-        }
-      },
-      "id": "n014",
-      "name": "Whisper Transcribe",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 1.8,
-      "position": [
-        1540,
-        0
-      ],
-      "credentials": {
-        "openAiApi": {
-          "id": "0ErbOR5W4QIYaohV",
-          "name": "OpenAI account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "resource": "messages-api",
-        "instanceName": "={{ $json.instance }}",
-        "remoteJid": "={{ $json.remoteJid }}",
-        "messageText": "📄 Leyendo el PDF, dame un toque...",
-        "options_message": {}
-      },
-      "id": "n015",
-      "name": "Notice PDF",
-      "type": "n8n-nodes-evolution-api.evolutionApi",
-      "typeVersion": 1,
-      "position": [
-        1100,
-        350
-      ],
-      "credentials": {
-        "evolutionApi": {
-          "id": "FgeqqvxAqTER4oeD",
-          "name": "Evolution account"
-        }
-      },
-      "continueOnFail": true,
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=http://n8n_evolution-api:8080/chat/getBase64FromMediaMessage/{{ $json.instance }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "=ddc0c55de962f185e21f5bb18e1233b1f443417772e1f4c16c8a630bf902fcef"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"message\": { \"key\": { \"id\": \"{{ $json.messageId }}\" } },\n  \"convertToMp4\": false\n}",
-        "options": {}
-      },
-      "id": "n016",
       "name": "Download PDF",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -516,7 +414,7 @@
       "parameters": {
         "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst b64=item.base64||'';if(!b64)throw new Error('Empty PDF base64');\nconst buf=Buffer.from(b64,'base64');\nconst bin=await this.helpers.prepareBinaryData(buf,'document.pdf','application/pdf');\nreturn [{ json:{phone:ctx.phone,remoteJid:ctx.remoteJid,instance:ctx.instance,messageId:ctx.messageId,pushName:ctx.pushName}, binary:{data:bin} }];"
       },
-      "id": "n017",
+      "id": "n013",
       "name": "PDF to Binary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -531,7 +429,7 @@
         "binaryPropertyName": "data",
         "options": {}
       },
-      "id": "n018",
+      "id": "n014",
       "name": "Extract PDF Text",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
@@ -544,7 +442,7 @@
       "parameters": {
         "jsCode": "const item=$input.first().json;const ctx=$('Extract Fields').first().json;\nconst txt = (item.text || '').slice(0, 4000);\nreturn [{ json: { text: 'Adjunté un PDF. Contenido relevante:\\n\\n' + txt, phone: ctx.phone, remoteJid: ctx.remoteJid, instance: ctx.instance, messageId: ctx.messageId, pushName: ctx.pushName } }];"
       },
-      "id": "n019",
+      "id": "n015",
       "name": "PDF Stub Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -597,7 +495,7 @@
         },
         "options": {}
       },
-      "id": "n020",
+      "id": "n016",
       "name": "Pass Text",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -614,7 +512,7 @@
           "queryReplacement": "={{ $json.phone }},={{ $json.pushName }}"
         }
       },
-      "id": "n021",
+      "id": "n017",
       "name": "Bootstrap User",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -637,7 +535,7 @@
           "queryReplacement": "={{ $json.user_id }}"
         }
       },
-      "id": "n022",
+      "id": "n018",
       "name": "Get Conv State",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -721,7 +619,7 @@
         },
         "options": {}
       },
-      "id": "n023",
+      "id": "n019",
       "name": "Merge Ctx",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -737,7 +635,7 @@
         "key": "=processed:{{ $json.messageId }}",
         "options": {}
       },
-      "id": "n024",
+      "id": "n020",
       "name": "Redis Check",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
@@ -776,7 +674,7 @@
         },
         "options": {}
       },
-      "id": "n025",
+      "id": "n021",
       "name": "IF First Time",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -793,7 +691,7 @@
         "expire": true,
         "ttl": 3600
       },
-      "id": "n026",
+      "id": "n022",
       "name": "Mark Processed",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
@@ -812,7 +710,7 @@
       "parameters": {
         "jsCode": "const ctx=$('Merge Ctx').first().json;\nconst text=String(ctx.text || '').trim();\nreturn [{ json:{ userId:ctx.userId, phone:ctx.phone, remoteJid:ctx.remoteJid, instance:ctx.instance, messageId:ctx.messageId, pushName:ctx.pushName, combinedText:text, bufferLength:1, convState:ctx.convState, convContext:ctx.convContext, onboarded:ctx.onboarded }}];"
       },
-      "id": "n027",
+      "id": "n023",
       "name": "Concat",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -833,7 +731,7 @@
           "maxTokens": 1500
         }
       },
-      "id": "n028",
+      "id": "n024",
       "name": "OpenAI Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -855,7 +753,7 @@
         "contextWindowLength": 12,
         "tableName": "n8n_chat_histories"
       },
-      "id": "n029",
+      "id": "n025",
       "name": "Postgres Chat Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1.3,
@@ -874,7 +772,7 @@
       "parameters": {
         "jsonSchemaExample": "{\n  \"reply_text\": \"Hola! ¿en qué te ayudo?\",\n  \"reply_kind\": \"text\",\n  \"image_url\": \"\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}"
       },
-      "id": "n030",
+      "id": "n026",
       "name": "Reply Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -1078,7 +976,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n031",
+      "id": "n027",
       "name": "tool: query_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1172,7 +1070,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n032",
+      "id": "n028",
       "name": "tool: get_total",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1266,7 +1164,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n033",
+      "id": "n029",
       "name": "tool: get_breakdown",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1349,7 +1247,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n034",
+      "id": "n030",
       "name": "tool: compare_periods",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1520,7 +1418,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n035",
+      "id": "n031",
       "name": "tool: find_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1592,7 +1490,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n036",
+      "id": "n032",
       "name": "tool: find_duplicates",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1708,7 +1606,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n037",
+      "id": "n033",
       "name": "tool: bulk_preview",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1769,7 +1667,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n038",
+      "id": "n034",
       "name": "tool: bulk_delete",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1896,7 +1794,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n039",
+      "id": "n035",
       "name": "tool: bulk_update",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2045,7 +1943,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n040",
+      "id": "n036",
       "name": "tool: log_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2161,7 +2059,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n041",
+      "id": "n037",
       "name": "tool: update_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2222,7 +2120,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n042",
+      "id": "n038",
       "name": "tool: delete_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2294,7 +2192,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n043",
+      "id": "n039",
       "name": "tool: list_categories",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2344,7 +2242,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n044",
+      "id": "n040",
       "name": "tool: list_groups",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2394,7 +2292,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n045",
+      "id": "n041",
       "name": "tool: list_budgets",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2477,7 +2375,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n046",
+      "id": "n042",
       "name": "tool: set_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2549,7 +2447,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n047",
+      "id": "n043",
       "name": "tool: create_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2610,7 +2508,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n048",
+      "id": "n044",
       "name": "tool: toggle_category_exclusion",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2682,7 +2580,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n049",
+      "id": "n045",
       "name": "tool: create_category",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2754,7 +2652,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n050",
+      "id": "n046",
       "name": "tool: rename_category",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2826,7 +2724,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n051",
+      "id": "n047",
       "name": "tool: delete_category",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2887,7 +2785,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n052",
+      "id": "n048",
       "name": "tool: list_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3025,7 +2923,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n053",
+      "id": "n049",
       "name": "tool: update_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3086,7 +2984,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n054",
+      "id": "n050",
       "name": "tool: pause_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3147,7 +3045,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n055",
+      "id": "n051",
       "name": "tool: resume_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3208,7 +3106,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n056",
+      "id": "n052",
       "name": "tool: cancel_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3324,7 +3222,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n057",
+      "id": "n053",
       "name": "tool: update_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3396,7 +3294,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n058",
+      "id": "n054",
       "name": "tool: rename_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3457,7 +3355,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n059",
+      "id": "n055",
       "name": "tool: close_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3540,7 +3438,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n060",
+      "id": "n056",
       "name": "tool: delete_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3612,7 +3510,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n061",
+      "id": "n057",
       "name": "tool: delete_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3684,7 +3582,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n062",
+      "id": "n058",
       "name": "tool: pause_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3756,7 +3654,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n063",
+      "id": "n059",
       "name": "tool: resume_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3806,7 +3704,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n064",
+      "id": "n060",
       "name": "tool: list_tags",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3878,7 +3776,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n065",
+      "id": "n061",
       "name": "tool: create_tag",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3950,7 +3848,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n066",
+      "id": "n062",
       "name": "tool: rename_tag",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4011,7 +3909,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n067",
+      "id": "n063",
       "name": "tool: delete_tag",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4094,7 +3992,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n068",
+      "id": "n064",
       "name": "tool: tag_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4166,7 +4064,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n069",
+      "id": "n065",
       "name": "tool: untag_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4249,7 +4147,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n070",
+      "id": "n066",
       "name": "tool: suggest_tags",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4299,7 +4197,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n071",
+      "id": "n067",
       "name": "tool: get_settings",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4404,7 +4302,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n072",
+      "id": "n068",
       "name": "tool: update_settings",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4509,7 +4407,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n073",
+      "id": "n069",
       "name": "tool: set_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4603,7 +4501,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n074",
+      "id": "n070",
       "name": "tool: remember_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4653,7 +4551,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n075",
+      "id": "n071",
       "name": "tool: get_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4736,7 +4634,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n076",
+      "id": "n072",
       "name": "tool: set_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4786,7 +4684,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n077",
+      "id": "n073",
       "name": "tool: clear_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4880,7 +4778,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n078",
+      "id": "n074",
       "name": "tool: generate_chart",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5007,7 +4905,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n079",
+      "id": "n075",
       "name": "tool: financial_advice",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5090,7 +4988,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n080",
+      "id": "n076",
       "name": "tool: remember_fact",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5184,7 +5082,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n081",
+      "id": "n077",
       "name": "tool: recall_memory",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5278,7 +5176,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n082",
+      "id": "n078",
       "name": "tool: update_memory",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5339,7 +5237,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n083",
+      "id": "n079",
       "name": "tool: forget_memory",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5411,7 +5309,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n084",
+      "id": "n080",
       "name": "tool: list_memories",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5424,7 +5322,7 @@
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst text = (ctx.combinedText || '').toLowerCase();\nconst KIND_KEYWORDS = [\n  ['chart',       ['gráfico','grafico','chart','grafica','graficar','torta','dona','barras']],\n  ['advisor',     ['cuanto ahorr','cuánto ahorr','en cuanto tiempo','en cuánto tiempo','puedo gastar','puedo permitir','me alcanza','me dura','me da la plata','proyecc','forecast','runway','llegar a fin de mes','vs el pasado','en cuánto junto','en cuanto junto','tardo en juntar']],\n  ['comparative', ['comparame','comparar','compará','comparativa','vs ','versus','contra el','contra ayer','contra el mes']],\n  ['report',      ['reporte','reporta','informe','dashboard','panel','overview','recap','resumen','balance del mes','cómo voy','como voy','pdf']],\n  ['bulk',        ['duplicad','repetid','todos los','todas las','borrame todos','elimina todos','borrá todos','editame todos','cambia todos','sacále','los últimos','etiquetá todos']],\n  ['breakdown',   ['breakdown','desglose','desglosá','desglosa','en qué gasté','en que gasté','distribución']]\n];\nlet heavyKind = null;\nfor (const [kind, kws] of KIND_KEYWORDS) {\n  if (kws.some(k => text.includes(k))) { heavyKind = kind; break; }\n}\nconst NOTICE_BY_KIND = {\n  chart:       '📊 Armando el gráfico, dame un toque...',\n  advisor:     '🧮 Calculando, un segundo...',\n  comparative: '📈 Comparando los períodos...',\n  report:      '📄 Armando el resumen...',\n  bulk:        '🔍 Buscando los movs...',\n  breakdown:   '📊 Desglosando los datos...'\n};\nconst heavyNotice = heavyKind ? NOTICE_BY_KIND[heavyKind] : null;\nreturn [{ json: { ...ctx, isHeavy: !!heavyKind, heavyKind, heavyNotice } }];"
       },
-      "id": "n085",
+      "id": "n081",
       "name": "Detect Heavy Op",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5456,7 +5354,7 @@
         },
         "options": {}
       },
-      "id": "n086",
+      "id": "n082",
       "name": "IF Heavy",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -5473,7 +5371,7 @@
         "messageText": "={{ $json.heavyNotice || \"💭 Aguardame un toque...\" }}",
         "options_message": {}
       },
-      "id": "n087",
+      "id": "n083",
       "name": "Send Aguardame",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -5493,7 +5391,7 @@
       "parameters": {
         "jsonSchemaExample": "{\n  \"intent\": \"chitchat\",\n  \"reply_text\": \"\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}"
       },
-      "id": "n088",
+      "id": "n084",
       "name": "Router Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -5515,7 +5413,7 @@
         },
         "hasOutputParser": false
       },
-      "id": "n089",
+      "id": "n085",
       "name": "Router",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.6,
@@ -5528,7 +5426,7 @@
       "parameters": {
         "jsCode": "const raw = $input.first().json;\nlet txt = raw.text ?? raw.output ?? raw.response ?? raw;\nif (typeof txt !== 'string') {\n  try { txt = JSON.stringify(txt); } catch { txt = String(txt); }\n}\n\n// Stripear fences markdown que mete el LLM (```json ... ```)\ntxt = txt.trim()\n  .replace(/^```(?:json)?\\s*/i, '')\n  .replace(/```\\s*$/i, '')\n  .trim();\n\nlet payload;\ntry {\n  payload = JSON.parse(txt);\n} catch {\n  // Intentar extraer el primer objeto JSON del texto si el LLM tiró texto extra\n  const m = txt.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    try { payload = JSON.parse(m[0]); } catch { payload = null; }\n  }\n}\n\nif (!payload || typeof payload !== 'object') {\n  payload = { intent: 'chitchat', reply_text: '😅 No te entendí bien. ¿Lo podés reformular?' };\n}\n\n// Si vino envuelto en {output: {...}}, desenvolver\nif (payload.output && typeof payload.output === 'object' && payload.output.intent) {\n  payload = payload.output;\n}\n\nconst ctx = $('Concat').first().json;\nconst intent = ['transaction','config','insights','chitchat'].includes(payload.intent) ? payload.intent : 'chitchat';\nreturn [{ json: {\n  ...ctx,\n  intent,\n  router_reply_text: String(payload.reply_text || '').trim(),\n  router_should_react: !!payload.should_react,\n  router_reaction_emoji: String(payload.reaction_emoji || '').slice(0, 4)\n} }];"
       },
-      "id": "n090",
+      "id": "n086",
       "name": "Extract Intent",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5640,7 +5538,7 @@
           "renameFallbackOutput": "unknown"
         }
       },
-      "id": "n091",
+      "id": "n087",
       "name": "Switch Intent",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
@@ -5653,7 +5551,7 @@
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst replyText = ctx.router_reply_text || '😊';\nconst reactionEmoji = ctx.router_reaction_emoji || '';\nconst shouldReact = !!ctx.router_should_react;\nreturn [{ json: { output: JSON.stringify({\n  reply_text: replyText,\n  reply_kind: 'text',\n  image_url: '',\n  should_react: shouldReact,\n  reaction_emoji: reactionEmoji\n}) } }];"
       },
-      "id": "n092",
+      "id": "n088",
       "name": "Build Chitchat Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5666,7 +5564,7 @@
       "parameters": {
         "jsCode": "return [{ json: { output: JSON.stringify({\n  reply_text: '😅 No entendí del todo. ¿Lo podés reformular?',\n  reply_kind: 'text', image_url: '', should_react: false, reaction_emoji: ''\n}) } }];"
       },
-      "id": "n093",
+      "id": "n089",
       "name": "Build Unknown Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5686,7 +5584,7 @@
         },
         "hasOutputParser": true
       },
-      "id": "n094",
+      "id": "n090",
       "name": "Transaction Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
@@ -5706,7 +5604,7 @@
         },
         "hasOutputParser": true
       },
-      "id": "n095",
+      "id": "n091",
       "name": "Config Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
@@ -5726,7 +5624,7 @@
         },
         "hasOutputParser": true
       },
-      "id": "n096",
+      "id": "n092",
       "name": "Insights Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
@@ -5739,7 +5637,7 @@
       "parameters": {
         "jsCode": "const raw = $input.first().json;\nlet payload = raw.output || raw;\nif (typeof payload === 'string') {\n  try { payload = JSON.parse(payload); } catch { payload = { reply_text: payload, reply_kind: 'text' }; }\n}\nconst ctx = $('Concat').first().json;\nlet replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';\nconst replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';\nconst imageUrl = replyKind === 'image' ? (payload.image_url || '') : '';\n\n// If sending image, strip the URL out of the caption — agent often\n// echoes it inside markdown ![text](url) which makes WhatsApp send a\n// huge text blob alongside the image.\nif (replyKind === 'image' && imageUrl) {\n  // Remove markdown image syntax: ![...](url)\n  replyText = replyText.replace(/!\\[[^\\]]*\\]\\([^)]+\\)/g, '').trim();\n  // Remove bare URLs that match the image url\n  replyText = replyText.replace(new RegExp(imageUrl.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'), 'g'), '').trim();\n  // Remove any remaining quickchart URL\n  replyText = replyText.replace(/https?:\\/\\/[^\\s)]*quickchart\\.io[^\\s)]*/g, '').trim();\n  // Collapse multiple newlines/spaces\n  replyText = replyText.replace(/\\n{3,}/g, '\\n\\n').trim();\n  if (!replyText) replyText = '📈 Acá tenés el gráfico.';\n}\n\nconst shouldReact = !!payload.should_react;\nconst emoji = (payload.reaction_emoji || '').toString().slice(0, 4);\nreturn [{ json: {\n  replyText, replyKind,\n  imageUrl,\n  shouldReact, reactionEmoji: shouldReact ? (emoji || '✅') : '',\n  userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,\n  remoteJid: ctx.remoteJid, messageId: ctx.messageId\n} }];"
       },
-      "id": "n097",
+      "id": "n093",
       "name": "Parse Agent Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5752,7 +5650,7 @@
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst HARD_MAX = 1500;\nconst SOFT_MIN = 350;       // por debajo de esto NO partimos por párrafos (queda spammy si son 2 mensajitos cortos)\nconst txt = (ctx.replyText || '').trim();\n\nfunction hardSplit(s) {\n  // Corte duro cuando un párrafo solo supera HARD_MAX (no es lo común).\n  const out = [];\n  for (let i = 0; i < s.length; i += HARD_MAX) out.push(s.slice(i, i + HARD_MAX));\n  return out;\n}\n\nfunction semanticSplit(s) {\n  // Si el agente pidió un corte explícito con [SPLIT], lo respetamos.\n  if (s.includes('[SPLIT]')) {\n    return s.split(/\\s*\\[SPLIT\\]\\s*/).map(x => x.trim()).filter(Boolean);\n  }\n  // Cortes por blank-line. Solo dispara si:\n  //  - El total supera SOFT_MIN (mensaje \"extenso\").\n  //  - Y hay 2+ párrafos (estructura multi-sección).\n  // Si el agente armó la respuesta con \\n\\n entre secciones intencionales,\n  // las mandamos como mensajes separados (lo que pidió el usuario).\n  const paras = s.split(/\\n{2,}/).map(p => p.trim()).filter(Boolean);\n  if (s.length > SOFT_MIN && paras.length >= 2) {\n    return paras;\n  }\n  return [s];\n}\n\nlet pieces = semanticSplit(txt);\n// Aseguramos que ningún chunk supere HARD_MAX (rompemos los que excedan).\npieces = pieces.flatMap(p => p.length > HARD_MAX ? hardSplit(p) : [p]);\n// Filtramos vacíos (por si quedó algo del [SPLIT]).\npieces = pieces.filter(p => p.trim().length > 0);\nif (!pieces.length) pieces = [txt || '😅'];\n\nreturn pieces.map((p, idx) => ({ json: {\n  ...ctx, replyText: p, chunkIndex: idx, chunkCount: pieces.length,\n  // imagen solo en el primer chunk; reacción solo en el último.\n  replyKind: (idx === 0 ? ctx.replyKind : 'text'),\n  imageUrl: (idx === 0 ? ctx.imageUrl : ''),\n  shouldReact: ctx.shouldReact && idx === pieces.length - 1,\n  reactionEmoji: (ctx.shouldReact && idx === pieces.length - 1) ? ctx.reactionEmoji : ''\n} }));"
       },
-      "id": "n098",
+      "id": "n094",
       "name": "Chunk Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5841,7 +5739,7 @@
         },
         "options": {}
       },
-      "id": "n099",
+      "id": "n095",
       "name": "Save Context",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -5856,9 +5754,9 @@
         "operation": "send-presence",
         "instanceName": "={{ $('Save Context').first().json.instance }}",
         "remoteJid": "={{ $('Save Context').first().json.phone }}",
-        "delay": 800
+        "delay": 1000
       },
-      "id": "n100",
+      "id": "n096",
       "name": "Send Presence",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -5898,7 +5796,7 @@
         },
         "options": {}
       },
-      "id": "n101",
+      "id": "n097",
       "name": "IF Image Reply",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -5917,7 +5815,7 @@
         "caption": "={{ $('Save Context').first().json.replyText }}",
         "options_message": {}
       },
-      "id": "n102",
+      "id": "n098",
       "name": "Send Image",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -5940,7 +5838,7 @@
         "messageText": "={{ $('Save Context').first().json.replyText }}",
         "options_message": {}
       },
-      "id": "n103",
+      "id": "n099",
       "name": "Send Text",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -5978,7 +5876,7 @@
         },
         "options": {}
       },
-      "id": "n104",
+      "id": "n100",
       "name": "IF Should React",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -5997,7 +5895,7 @@
         "fromMe": false,
         "reaction": "={{ $('Save Context').first().json.reactionEmoji }}"
       },
-      "id": "n105",
+      "id": "n101",
       "name": "Send Reaction",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -6021,7 +5919,7 @@
           "queryReplacement": "={{ $('Save Context').first().json.userId }},={{ $('Save Context').first().json.replyText || '' }},={{ JSON.stringify($('Save Context').first().json) }}"
         }
       },
-      "id": "n106",
+      "id": "n102",
       "name": "Log Outbound",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -6076,11 +5974,6 @@
       "main": [
         [
           {
-            "node": "Send Initial Ack",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Switch Media Type",
             "type": "main",
             "index": 0
@@ -6092,11 +5985,6 @@
       "main": [
         [
           {
-            "node": "Notice Image",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Download Image",
             "type": "main",
             "index": 0
@@ -6104,22 +5992,12 @@
         ],
         [
           {
-            "node": "Notice Audio",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Download Audio",
             "type": "main",
             "index": 0
           }
         ],
         [
-          {
-            "node": "Notice PDF",
-            "type": "main",
-            "index": 0
-          },
           {
             "node": "Download PDF",
             "type": "main",
