@@ -7,6 +7,8 @@
 // Output: { ok: boolean, data?: any, error?: string }
 
 const PG = { id: 'f8CCpjEZRkcHEaJI', name: 'Postgres account' };
+const OPENAI = { id: '0ErbOR5W4QIYaohV', name: 'OpenAI account' };
+const EMBED_MODEL = 'text-embedding-3-small';  // 1536 dim, $0.02/1M tokens
 
 let idCounter = 1;
 const newId = () => `t${(idCounter++).toString().padStart(3,'0')}`;
@@ -113,7 +115,23 @@ const TOOLS = [
     'set_budget', 'create_group', 'toggle_category_exclusion', 'set_recurring',
     'remember_last_list', 'get_last_list',
     'set_conv_state', 'clear_conv_state',
-    'generate_chart'
+    'generate_chart',
+    // Categorías (CRUD)
+    'create_category', 'rename_category', 'delete_category',
+    // Recurrentes (CRUD)
+    'list_recurring', 'update_recurring', 'pause_recurring', 'resume_recurring', 'cancel_recurring',
+    // Grupos (CRUD)
+    'update_group', 'rename_group', 'close_group', 'delete_group',
+    // Presupuestos (D + pause)
+    'delete_budget', 'pause_budget', 'resume_budget',
+    // Tags (CRUD + smart suggest + tag/untag tx)
+    'create_tag', 'rename_tag', 'delete_tag', 'list_tags', 'tag_transactions', 'untag_transactions', 'suggest_tags',
+    // Settings del usuario
+    'get_settings', 'update_settings',
+    // Asesor financiero
+    'financial_advice',
+    // Memoria semántica (pgvector) — incluye update para hechos que evolucionan
+    'remember_fact', 'recall_memory', 'update_memory', 'forget_memory', 'list_memories'
 ];
 
 addNode('Tool Router', 'n8n-nodes-base.switch', {
@@ -309,6 +327,8 @@ return [{ json: { ok: true, tool: 'bulk_delete', data: {
 ));
 
 // 8. bulk_update → bulk_update_by_ids
+//    Acepta UUID o nombre (new_category_hint). Si create_category_if_missing=true, crea la
+//    categoria si no existe; si no, hace fuzzy match contra existentes.
 formatNames.push(addPgTool(8, 'bulk_update',
     `SELECT * FROM bulk_update_by_ids(
         $1::uuid,
@@ -317,7 +337,9 @@ formatNames.push(addPgTool(8, 'bulk_update',
         NULLIF($2::jsonb->>'new_date','')::date,
         NULLIF($2::jsonb->>'new_group_id','')::uuid,
         NULLIF($2::jsonb->>'amount_delta','')::numeric,
-        NULLIF($2::jsonb->>'set_excluded','')::boolean
+        NULLIF($2::jsonb->>'set_excluded','')::boolean,
+        NULLIF($2::jsonb->>'new_category_hint',''),
+        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)
     );`,
     "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
@@ -430,6 +452,8 @@ return [{ json: { ok: true, tool: 'log_transaction', data: {
 ));
 
 // 10. update_transaction
+//     Acepta UUID o nombre (new_category_hint). Si create_category_if_missing=true,
+//     crea la categoria si no existe; si no, hace fuzzy match contra existentes.
 formatNames.push(addPgTool(10, 'update_transaction',
     `SELECT * FROM update_tx(
         $1::uuid,
@@ -437,7 +461,9 @@ formatNames.push(addPgTool(10, 'update_transaction',
         NULLIF($2::jsonb->>'new_date','')::date,
         NULLIF($2::jsonb->>'new_amount','')::numeric,
         NULLIF($2::jsonb->>'new_description',''),
-        NULLIF($2::jsonb->>'new_category_id','')::uuid
+        NULLIF($2::jsonb->>'new_category_id','')::uuid,
+        NULLIF($2::jsonb->>'new_category_hint',''),
+        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)
     );`,
     "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
@@ -626,7 +652,8 @@ formatNames.push(addPgTool(22, 'clear_conv_state',
 ));
 
 // 23. generate_chart (no SQL — just QuickChart URL builder, but uses Postgres for data)
-const chartIdx = 23;
+//     OJO: si agregas tools antes de generate_chart, mantene chartIdx alineado con TOOLS.
+const chartIdx = TOOLS.indexOf('generate_chart');
 yT = -800 + chartIdx * Y_STEP;
 addNode('PG generate_chart', 'n8n-nodes-base.postgres', {
     operation: 'executeQuery',
@@ -671,6 +698,605 @@ return [{ json: { ok: true, tool: 'generate_chart', data: {
 }, xT + 220, yT);
 connect('PG generate_chart', 'Fmt generate_chart');
 formatNames.push('Fmt generate_chart');
+
+// 24. create_category — crea o devuelve una categoria del usuario.
+//     Si ya existe (exact o fuzzy match), no la duplica: la devuelve con was_created=false.
+formatNames.push(addPgTool(TOOLS.indexOf('create_category'), 'create_category',
+    `SELECT * FROM resolve_or_create_category(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'name',''), 'Otros'),
+        COALESCE(NULLIF($2::jsonb->>'type',''), 'expense')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.category_id) {
+  return [{ json: { ok: false, tool: 'create_category', error: 'No se pudo crear la categoría' } }];
+}
+return [{ json: { ok: true, tool: 'create_category', data: {
+  id: r.category_id, name: r.category_name, was_created: !!r.was_created
+} } }];`
+));
+
+// 25. rename_category — cambia el nombre de una categoria existente del usuario.
+formatNames.push(addPgTool(TOOLS.indexOf('rename_category'), 'rename_category',
+    `SELECT * FROM rename_category(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'old_name',''), ''),
+        COALESCE(NULLIF($2::jsonb->>'new_name',''), '')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.renamed) {
+  return [{ json: { ok: false, tool: 'rename_category',
+    error: 'No encontré la categoría "' + (r?.old_name || '') + '". Mirá list_categories.' } }];
+}
+return [{ json: { ok: true, tool: 'rename_category', data: {
+  id: r.category_id, old_name: r.old_name, new_name: r.new_name
+} } }];`
+));
+
+// 26. delete_category — soft-delete (desactiva). Si tiene transacciones u otras
+//     dependencias y no se pasa merge_into, falla con un error claro.
+formatNames.push(addPgTool(TOOLS.indexOf('delete_category'), 'delete_category',
+    `SELECT * FROM delete_category(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'name',''), ''),
+        NULLIF($2::jsonb->>'merge_into','')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.deactivated) {
+  return [{ json: { ok: false, tool: 'delete_category',
+    error: 'No encontré la categoría. Mirá list_categories.' } }];
+}
+return [{ json: { ok: true, tool: 'delete_category', data: {
+  id: r.category_id, name: r.category_name, merged_into: r.merged_into || null,
+  moved_transactions: Number(r.moved_transactions || 0)
+} } }];`
+));
+
+// ---------- Recurrentes (CRUD) ----------
+
+// list_recurring
+formatNames.push(addPgTool(TOOLS.indexOf('list_recurring'), 'list_recurring',
+    `SELECT * FROM list_recurring(
+        $1::uuid,
+        COALESCE(($2::jsonb->>'active_only')::boolean, true)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const rows = $input.all().map(i => i.json);
+return [{ json: { ok: true, tool: 'list_recurring', data: {
+  recurring: rows.map(r => ({
+    id: r.id, type: r.type, amount: Number(r.amount), description: r.description,
+    frequency: r.frequency, next_occurrence: r.next_occurrence,
+    last_occurrence: r.last_occurrence, end_date: r.end_date, is_active: r.is_active,
+    category: r.category_name, emoji: r.category_emoji,
+    payment_method: r.payment_method_name
+  }))
+} } }];`
+));
+
+// update_recurring
+formatNames.push(addPgTool(TOOLS.indexOf('update_recurring'), 'update_recurring',
+    `SELECT * FROM update_recurring(
+        $1::uuid,
+        ($2::jsonb->>'recurring_id')::uuid,
+        NULLIF($2::jsonb->>'new_amount','')::numeric,
+        NULLIF($2::jsonb->>'new_description',''),
+        NULLIF($2::jsonb->>'new_frequency',''),
+        NULLIF($2::jsonb->>'new_category_hint',''),
+        NULLIF($2::jsonb->>'new_next_occurrence','')::date,
+        NULLIF($2::jsonb->>'new_end_date','')::date,
+        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.id) return [{ json: { ok: false, tool: 'update_recurring',
+  error: 'No encontré la recurrente o no es tuya' } }];
+return [{ json: { ok: true, tool: 'update_recurring', data: {
+  id: r.id, amount: Number(r.amount), description: r.description, frequency: r.frequency,
+  next_occurrence: r.next_occurrence, end_date: r.end_date, is_active: r.is_active,
+  category: r.category_name
+} } }];`
+));
+
+// pause_recurring
+formatNames.push(addPgTool(TOOLS.indexOf('pause_recurring'), 'pause_recurring',
+    `SELECT * FROM pause_recurring($1::uuid, ($2::jsonb->>'recurring_id')::uuid);`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.paused) return [{ json: { ok: false, tool: 'pause_recurring',
+  error: 'No encontré la recurrente o no es tuya' } }];
+return [{ json: { ok: true, tool: 'pause_recurring', data: {
+  id: r.id, description: r.description, was_active: !!r.was_active
+} } }];`
+));
+
+// resume_recurring
+formatNames.push(addPgTool(TOOLS.indexOf('resume_recurring'), 'resume_recurring',
+    `SELECT * FROM resume_recurring($1::uuid, ($2::jsonb->>'recurring_id')::uuid);`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.resumed) return [{ json: { ok: false, tool: 'resume_recurring',
+  error: 'No encontré la recurrente o no es tuya' } }];
+return [{ json: { ok: true, tool: 'resume_recurring', data: {
+  id: r.id, description: r.description
+} } }];`
+));
+
+// cancel_recurring
+formatNames.push(addPgTool(TOOLS.indexOf('cancel_recurring'), 'cancel_recurring',
+    `SELECT * FROM cancel_recurring($1::uuid, ($2::jsonb->>'recurring_id')::uuid);`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.cancelled) return [{ json: { ok: false, tool: 'cancel_recurring',
+  error: 'No encontré la recurrente o no es tuya' } }];
+return [{ json: { ok: true, tool: 'cancel_recurring', data: {
+  id: r.id, description: r.description
+} } }];`
+));
+
+// ---------- Grupos (CRUD) ----------
+
+// update_group
+formatNames.push(addPgTool(TOOLS.indexOf('update_group'), 'update_group',
+    `SELECT * FROM update_group(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'name',''), ''),
+        NULLIF($2::jsonb->>'new_name',''),
+        NULLIF($2::jsonb->>'new_kind',''),
+        NULLIF($2::jsonb->>'new_emoji',''),
+        NULLIF($2::jsonb->>'new_starts_at','')::date,
+        NULLIF($2::jsonb->>'new_ends_at','')::date
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.id) return [{ json: { ok: false, tool: 'update_group',
+  error: 'No encontré el grupo' } }];
+return [{ json: { ok: true, tool: 'update_group', data: {
+  id: r.id, name: r.name, kind: r.kind, emoji: r.emoji,
+  starts_at: r.starts_at, ends_at: r.ends_at, is_active: r.is_active
+} } }];`
+));
+
+// rename_group
+formatNames.push(addPgTool(TOOLS.indexOf('rename_group'), 'rename_group',
+    `SELECT * FROM rename_group(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'old_name',''), ''),
+        COALESCE(NULLIF($2::jsonb->>'new_name',''), '')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.renamed) return [{ json: { ok: false, tool: 'rename_group',
+  error: 'No encontré el grupo "' + (r?.old_name || '') + '"' } }];
+return [{ json: { ok: true, tool: 'rename_group', data: {
+  id: r.id, old_name: r.old_name, new_name: r.new_name
+} } }];`
+));
+
+// close_group
+formatNames.push(addPgTool(TOOLS.indexOf('close_group'), 'close_group',
+    `SELECT * FROM close_group(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'name',''), '')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.closed) return [{ json: { ok: false, tool: 'close_group',
+  error: 'No encontré el grupo' } }];
+return [{ json: { ok: true, tool: 'close_group', data: {
+  id: r.id, name: r.name, ends_at: r.ends_at
+} } }];`
+));
+
+// delete_group
+formatNames.push(addPgTool(TOOLS.indexOf('delete_group'), 'delete_group',
+    `SELECT * FROM delete_group(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'name',''), ''),
+        NULLIF($2::jsonb->>'reassign_to_name',''),
+        COALESCE(($2::jsonb->>'unassign')::boolean, false)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.deleted) return [{ json: { ok: false, tool: 'delete_group',
+  error: 'No encontré el grupo' } }];
+return [{ json: { ok: true, tool: 'delete_group', data: {
+  id: r.id, name: r.name, moved_transactions: Number(r.moved_transactions || 0),
+  reassigned_to: r.reassigned_to || null
+} } }];`
+));
+
+// ---------- Presupuestos (delete/pause/resume) ----------
+
+formatNames.push(addPgTool(TOOLS.indexOf('delete_budget'), 'delete_budget',
+    `SELECT * FROM delete_budget(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'category_hint',''), ''),
+        NULLIF($2::jsonb->>'period','')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+const cnt = Number(r?.deleted_count || 0);
+if (!cnt) return [{ json: { ok: false, tool: 'delete_budget',
+  error: 'No encontré un presupuesto activo para esa categoría' } }];
+return [{ json: { ok: true, tool: 'delete_budget', data: {
+  deleted_count: cnt, category: r.category_name
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('pause_budget'), 'pause_budget',
+    `SELECT * FROM pause_budget(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'category_hint',''), ''),
+        NULLIF($2::jsonb->>'period','')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+const cnt = Number(r?.paused_count || 0);
+if (!cnt) return [{ json: { ok: false, tool: 'pause_budget',
+  error: 'No encontré un presupuesto activo para esa categoría' } }];
+return [{ json: { ok: true, tool: 'pause_budget', data: {
+  paused_count: cnt, category: r.category_name
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('resume_budget'), 'resume_budget',
+    `SELECT * FROM resume_budget(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'category_hint',''), ''),
+        NULLIF($2::jsonb->>'period','')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+const cnt = Number(r?.resumed_count || 0);
+if (!cnt) return [{ json: { ok: false, tool: 'resume_budget',
+  error: 'No encontré un presupuesto pausado para esa categoría' } }];
+return [{ json: { ok: true, tool: 'resume_budget', data: {
+  resumed_count: cnt, category: r.category_name
+} } }];`
+));
+
+// ---------- Tags (CRUD + tag/untag + sugerencias) ----------
+
+formatNames.push(addPgTool(TOOLS.indexOf('create_tag'), 'create_tag',
+    `SELECT * FROM create_tag(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'name',''), ''),
+        NULLIF($2::jsonb->>'color','')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.tag_id) return [{ json: { ok: false, tool: 'create_tag',
+  error: 'No se pudo crear el tag' } }];
+return [{ json: { ok: true, tool: 'create_tag', data: {
+  id: r.tag_id, name: r.tag_name, was_created: !!r.was_created
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('rename_tag'), 'rename_tag',
+    `SELECT * FROM rename_tag(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'old_name',''), ''),
+        COALESCE(NULLIF($2::jsonb->>'new_name',''), '')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.renamed) return [{ json: { ok: false, tool: 'rename_tag',
+  error: 'No encontré el tag "' + (r?.old_name || '') + '"' } }];
+return [{ json: { ok: true, tool: 'rename_tag', data: {
+  id: r.tag_id, old_name: r.old_name, new_name: r.new_name
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('delete_tag'), 'delete_tag',
+    `SELECT * FROM delete_tag(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'name',''), '')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.deleted) return [{ json: { ok: false, tool: 'delete_tag',
+  error: 'No encontré el tag' } }];
+return [{ json: { ok: true, tool: 'delete_tag', data: {
+  id: r.tag_id, name: r.tag_name,
+  untagged_transactions: Number(r.untagged_transactions || 0)
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('list_tags'), 'list_tags',
+    `SELECT * FROM list_tags($1::uuid);`,
+    "={{ $json.user_id }}",
+    `const rows = $input.all().map(i => i.json);
+return [{ json: { ok: true, tool: 'list_tags', data: {
+  tags: rows.map(r => ({ id: r.id, name: r.name, color: r.color,
+    tx_count: Number(r.tx_count || 0), total: Number(r.total_amount || 0) }))
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('tag_transactions'), 'tag_transactions',
+    `SELECT * FROM tag_transactions(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'tag_name',''), ''),
+        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'tx_ids'))::uuid[],
+        COALESCE(($2::jsonb->>'create_if_missing')::boolean, true)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+return [{ json: { ok: true, tool: 'tag_transactions', data: {
+  id: r.tag_id, name: r.tag_name,
+  tagged_count: Number(r.tagged_count || 0),
+  was_created: !!r.was_created
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('untag_transactions'), 'untag_transactions',
+    `SELECT * FROM untag_transactions(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'tag_name',''), ''),
+        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'tx_ids'))::uuid[]
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+return [{ json: { ok: true, tool: 'untag_transactions', data: {
+  untagged_count: Number(r.untagged_count || 0)
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('suggest_tags'), 'suggest_tags',
+    `SELECT * FROM suggest_tags(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'description',''), ''),
+        NULLIF($2::jsonb->>'amount','')::numeric,
+        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 5)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const rows = $input.all().map(i => i.json);
+return [{ json: { ok: true, tool: 'suggest_tags', data: {
+  suggestions: rows.map(r => ({ id: r.tag_id, name: r.tag_name,
+    score: Number(r.score || 0), uses: Number(r.sample_uses || 0) }))
+} } }];`
+));
+
+// ---------- Settings del usuario ----------
+
+formatNames.push(addPgTool(TOOLS.indexOf('get_settings'), 'get_settings',
+    `SELECT * FROM get_user_settings($1::uuid);`,
+    "={{ $json.user_id }}",
+    `const r = $input.first().json;
+if (!r) return [{ json: { ok: false, tool: 'get_settings', error: 'Usuario no encontrado' } }];
+return [{ json: { ok: true, tool: 'get_settings', data: {
+  name: r.name, phone: r.phone_number, currency: r.preferred_currency,
+  daily_summary_enabled: !!r.daily_summary_enabled,
+  daily_summary_hour: Number(r.daily_summary_hour || 0),
+  weekly_summary_enabled: !!r.weekly_summary_enabled,
+  onboarded: !!r.onboarded
+} } }];`
+));
+
+formatNames.push(addPgTool(TOOLS.indexOf('update_settings'), 'update_settings',
+    `SELECT * FROM update_user_settings(
+        $1::uuid,
+        NULLIF($2::jsonb->>'name',''),
+        NULLIF($2::jsonb->>'preferred_currency',''),
+        NULLIF($2::jsonb->>'daily_summary_enabled','')::boolean,
+        NULLIF($2::jsonb->>'daily_summary_hour','')::int,
+        NULLIF($2::jsonb->>'weekly_summary_enabled','')::boolean
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+return [{ json: { ok: true, tool: 'update_settings', data: {
+  name: r.name, currency: r.preferred_currency,
+  daily_summary_enabled: !!r.daily_summary_enabled,
+  daily_summary_hour: Number(r.daily_summary_hour || 0),
+  weekly_summary_enabled: !!r.weekly_summary_enabled
+} } }];`
+));
+
+// ---------- Asesor financiero ----------
+// 5 modos: time_to_goal | affordability | savings_capacity | runway | forecast_month
+formatNames.push(addPgTool(TOOLS.indexOf('financial_advice'), 'financial_advice',
+    `SELECT * FROM compute_financial_advice(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'mode',''), 'savings_capacity'),
+        NULLIF($2::jsonb->>'goal_amount','')::numeric,
+        NULLIF($2::jsonb->>'monthly_saving_override','')::numeric,
+        NULLIF($2::jsonb->>'monthly_income_override','')::numeric,
+        NULLIF($2::jsonb->>'monthly_expense_override','')::numeric,
+        COALESCE(NULLIF($2::jsonb->>'lookback_months','')::int, 3),
+        COALESCE(NULLIF($2::jsonb->>'extra_monthly_saving','')::numeric, 0)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r) return [{ json: { ok: false, tool: 'financial_advice', error: 'sin resultado' } }];
+const numOrNull = v => (v === null || v === undefined || v === '') ? null : Number(v);
+return [{ json: { ok: true, tool: 'financial_advice', data: {
+  mode: r.mode,
+  avg_monthly_income: numOrNull(r.avg_monthly_income),
+  avg_monthly_expense: numOrNull(r.avg_monthly_expense),
+  monthly_saving: numOrNull(r.monthly_saving),
+  savings_rate_pct: numOrNull(r.savings_rate_pct),
+  months_used: numOrNull(r.months_used),
+  months_to_goal: numOrNull(r.months_to_goal),
+  target_date: r.target_date || null,
+  affordable: (r.affordable === null || r.affordable === undefined) ? null : !!r.affordable,
+  runway_months: numOrNull(r.runway_months),
+  projected_month_total_expense: numOrNull(r.projected_month_total_expense),
+  projected_month_total_income: numOrNull(r.projected_month_total_income),
+  note: r.note || ''
+} } }];`
+));
+
+// ---------- Memoria semántica (pgvector + OpenAI embeddings) ----------
+//
+// Pattern para tools que requieren un embedding antes del SQL:
+//   Router → Embed Input (Code: arma el body) → Embed HTTP (POST OpenAI) →
+//     Pack Embedding (Code: extrae .data[0].embedding y lo formatea como
+//     '[a,b,c]' literal de pgvector) → PG <tool> → Fmt <tool>.
+//
+// El input al Embed HTTP es el campo `query` o `content` que mandó el agente
+// (vía Normalize Input → params). El output del Pack queda en json.embedding
+// y se inyecta a la query SQL como tercer queryReplacement.
+//
+// `forget_memory` y `list_memories` no requieren embedding → handler estándar.
+const addEmbeddingPgTool = (idx, toolName, embedTextExpr, sqlQuery, formatJs) => {
+    const yT0 = -800 + idx * Y_STEP;
+    const xPack = xT;
+    const xPg   = xT + 220;
+    const xFmt  = xT + 440;
+
+    const embedNodeName = `Embed ${toolName}`;
+    const packNodeName  = `Pack Embedding ${toolName}`;
+    const pgName        = `PG ${toolName}`;
+    const fmtName       = `Fmt ${toolName}`;
+
+    addNode(embedNodeName, 'n8n-nodes-base.httpRequest', {
+        method: 'POST',
+        url: 'https://api.openai.com/v1/embeddings',
+        authentication: 'predefinedCredentialType',
+        nodeCredentialType: 'openAiApi',
+        sendHeaders: true,
+        headerParameters: { parameters: [{ name: 'Content-Type', value: 'application/json' }] },
+        sendBody: true, specifyBody: 'json',
+        jsonBody: `={\n  "model": "${EMBED_MODEL}",\n  "input": ${embedTextExpr},\n  "encoding_format": "float"\n}`,
+        options: {}
+    }, xT - 220, yT0, { tv: 4.2, creds: { openAiApi: OPENAI } });
+    connect('Tool Router', embedNodeName, idx);
+
+    addNode(packNodeName, 'n8n-nodes-base.code', {
+        jsCode: `const resp = $input.first().json;
+const inp = $('Normalize Input').first().json;
+const emb = resp?.data?.[0]?.embedding;
+if (!Array.isArray(emb)) {
+  return [{ json: { ok: false, tool: '${toolName}', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];
+}
+// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)
+const embStr = '[' + emb.join(',') + ']';
+return [{ json: { ...inp, embedding: embStr } }];`
+    }, xPack, yT0);
+    connect(embedNodeName, packNodeName);
+
+    addNode(pgName, 'n8n-nodes-base.postgres', {
+        operation: 'executeQuery',
+        query: sqlQuery,
+        options: { queryReplacement: '={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}' }
+    }, xPg, yT0, { tv: 2.5, creds: { postgres: PG }, always: true, cof: true });
+    connect(packNodeName, pgName);
+
+    const inner = formatJs;
+    const wrapped = `try {
+  const first = $input.first()?.json || {};
+  if (first.ok === false && first.error) return [{ json: first }];
+  if (first.error || first.message?.includes?.('error')) {
+    return [{ json: { ok: false, tool: '${toolName}', error: String(first.error || first.message || 'SQL error') } }];
+  }
+${inner}
+} catch (e) {
+  return [{ json: { ok: false, tool: '${toolName}', error: 'Format error: ' + (e?.message || String(e)) } }];
+}`;
+    addNode(fmtName, 'n8n-nodes-base.code', { jsCode: wrapped }, xFmt, yT0);
+    connect(pgName, fmtName);
+    // Si el Pack devuelve {ok:false,error}, también lo dejamos pasar al Fmt
+    connect(packNodeName, fmtName);
+    return fmtName;
+};
+
+// remember_fact: agente pasa {content, kind?, metadata?}
+formatNames.push(addEmbeddingPgTool(
+    TOOLS.indexOf('remember_fact'),
+    'remember_fact',
+    `{{ JSON.stringify($json.params.content || '') }}`,
+    `SELECT * FROM add_memory_chunk(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),
+        $2::jsonb->>'content',
+        $3::vector(1536),
+        COALESCE($2::jsonb->'metadata', '{}'::jsonb)
+    );`,
+    `const r = $input.first().json;
+return [{ json: { ok: true, tool: 'remember_fact', data: {
+  id: r.id, was_created: !!r.was_created, content: r.content, kind: r.kind
+} } }];`
+));
+
+// update_memory: agente pasa {memory_id, new_content, kind?, metadata?}
+// Re-embedea el new_content. Útil para hechos que evolucionan sin perder el id.
+formatNames.push(addEmbeddingPgTool(
+    TOOLS.indexOf('update_memory'),
+    'update_memory',
+    `{{ JSON.stringify($json.params.new_content || '') }}`,
+    `SELECT * FROM update_memory_chunk(
+        $1::uuid,
+        ($2::jsonb->>'memory_id')::uuid,
+        $2::jsonb->>'new_content',
+        $3::vector(1536),
+        NULLIF($2::jsonb->>'kind',''),
+        NULLIF($2::jsonb->'metadata', 'null'::jsonb)
+    );`,
+    `const r = $input.first().json;
+if (!r || !r.updated) {
+  return [{ json: { ok: false, tool: 'update_memory', error: 'No encontré ese recuerdo o no es tuyo' } }];
+}
+return [{ json: { ok: true, tool: 'update_memory', data: {
+  id: r.id, content: r.content, kind: r.kind
+} } }];`
+));
+
+// recall_memory: agente pasa {query, k?, kind?, min_score?}
+formatNames.push(addEmbeddingPgTool(
+    TOOLS.indexOf('recall_memory'),
+    'recall_memory',
+    `{{ JSON.stringify($json.params.query || '') }}`,
+    `SELECT * FROM search_memory_chunks(
+        $1::uuid,
+        $3::vector(1536),
+        COALESCE(NULLIF($2::jsonb->>'k','')::int, 5),
+        NULLIF($2::jsonb->>'kind',''),
+        COALESCE(NULLIF($2::jsonb->>'min_score','')::real, 0.5)
+    );`,
+    `const rows = $input.all().map(i => i.json);
+return [{ json: { ok: true, tool: 'recall_memory', data: {
+  matches: rows.map(r => ({
+    id: r.id, kind: r.kind, content: r.content,
+    metadata: r.metadata, similarity: Number(r.similarity || 0),
+    created_at: r.created_at, recall_count: Number(r.recall_count || 0)
+  })),
+  count: rows.length
+} } }];`
+));
+
+// forget_memory: agente pasa {memory_id} — soft-delete por id
+formatNames.push(addPgTool(TOOLS.indexOf('forget_memory'), 'forget_memory',
+    `SELECT * FROM forget_memory_chunk(
+        $1::uuid,
+        ($2::jsonb->>'memory_id')::uuid
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.forgot) {
+  return [{ json: { ok: false, tool: 'forget_memory', error: 'No encontré ese recuerdo o no es tuyo' } }];
+}
+return [{ json: { ok: true, tool: 'forget_memory', data: { id: r.id, forgot: !!r.forgot } } }];`
+));
+
+// list_memories: agente pasa {kind?, limit?}
+formatNames.push(addPgTool(TOOLS.indexOf('list_memories'), 'list_memories',
+    `SELECT * FROM list_memory_chunks(
+        $1::uuid,
+        NULLIF($2::jsonb->>'kind',''),
+        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 20)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const rows = $input.all().map(i => i.json);
+return [{ json: { ok: true, tool: 'list_memories', data: {
+  memories: rows.map(r => ({
+    id: r.id, kind: r.kind, content: r.content, metadata: r.metadata,
+    created_at: r.created_at, recall_count: Number(r.recall_count || 0)
+  })),
+  count: rows.length
+} } }];`
+));
 
 // =========================================================================
 // 4. UNKNOWN TOOL FALLBACK

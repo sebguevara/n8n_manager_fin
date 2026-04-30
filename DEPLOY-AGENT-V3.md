@@ -1,164 +1,223 @@
 # Chefin v3 — Deploy
 
-Toda la **versión 3** queda en 3 workflows:
+3 workflows + 1 schema. Pasos en orden, todo idempotente.
 
 | Workflow | Archivo | Propósito |
 |---|---|---|
-| `chefin_agent_v3` | `workflows/chefin-agent-v3.json` | Webhook + Agente conversacional con tool-calling |
-| `chefin_tools_v3` | `workflows/chefin-tools-v3.json` | Sub-workflow con las 24 tools (lo invoca el agente) |
-| `chefin_cron_v3` | `workflows/chefin-cron-v3.json` | **Todos** los cron jobs en uno (resumen diario/semanal, recurrentes, cleanup, alertas de presupuesto) |
+| `chefin_agent_v3` | `workflows/chefin-agent-v3.json` | Webhook + Router + 3 sub-agents (Transaction / Config / Insights) + chitchat fast path |
+| `chefin_tools_v3` | `workflows/chefin-tools-v3.json` | Sub-workflow con **54 tools** (lo invoca el agente) |
+| `chefin_cron_v3` | `workflows/chefin-cron-v3.json` | Cron consolidado (resumen diario/semanal, recurrentes, cleanup, alertas) |
 
-Reemplaza estos workflows viejos (los podés desactivar/borrar después de validar):
-- `Daily Summary Cron`
-- `Weekly Summary Cron`
-- `Recurring Transactions Processor`
-- `chefin` (clasificador rígido v1)
+Reemplaza estos workflows viejos:
+- `Daily Summary Cron`, `Weekly Summary Cron`, `Recurring Transactions Processor`, `chefin` (clasificador rígido v1).
 
-## ¿LangChain? ¿Hay que instalar algo?
+## Arquitectura v3 (resumen)
 
-**No.** Los nodos `@n8n/n8n-nodes-langchain.*` (Agent, Chat Model, Memory, Tools, Output Parser) ya vienen incluidos en `n8nio/n8n:latest`. Tu instancia 2.18.4 los tiene listos. Lo único que el agente nuevo necesita es:
+```
+WhatsApp ─→ Webhook ─→ [media/audio/PDF/text] ─→ Bootstrap user ─→ Concat
+        ─→ Detect Heavy ─→ "Aguardame" (heavy ops) ─→ Router LLM ─→ Switch by intent
+        ─→ ┬─ Transaction Agent (19 tools)  ───┐
+           ├─ Config Agent (41 tools)         ─┤─→ Parse Output ─→ Chunk Reply (multi-mensaje) ─→ Send WhatsApp
+           ├─ Insights Agent (18 tools)       ─┤
+           └─ Chitchat (sin agente)           ─┘
+```
 
-- **Credentials existentes**: OpenAI account (`0ErbOR5W4QIYaohV`), Postgres (`f8CCpjEZRkcHEaJI`), Redis (`igDqU9rqRBlmVQGc`), Evolution (`FgeqqvxAqTER4oeD`). Las mismas que ya usa el v1.
-- **Tabla `n8n_chat_histories`** para la memoria conversacional. **Ya está en `schema.sql`** y se crea sola al aplicar el schema.
+Highlights:
+- **Sub-agents con prompt caching**: cada specialist tiene system prompt de ~2.2k tokens (estático, OpenAI cachea automáticamente). Costo y latencia ~50% menos en mensajes 2+.
+- **Memoria semántica (pgvector)**: el agente puede `remember_fact` / `recall_memory` / `update_memory` / `forget_memory` / `list_memories` para persistir hechos del usuario más allá del chat history.
+- **Multi-mensaje chunker**: respuestas largas con secciones distintas (`\n\n`) se mandan como mensajes WhatsApp separados con typing-indicator entre cada uno.
+- **Asesor financiero**: tool `financial_advice` con 5 modos (time_to_goal, affordability, savings_capacity, runway, forecast_month).
 
-Para extensiones futuras (vector store con pgvector, embeddings, RAG sobre histórico) sí harían falta deps adicionales — hoy no.
+## Pre-requisitos
+
+Tu instancia de n8n (≥ 2.18) ya trae los nodos `@n8n/n8n-nodes-langchain.*` (Agent, Chat Model, Memory, Output Parser, Tools). No hay que instalar nada.
+
+Credenciales que el v3 referencia (verificá que estén en n8n con esos ids o cambialos en los build scripts):
+- OpenAI: `0ErbOR5W4QIYaohV`
+- Postgres: `f8CCpjEZRkcHEaJI`
+- Redis: `igDqU9rqRBlmVQGc`
+- Evolution: `FgeqqvxAqTER4oeD`
 
 ## Pasos de deploy
 
-### 1. Aplicar el schema actualizado
+### 1. Aplicar schema (una sola vez por sesión de cambios)
 
 ```bash
-docker compose exec -T postgres sh -c 'PGPASSWORD=$POSTGRES_PASSWORD psql -U $POSTGRES_USER -d expenses' < schema.sql
+docker compose run --rm db-init
 ```
 
-Idempotente (todo `CREATE OR REPLACE` / `IF NOT EXISTS`). Agrega:
-- 17 funciones SQL del agente (`find_matching_tx_v2`, `query_tx_dynamic`, `get_total_dynamic`, `get_breakdown_dynamic`, `compare_periods`, `find_potential_duplicates`, `bulk_delete_by_ids`, `bulk_update_by_ids`, `bulk_preview`, `remember_last_list`, `get_last_list`, `list_categories_with_counts`).
-- Funciones de cron (`log_cron_start`, `log_cron_end`, `purge_old_chat_history`, `purge_expired_conv_states`, `pending_budget_alerts`, `mark_budget_alert_sent`).
-- Tablas `n8n_chat_histories`, `cron_runs`, `budget_alert_log`.
-- 3 índices nuevos sobre `transactions`.
+Idempotente. Crea/actualiza:
+- Extensión `vector` (pgvector 0.8+) para memoria semántica.
+- Tabla `memory_chunks` con índice HNSW cosine.
+- ~70 funciones SQL (CRUD de tx, categorías, grupos, presupuestos, recurrentes, tags, settings, memoria, asesor financiero).
+- Tablas: `n8n_chat_histories`, `cron_runs`, `budget_alert_log`, `monthly_digest_log`.
 
 ### 2. Importar los 3 workflows
 
 ```bash
-# Sub-workflow de tools (importar primero)
 docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < workflows/chefin-tools-v3.json
-
-# Cron consolidado
 docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < workflows/chefin-cron-v3.json
-
-# Agente principal
 docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < workflows/chefin-agent-v3.json
 ```
 
-Los ids quedan fijos (`chefin_tools_v3`, `chefin_cron_v3`, `chefin_agent_v3`) así que el agente ya viene con la referencia correcta al sub-workflow — **no hace falta correr `apply-tools-id.js`** en esta deploy. Sólo si regenerás `chefin-agent-v3.json` desde el build script vas a necesitar:
+### 3. Linkear el sub-workflow al agente
+
+El JSON del agente trae `__TOOLS_WF_ID__` como placeholder en los 54 nodos `tool: ...`. Después de importar `chefin-tools-v3.json`, copiá su workflow ID (de la URL: `/workflow/<ID>`) y corré:
 
 ```bash
-node apply-tools-id.js chefin_tools_v3
+node apply-tools-id.js <SUBWORKFLOW_ID>
 ```
 
-### 3. Activar y configurar
+Después re-importá `chefin-agent-v3.json` (sobreescribe por nombre) o editá el agente en n8n y guarda.
 
-En n8n:
-1. **Activá** `chefin_tools_v3`, `chefin_cron_v3` y `chefin_agent_v3`.
-2. **Desactivá** los 4 workflows viejos (`Daily Summary Cron`, `Weekly Summary Cron`, `Recurring Transactions Processor`, `chefin`).
-3. En el v3, abrí cada nodo de credentials y verificá que estén bien linkeadas (a veces n8n las pierde después del import).
+### 4. Verificar credenciales
 
-### 4. Apuntar Evolution API al webhook v3
+Después del import, abrí cada nodo que use credentials (Chat Model, Postgres, Redis, Evolution API, Embed HTTP) y confirmá que estén linkeadas. n8n a veces las pierde post-import.
 
-El agente escucha en `/webhook/chefin`. En tu config de Evolution API:
+### 5. Activar workflows nuevos, desactivar los viejos
+
+1. Activá: `chefin_tools_v3`, `chefin_cron_v3`, `chefin_agent_v3`.
+2. Desactivá: `Daily Summary Cron`, `Weekly Summary Cron`, `Recurring Transactions Processor`, `chefin` (v1).
+3. Asegurate que solo el v3 escuche en `/webhook/chefin`.
+
+### 6. Apuntar Evolution API al webhook v3
 
 ```
 URL: http://n8n:5678/webhook/chefin
 ```
 
-⚠️ Si tenés el workflow v1 (`chefin` viejo) activo y usa el mismo path, **desactivá el v1 antes de activar el v3** para evitar conflicto de path.
+⚠️ Si el v1 estaba activo en el mismo path, desactivalo PRIMERO para evitar conflictos.
 
-### 5. Smoke tests del agente
+## Validación pre-deploy (correr antes del paso 1)
 
-Mensajes a tu WhatsApp y respuesta esperada:
+```bash
+# 1. SQL test suite (31 tests, ~30s contra Postgres local)
+cd tests && bash run.sh
 
+# 2. Chunker unit tests (10 casos, sin API)
+cd .. && node tests/agent/test-chunker.mjs
+
+# 3. Router classification (32 scenarios, ~30s, requiere OPENAI_API_KEY)
+export OPENAI_API_KEY=sk-...
+node tests/agent/run-router.mjs
+
+# 4. Tool routing (30 scenarios, ~40s, requiere OPENAI_API_KEY)
+node tests/agent/run-tools.mjs
+```
+
+Si pasan todos, deploy seguro.
+
+## Smoke tests post-deploy (mensajes reales por WhatsApp)
+
+### Transacciones
 | # | Mensaje | Esperado |
 |---|---|---|
-| 1 | `Mostrame todos mis movimientos` | Lista TODOS los movs (period=all) |
-| 2 | `Cuanto gasté este mes?` | Total simple |
-| 3 | `En qué gasté más?` | Breakdown por categoría con % |
-| 4 | `Comparame este mes vs el pasado` | Comparativa con delta |
-| 5 | `Mostrame los gastos de 3300` | Lista numerada con todos los matches |
-| 6 | `Borrá el primero` (después de #5) | Resuelve via last_list → delete |
-| 7 | `Eliminá los gastos repetidos` | find_duplicates → preview → confirma |
-| 8 | `Borrá todos los café del mes pasado` | bulk_preview → confirma |
-| 9 | `Tomé 2500 de café` | log + ✅ reaction |
-| 10 | `Hola` | Reply breve, sin reacción |
-| 11 | `Qué fecha es hoy?` | Fecha directa, sin tools |
-| 12 | `Gráfico por categoría del mes` | Imagen con caption |
+| 1 | `Tomé 2500 de café` | log directo + ✅ |
+| 2 | `Cuánto gasté este mes?` | total simple |
+| 3 | `Mostrame los últimos 5 movs` | lista numerada |
+| 4 | `Borrá el primero` (tras #3) | resuelve via last_list → confirmación |
+| 5 | `Eliminá los gastos repetidos` | find_duplicates → preview → confirma |
+| 6 | `El último gasto era comida no salidas` | update_transaction con new_category_hint |
 
-### 6. Smoke tests del cron
+### Configuración
+| # | Mensaje | Esperado |
+|---|---|---|
+| 7 | `Creá una categoría llamada salidas` | create_category, no pregunta tipo |
+| 8 | `Borrá la categoría salidas` | si tiene tx pregunta merge_into; si vacía la borra |
+| 9 | `Pausá Netflix` | list_recurring → pause_recurring |
+| 10 | `Ponéle un presupuesto de 50k a comida` | set_budget |
+| 11 | `Etiquetá los últimos 3 cafés como trabajo` | find_transactions + tag_transactions |
+| 12 | `Creá un viaje a Brasil` | create_group(kind=trip) |
+| 13 | `El resumen mandámelo a las 8 de la noche` | update_settings |
 
-Desde la UI de n8n abrí `chefin_cron_v3`:
-1. Editá el nodo `Pick Job` y poné el job a probar (`daily_summary` | `weekly_summary` | `recurring` | `cleanup` | `budget_alerts`).
-2. Ejecutá el `Manual Test` trigger.
-3. Verificá que se ejecutó:
+### Insights
+| # | Mensaje | Esperado |
+|---|---|---|
+| 14 | `Comparame con el mes pasado` | compare_periods con delta |
+| 15 | `En qué gasté más?` | breakdown con % |
+| 16 | `Haceme un gráfico` | "aguardame" → imagen + caption |
+| 17 | `En cuánto tiempo junto 500 mil` | financial_advice(time_to_goal) |
+| 18 | `Cuánto ahorro al mes?` | financial_advice(savings_capacity) |
+
+### Memoria
+| # | Mensaje | Esperado |
+|---|---|---|
+| 19 | `Anotá que estoy ahorrando para una moto de 4 millones` | remember_fact, kind=goal |
+| 20 | `Cómo voy con la meta de la moto?` | recall_memory + financial_advice combinado |
+| 21 | `Ahora la meta es 5 millones` | update_memory (preserva id) — NO duplica |
+| 22 | `Qué recordás de mí?` | list_memories legible |
+| 23 | `Olvidate de la moto` | forget_memory |
+
+### Chitchat (no llama agente, responde el router)
+| # | Mensaje | Esperado |
+|---|---|---|
+| 24 | `Hola` | reply breve, sin reaction |
+| 25 | `Qué fecha es hoy?` | fecha desde el contexto |
+| 26 | `Gracias` | reply corto |
+
+### Multi-mensaje
+| # | Mensaje | Esperado |
+|---|---|---|
+| 27 | `Comparame con el mes pasado y dame contexto` | 2-3 mensajes secuenciales con typing entre cada uno |
+
+## Cron — smoke test
+
+Desde n8n abrí `chefin_cron_v3`:
+1. Editá `Pick Job` y poné el job (`daily_summary` | `weekly_summary` | `recurring` | `cleanup` | `budget_alerts`).
+2. Click `Manual Test`.
+3. Verificá:
 
 ```sql
 SELECT job_name, started_at, finished_at, items_processed, items_sent, success, error_msg
 FROM cron_runs ORDER BY started_at DESC LIMIT 10;
 ```
 
-## Estructura del cron consolidado
-
-```
-Cron 22:00 ART        ──┐
-Cron Sunday 21:00 ART ──┤
-Cron 06:00 ART        ──┤── (cada uno con su Postgres + Format propio)
-Cron 03:30 ART        ──┤
-Cron cada 4h 09-21    ──┤
-Manual Trigger        ──┘── Pick Job → Dispatch (5 ramas)
-
-Daily Summary Query    ─→ Format Daily Summary    ──┐
-Weekly Summary Query   ─→ Format Weekly Summary   ──┤
-Process Due Recurring  ─→ Format Recurring        ──├─→ Merge ─→ Filter Sendable ─→ Loop Batches ─→ Send WhatsApp ─→ Mark Sent ─→ Wait 400ms ─→ (loop)
-Pending Alerts Query   ─→ Format Alerts           ──┘                                              │
-Cleanup Postgres       ─→ Format Cleanup ─→ Log End Cleanup                                       └─→ Aggregate Stats ─→ Log End
-```
-
-Cada job loguea start/end en `cron_runs` para que tengas trazabilidad.
-
-## Rollback
-
-Si algo se rompe:
-1. Desactivá los 3 workflows v3.
-2. Reactivá los 4 viejos (`Daily Summary Cron`, `Weekly Summary Cron`, `Recurring Transactions Processor`, `chefin`).
-3. Apuntá Evolution al webhook `/expense-bot` (viejo).
-4. La data en DB queda intacta — no se borra nada.
-
 ## Métricas a vigilar
 
 ```sql
--- Últimas 24h de cron
+-- Salud cron últimas 24h
 SELECT job_name, COUNT(*) AS runs,
        AVG(EXTRACT(EPOCH FROM (finished_at - started_at)))::INT AS avg_seconds,
-       SUM(items_sent) AS total_sent,
+       SUM(items_sent) AS sent,
        SUM(CASE WHEN success THEN 0 ELSE 1 END) AS failures
-FROM cron_runs
-WHERE started_at > NOW() - INTERVAL '1 day'
+FROM cron_runs WHERE started_at > NOW() - INTERVAL '1 day'
 GROUP BY job_name ORDER BY job_name;
 
--- Tamaño de la memoria conversacional
+-- Memoria conversacional (chat history)
 SELECT session_id, COUNT(*) AS msgs, MAX(created_at) AS last
 FROM n8n_chat_histories GROUP BY session_id ORDER BY msgs DESC LIMIT 10;
 
--- Conv states activos
+-- Estados conv pendientes
 SELECT user_id, state, expires_at FROM conversation_state
 WHERE expires_at > NOW() ORDER BY expires_at;
+
+-- Memoria semántica (pgvector)
+SELECT user_id, COUNT(*) FILTER (WHERE kind <> '__forgotten__') AS active,
+       COUNT(*) FILTER (WHERE kind = '__forgotten__') AS forgotten,
+       SUM(recall_count) AS total_recalls
+FROM memory_chunks GROUP BY user_id;
 ```
 
 ## Tuning
 
 Editá los build scripts y regenerá:
+
 ```bash
 node build-tools-subworkflow.js > workflows/chefin-tools-v3.json
-node build-agent-workflow.js   > workflows/chefin-agent-v3.json
-node build-cron-workflow.js    > workflows/chefin-cron-v3.json
+node build-agent-workflow.js    > workflows/chefin-agent-v3.json
+node build-cron-workflow.js     > workflows/chefin-cron-v3.json
+node apply-tools-id.js <SUB_ID>     # solo si recreaste agent JSON
 ```
 
-Re-importar en n8n (sobreescribe por id).
+Re-importar en n8n (sobreescribe por nombre).
+
+## Rollback
+
+1. Desactivá los 3 workflows v3.
+2. Reactivá los viejos (`Daily Summary Cron`, `Weekly Summary Cron`, `Recurring Transactions Processor`, `chefin`).
+3. Apuntá Evolution al path viejo.
+4. La data en DB queda intacta — schema.sql es aditivo.
+
+## Notas sobre el archivo legacy
+
+`build-workflow.js` (sin sufijos) corresponde a la **v1/v2** monolítica. Lo dejamos en el repo para referencia histórica y rollback. **No lo uses en deploys nuevos** — todo v3 va por los 3 build scripts con sufijo (`-agent-`, `-tools-subworkflow`, `-cron-`).

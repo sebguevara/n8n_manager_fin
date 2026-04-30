@@ -586,83 +586,693 @@
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
                 "combinator": "and",
                 "conditions": [
                   {
                     "id": "r24",
-                    "operator": { "type": "string", "operation": "equals" },
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
                     "leftValue": "={{ $json.tool_name }}",
-                    "rightValue": "get_cashflow"
+                    "rightValue": "create_category"
                   }
                 ]
               },
               "renameOutput": true,
-              "outputKey": "get_cashflow"
+              "outputKey": "create_category"
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
                 "combinator": "and",
                 "conditions": [
                   {
                     "id": "r25",
-                    "operator": { "type": "string", "operation": "equals" },
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
                     "leftValue": "={{ $json.tool_name }}",
-                    "rightValue": "get_safe_to_spend"
+                    "rightValue": "rename_category"
                   }
                 ]
               },
               "renameOutput": true,
-              "outputKey": "get_safe_to_spend"
+              "outputKey": "rename_category"
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
                 "combinator": "and",
                 "conditions": [
                   {
                     "id": "r26",
-                    "operator": { "type": "string", "operation": "equals" },
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
                     "leftValue": "={{ $json.tool_name }}",
-                    "rightValue": "forecast_month_end"
+                    "rightValue": "delete_category"
                   }
                 ]
               },
               "renameOutput": true,
-              "outputKey": "forecast_month_end"
+              "outputKey": "delete_category"
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
                 "combinator": "and",
                 "conditions": [
                   {
                     "id": "r27",
-                    "operator": { "type": "string", "operation": "equals" },
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
                     "leftValue": "={{ $json.tool_name }}",
-                    "rightValue": "list_subscriptions"
+                    "rightValue": "list_recurring"
                   }
                 ]
               },
               "renameOutput": true,
-              "outputKey": "list_subscriptions"
+              "outputKey": "list_recurring"
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
                 "combinator": "and",
                 "conditions": [
                   {
                     "id": "r28",
-                    "operator": { "type": "string", "operation": "equals" },
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
                     "leftValue": "={{ $json.tool_name }}",
-                    "rightValue": "list_anomalies"
+                    "rightValue": "update_recurring"
                   }
                 ]
               },
               "renameOutput": true,
-              "outputKey": "list_anomalies"
+              "outputKey": "update_recurring"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r29",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "pause_recurring"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "pause_recurring"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r30",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "resume_recurring"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "resume_recurring"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r31",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "cancel_recurring"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "cancel_recurring"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r32",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "update_group"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "update_group"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r33",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "rename_group"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "rename_group"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r34",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "close_group"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "close_group"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r35",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "delete_group"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "delete_group"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r36",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "delete_budget"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "delete_budget"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r37",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "pause_budget"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "pause_budget"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r38",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "resume_budget"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "resume_budget"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r39",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "create_tag"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "create_tag"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r40",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "rename_tag"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "rename_tag"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r41",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "delete_tag"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "delete_tag"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r42",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "list_tags"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "list_tags"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r43",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "tag_transactions"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "tag_transactions"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r44",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "untag_transactions"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "untag_transactions"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r45",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "suggest_tags"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "suggest_tags"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r46",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "get_settings"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "get_settings"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r47",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "update_settings"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "update_settings"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r48",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "financial_advice"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "financial_advice"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r49",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "remember_fact"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "remember_fact"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r50",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "recall_memory"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "recall_memory"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r51",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "update_memory"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "update_memory"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r52",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "forget_memory"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "forget_memory"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r53",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "list_memories"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "list_memories"
             }
           ]
         },
@@ -979,7 +1589,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM bulk_update_by_ids(\n        $1::uuid,\n        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'ids'))::uuid[],\n        NULLIF($2::jsonb->>'new_category_id','')::uuid,\n        NULLIF($2::jsonb->>'new_date','')::date,\n        NULLIF($2::jsonb->>'new_group_id','')::uuid,\n        NULLIF($2::jsonb->>'amount_delta','')::numeric,\n        NULLIF($2::jsonb->>'set_excluded','')::boolean\n    );",
+        "query": "SELECT * FROM bulk_update_by_ids(\n        $1::uuid,\n        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'ids'))::uuid[],\n        NULLIF($2::jsonb->>'new_category_id','')::uuid,\n        NULLIF($2::jsonb->>'new_date','')::date,\n        NULLIF($2::jsonb->>'new_group_id','')::uuid,\n        NULLIF($2::jsonb->>'amount_delta','')::numeric,\n        NULLIF($2::jsonb->>'set_excluded','')::boolean,\n        NULLIF($2::jsonb->>'new_category_hint',''),\n        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
@@ -1053,7 +1663,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM update_tx(\n        $1::uuid,\n        ($2::jsonb->>'transaction_id')::uuid,\n        NULLIF($2::jsonb->>'new_date','')::date,\n        NULLIF($2::jsonb->>'new_amount','')::numeric,\n        NULLIF($2::jsonb->>'new_description',''),\n        NULLIF($2::jsonb->>'new_category_id','')::uuid\n    );",
+        "query": "SELECT * FROM update_tx(\n        $1::uuid,\n        ($2::jsonb->>'transaction_id')::uuid,\n        NULLIF($2::jsonb->>'new_date','')::date,\n        NULLIF($2::jsonb->>'new_amount','')::numeric,\n        NULLIF($2::jsonb->>'new_description',''),\n        NULLIF($2::jsonb->>'new_category_id','')::uuid,\n        NULLIF($2::jsonb->>'new_category_hint',''),\n        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
@@ -1571,18 +2181,55 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH p AS (SELECT $2::jsonb AS j),\n     b AS (\n       SELECT COALESCE(NULLIF((SELECT j->>'period' FROM p),''), 'this_month') AS period,\n              NULLIF((SELECT j->>'start_date' FROM p),'')::date AS p_start_in,\n              NULLIF((SELECT j->>'end_date' FROM p),'')::date   AS p_end_in\n     ),\n     dates AS (\n       SELECT\n         CASE b.period\n           WHEN 'today'      THEN CURRENT_DATE\n           WHEN 'yesterday'  THEN (CURRENT_DATE - 1)\n           WHEN 'this_week'  THEN DATE_TRUNC('week', CURRENT_DATE)::DATE\n           WHEN 'last_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '7 days')::DATE\n           WHEN 'this_month' THEN DATE_TRUNC('month', CURRENT_DATE)::DATE\n           WHEN 'last_month' THEN (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month')::DATE\n           WHEN 'this_year'  THEN DATE_TRUNC('year', CURRENT_DATE)::DATE\n           WHEN 'custom'     THEN COALESCE(b.p_start_in, DATE_TRUNC('month', CURRENT_DATE)::DATE)\n           ELSE DATE_TRUNC('month', CURRENT_DATE)::DATE\n         END AS p_start,\n         CASE b.period\n           WHEN 'today'      THEN CURRENT_DATE\n           WHEN 'yesterday'  THEN (CURRENT_DATE - 1)\n           WHEN 'this_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '7 days - 1 day')::DATE\n           WHEN 'last_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day')::DATE\n           WHEN 'this_month' THEN (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE\n           WHEN 'last_month' THEN (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 day')::DATE\n           WHEN 'this_year'  THEN (DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year - 1 day')::DATE\n           WHEN 'custom'     THEN COALESCE(b.p_end_in, CURRENT_DATE)\n           ELSE (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE\n         END AS p_end\n       FROM b\n     )\n     SELECT cf.*, (SELECT period FROM b) AS period\n     FROM dates d, get_cashflow($1::uuid, d.p_start, d.p_end) cf;",
+        "query": "SELECT * FROM resolve_or_create_category(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'name',''), 'Otros'),\n        COALESCE(NULLIF($2::jsonb->>'type',''), 'expense')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t052",
+      "name": "PG create_category",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2080
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'create_category', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.category_id) {\n  return [{ json: { ok: false, tool: 'create_category', error: 'No se pudo crear la categoría' } }];\n}\nreturn [{ json: { ok: true, tool: 'create_category', data: {\n  id: r.category_id, name: r.category_name, was_created: !!r.was_created\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'create_category', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t053",
+      "name": "Fmt create_category",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2080
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM rename_category(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'old_name',''), ''),\n        COALESCE(NULLIF($2::jsonb->>'new_name',''), '')\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t054",
-      "name": "PG get_cashflow",
+      "name": "PG rename_category",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        2080
+        2200
       ],
       "credentials": {
         "postgres": {
@@ -1594,32 +2241,32 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const r = $input.first()?.json || {};\n  if (r.error || (typeof r.message === 'string' && r.message.toLowerCase().includes('error'))) {\n    return [{ json: { ok: false, tool: 'get_cashflow', error: String(r.error || r.message || 'SQL error') } }];\n  }\n  return [{ json: { ok: true, tool: 'get_cashflow', data: {\n    period: r.period || 'this_month',\n    has_income: !!r.has_income,\n    income: r.income !== null && r.income !== undefined ? Number(r.income) : null,\n    expenses: Number(r.expenses || 0),\n    net: r.net !== null && r.net !== undefined ? Number(r.net) : null,\n    days_in_period: Number(r.days_in_period || 0),\n    days_elapsed: Number(r.days_elapsed || 0),\n    days_remaining: Number(r.days_remaining || 0),\n    daily_burn_rate: Number(r.daily_burn_rate || 0)\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'get_cashflow', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'rename_category', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.renamed) {\n  return [{ json: { ok: false, tool: 'rename_category',\n    error: 'No encontré la categoría \"' + (r?.old_name || '') + '\". Mirá list_categories.' } }];\n}\nreturn [{ json: { ok: true, tool: 'rename_category', data: {\n  id: r.category_id, old_name: r.old_name, new_name: r.new_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'rename_category', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
       "id": "t055",
-      "name": "Fmt get_cashflow",
+      "name": "Fmt rename_category",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2080
+        2200
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM safe_to_spend($1::uuid);",
+        "query": "SELECT * FROM delete_category(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'name',''), ''),\n        NULLIF($2::jsonb->>'merge_into','')\n    );",
         "options": {
-          "queryReplacement": "={{ $json.user_id }}"
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t056",
-      "name": "PG get_safe_to_spend",
+      "name": "PG delete_category",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        2200
+        2320
       ],
       "credentials": {
         "postgres": {
@@ -1631,32 +2278,32 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const r = $input.first()?.json || {};\n  if (r.error) return [{ json: { ok: false, tool: 'get_safe_to_spend', error: String(r.error) } }];\n  return [{ json: { ok: true, tool: 'get_safe_to_spend', data: {\n    has_income: !!r.has_income,\n    income: r.income !== null && r.income !== undefined ? Number(r.income) : null,\n    spent: r.spent !== null && r.spent !== undefined ? Number(r.spent) : null,\n    remaining: r.remaining !== null && r.remaining !== undefined ? Number(r.remaining) : null,\n    days_remaining: r.days_remaining !== null && r.days_remaining !== undefined ? Number(r.days_remaining) : null,\n    safe_daily: r.safe_daily !== null && r.safe_daily !== undefined ? Number(r.safe_daily) : null\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'get_safe_to_spend', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'delete_category', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.deactivated) {\n  return [{ json: { ok: false, tool: 'delete_category',\n    error: 'No encontré la categoría. Mirá list_categories.' } }];\n}\nreturn [{ json: { ok: true, tool: 'delete_category', data: {\n  id: r.category_id, name: r.category_name, merged_into: r.merged_into || null,\n  moved_transactions: Number(r.moved_transactions || 0)\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'delete_category', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
       "id": "t057",
-      "name": "Fmt get_safe_to_spend",
+      "name": "Fmt delete_category",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2200
+        2320
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM forecast_month_end($1::uuid, COALESCE(NULLIF($2::jsonb->>'lookback_days','')::int, 14));",
+        "query": "SELECT * FROM list_recurring(\n        $1::uuid,\n        COALESCE(($2::jsonb->>'active_only')::boolean, true)\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t058",
-      "name": "PG forecast_month_end",
+      "name": "PG list_recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        2320
+        2440
       ],
       "credentials": {
         "postgres": {
@@ -1668,32 +2315,32 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const r = $input.first()?.json || {};\n  if (r.error) return [{ json: { ok: false, tool: 'forecast_month_end', error: String(r.error) } }];\n  return [{ json: { ok: true, tool: 'forecast_month_end', data: {\n    has_data: !!r.has_data,\n    burn_rate_daily: Number(r.burn_rate_daily || 0),\n    spent_so_far: Number(r.spent_so_far || 0),\n    days_remaining: Number(r.days_remaining || 0),\n    forecast_total: Number(r.forecast_total || 0)\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'forecast_month_end', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'list_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'list_recurring', data: {\n  recurring: rows.map(r => ({\n    id: r.id, type: r.type, amount: Number(r.amount), description: r.description,\n    frequency: r.frequency, next_occurrence: r.next_occurrence,\n    last_occurrence: r.last_occurrence, end_date: r.end_date, is_active: r.is_active,\n    category: r.category_name, emoji: r.category_emoji,\n    payment_method: r.payment_method_name\n  }))\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
       "id": "t059",
-      "name": "Fmt forecast_month_end",
+      "name": "Fmt list_recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2320
+        2440
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM detect_subscriptions($1::uuid, COALESCE(NULLIF($2::jsonb->>'lookback_days','')::int, 90));",
+        "query": "SELECT * FROM update_recurring(\n        $1::uuid,\n        ($2::jsonb->>'recurring_id')::uuid,\n        NULLIF($2::jsonb->>'new_amount','')::numeric,\n        NULLIF($2::jsonb->>'new_description',''),\n        NULLIF($2::jsonb->>'new_frequency',''),\n        NULLIF($2::jsonb->>'new_category_hint',''),\n        NULLIF($2::jsonb->>'new_next_occurrence','')::date,\n        NULLIF($2::jsonb->>'new_end_date','')::date,\n        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t060",
-      "name": "PG list_subscriptions",
+      "name": "PG update_recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        2440
+        2560
       ],
       "credentials": {
         "postgres": {
@@ -1705,32 +2352,32 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const rows = $input.all().map(i => i.json).filter(r => r && r.merchant_key);\n  const items = rows.map(r => ({\n    merchant_key: r.merchant_key,\n    description: r.sample_description || r.merchant_key,\n    category: r.category_name || null,\n    avg_amount: Number(r.avg_amount || 0),\n    occurrences: Number(r.occurrences || 0),\n    cadence_days: Number(r.cadence_days || 0),\n    cadence_label: r.cadence_label,\n    last_charge_date: r.last_charge_date,\n    next_estimated_date: r.next_estimated_date,\n    confidence: Number(r.confidence || 0)\n  }));\n  const monthly_total = items\n    .filter(i => i.cadence_days > 0)\n    .reduce((s,i) => s + (i.avg_amount * (30 / i.cadence_days)), 0);\n  return [{ json: { ok: true, tool: 'list_subscriptions', data: {\n    count: items.length,\n    monthly_estimated_total: Math.round(monthly_total * 100) / 100,\n    items\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_subscriptions', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'update_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.id) return [{ json: { ok: false, tool: 'update_recurring',\n  error: 'No encontré la recurrente o no es tuya' } }];\nreturn [{ json: { ok: true, tool: 'update_recurring', data: {\n  id: r.id, amount: Number(r.amount), description: r.description, frequency: r.frequency,\n  next_occurrence: r.next_occurrence, end_date: r.end_date, is_active: r.is_active,\n  category: r.category_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'update_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
       "id": "t061",
-      "name": "Fmt list_subscriptions",
+      "name": "Fmt update_recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2440
+        2560
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH p AS (SELECT $2::jsonb AS j),\n     dates AS (\n       SELECT\n         CASE COALESCE(NULLIF((SELECT j->>'period' FROM p),''), 'this_month')\n           WHEN 'today'      THEN CURRENT_DATE\n           WHEN 'yesterday'  THEN (CURRENT_DATE - 1)\n           WHEN 'this_week'  THEN DATE_TRUNC('week', CURRENT_DATE)::DATE\n           WHEN 'last_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '7 days')::DATE\n           WHEN 'this_month' THEN DATE_TRUNC('month', CURRENT_DATE)::DATE\n           WHEN 'last_month' THEN (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month')::DATE\n           WHEN 'this_year'  THEN DATE_TRUNC('year', CURRENT_DATE)::DATE\n           WHEN 'custom'     THEN COALESCE(NULLIF((SELECT j->>'start_date' FROM p),'')::date, DATE_TRUNC('month', CURRENT_DATE)::DATE)\n           ELSE DATE_TRUNC('month', CURRENT_DATE)::DATE\n         END AS p_start,\n         CASE COALESCE(NULLIF((SELECT j->>'period' FROM p),''), 'this_month')\n           WHEN 'today'      THEN CURRENT_DATE\n           WHEN 'yesterday'  THEN (CURRENT_DATE - 1)\n           WHEN 'this_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '7 days - 1 day')::DATE\n           WHEN 'last_week'  THEN (DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day')::DATE\n           WHEN 'this_month' THEN LEAST((DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE, CURRENT_DATE)\n           WHEN 'last_month' THEN (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 day')::DATE\n           WHEN 'this_year'  THEN LEAST((DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year - 1 day')::DATE, CURRENT_DATE)\n           WHEN 'custom'     THEN COALESCE(NULLIF((SELECT j->>'end_date' FROM p),'')::date, CURRENT_DATE)\n           ELSE CURRENT_DATE\n         END AS p_end\n     )\n     SELECT a.* FROM dates d, list_anomalies($1::uuid, d.p_start, d.p_end) a\n     ORDER BY a.transaction_date DESC, a.amount DESC\n     LIMIT 20;",
+        "query": "SELECT * FROM pause_recurring($1::uuid, ($2::jsonb->>'recurring_id')::uuid);",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t062",
-      "name": "PG list_anomalies",
+      "name": "PG pause_recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        2560
+        2680
       ],
       "credentials": {
         "postgres": {
@@ -1742,35 +2389,1067 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const rows = $input.all().map(i => i.json).filter(r => r && r.transaction_id);\n  const items = rows.map(r => ({\n    id: r.transaction_id,\n    category: r.category_name || null,\n    amount: Number(r.amount || 0),\n    baseline: Number(r.baseline || 0),\n    multiplier: Number(r.multiplier || 0),\n    description: r.description || null,\n    date: r.transaction_date\n  }));\n  return [{ json: { ok: true, tool: 'list_anomalies', data: {\n    count: items.length,\n    items\n  } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_anomalies', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'pause_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.paused) return [{ json: { ok: false, tool: 'pause_recurring',\n  error: 'No encontré la recurrente o no es tuya' } }];\nreturn [{ json: { ok: true, tool: 'pause_recurring', data: {\n  id: r.id, description: r.description, was_active: !!r.was_active\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'pause_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
       "id": "t063",
-      "name": "Fmt list_anomalies",
+      "name": "Fmt pause_recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2560
+        2680
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM resume_recurring($1::uuid, ($2::jsonb->>'recurring_id')::uuid);",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t064",
+      "name": "PG resume_recurring",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'resume_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.resumed) return [{ json: { ok: false, tool: 'resume_recurring',\n  error: 'No encontré la recurrente o no es tuya' } }];\nreturn [{ json: { ok: true, tool: 'resume_recurring', data: {\n  id: r.id, description: r.description\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'resume_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t065",
+      "name": "Fmt resume_recurring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM cancel_recurring($1::uuid, ($2::jsonb->>'recurring_id')::uuid);",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t066",
+      "name": "PG cancel_recurring",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2920
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'cancel_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.cancelled) return [{ json: { ok: false, tool: 'cancel_recurring',\n  error: 'No encontré la recurrente o no es tuya' } }];\nreturn [{ json: { ok: true, tool: 'cancel_recurring', data: {\n  id: r.id, description: r.description\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'cancel_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t067",
+      "name": "Fmt cancel_recurring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2920
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM update_group(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'name',''), ''),\n        NULLIF($2::jsonb->>'new_name',''),\n        NULLIF($2::jsonb->>'new_kind',''),\n        NULLIF($2::jsonb->>'new_emoji',''),\n        NULLIF($2::jsonb->>'new_starts_at','')::date,\n        NULLIF($2::jsonb->>'new_ends_at','')::date\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t068",
+      "name": "PG update_group",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        3040
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'update_group', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.id) return [{ json: { ok: false, tool: 'update_group',\n  error: 'No encontré el grupo' } }];\nreturn [{ json: { ok: true, tool: 'update_group', data: {\n  id: r.id, name: r.name, kind: r.kind, emoji: r.emoji,\n  starts_at: r.starts_at, ends_at: r.ends_at, is_active: r.is_active\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'update_group', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t069",
+      "name": "Fmt update_group",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        3040
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM rename_group(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'old_name',''), ''),\n        COALESCE(NULLIF($2::jsonb->>'new_name',''), '')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t070",
+      "name": "PG rename_group",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        3160
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'rename_group', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.renamed) return [{ json: { ok: false, tool: 'rename_group',\n  error: 'No encontré el grupo \"' + (r?.old_name || '') + '\"' } }];\nreturn [{ json: { ok: true, tool: 'rename_group', data: {\n  id: r.id, old_name: r.old_name, new_name: r.new_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'rename_group', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t071",
+      "name": "Fmt rename_group",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        3160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM close_group(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'name',''), '')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t072",
+      "name": "PG close_group",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        3280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'close_group', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.closed) return [{ json: { ok: false, tool: 'close_group',\n  error: 'No encontré el grupo' } }];\nreturn [{ json: { ok: true, tool: 'close_group', data: {\n  id: r.id, name: r.name, ends_at: r.ends_at\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'close_group', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t073",
+      "name": "Fmt close_group",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        3280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM delete_group(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'name',''), ''),\n        NULLIF($2::jsonb->>'reassign_to_name',''),\n        COALESCE(($2::jsonb->>'unassign')::boolean, false)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t074",
+      "name": "PG delete_group",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        3400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'delete_group', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.deleted) return [{ json: { ok: false, tool: 'delete_group',\n  error: 'No encontré el grupo' } }];\nreturn [{ json: { ok: true, tool: 'delete_group', data: {\n  id: r.id, name: r.name, moved_transactions: Number(r.moved_transactions || 0),\n  reassigned_to: r.reassigned_to || null\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'delete_group', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t075",
+      "name": "Fmt delete_group",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        3400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM delete_budget(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'category_hint',''), ''),\n        NULLIF($2::jsonb->>'period','')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t076",
+      "name": "PG delete_budget",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        3520
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'delete_budget', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nconst cnt = Number(r?.deleted_count || 0);\nif (!cnt) return [{ json: { ok: false, tool: 'delete_budget',\n  error: 'No encontré un presupuesto activo para esa categoría' } }];\nreturn [{ json: { ok: true, tool: 'delete_budget', data: {\n  deleted_count: cnt, category: r.category_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'delete_budget', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t077",
+      "name": "Fmt delete_budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        3520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM pause_budget(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'category_hint',''), ''),\n        NULLIF($2::jsonb->>'period','')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t078",
+      "name": "PG pause_budget",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        3640
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'pause_budget', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nconst cnt = Number(r?.paused_count || 0);\nif (!cnt) return [{ json: { ok: false, tool: 'pause_budget',\n  error: 'No encontré un presupuesto activo para esa categoría' } }];\nreturn [{ json: { ok: true, tool: 'pause_budget', data: {\n  paused_count: cnt, category: r.category_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'pause_budget', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t079",
+      "name": "Fmt pause_budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        3640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM resume_budget(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'category_hint',''), ''),\n        NULLIF($2::jsonb->>'period','')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t080",
+      "name": "PG resume_budget",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        3760
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'resume_budget', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nconst cnt = Number(r?.resumed_count || 0);\nif (!cnt) return [{ json: { ok: false, tool: 'resume_budget',\n  error: 'No encontré un presupuesto pausado para esa categoría' } }];\nreturn [{ json: { ok: true, tool: 'resume_budget', data: {\n  resumed_count: cnt, category: r.category_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'resume_budget', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t081",
+      "name": "Fmt resume_budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        3760
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM create_tag(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'name',''), ''),\n        NULLIF($2::jsonb->>'color','')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t082",
+      "name": "PG create_tag",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        3880
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'create_tag', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.tag_id) return [{ json: { ok: false, tool: 'create_tag',\n  error: 'No se pudo crear el tag' } }];\nreturn [{ json: { ok: true, tool: 'create_tag', data: {\n  id: r.tag_id, name: r.tag_name, was_created: !!r.was_created\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'create_tag', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t083",
+      "name": "Fmt create_tag",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        3880
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM rename_tag(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'old_name',''), ''),\n        COALESCE(NULLIF($2::jsonb->>'new_name',''), '')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t084",
+      "name": "PG rename_tag",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'rename_tag', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.renamed) return [{ json: { ok: false, tool: 'rename_tag',\n  error: 'No encontré el tag \"' + (r?.old_name || '') + '\"' } }];\nreturn [{ json: { ok: true, tool: 'rename_tag', data: {\n  id: r.tag_id, old_name: r.old_name, new_name: r.new_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'rename_tag', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t085",
+      "name": "Fmt rename_tag",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4000
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM delete_tag(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'name',''), '')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t086",
+      "name": "PG delete_tag",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4120
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'delete_tag', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.deleted) return [{ json: { ok: false, tool: 'delete_tag',\n  error: 'No encontré el tag' } }];\nreturn [{ json: { ok: true, tool: 'delete_tag', data: {\n  id: r.tag_id, name: r.tag_name,\n  untagged_transactions: Number(r.untagged_transactions || 0)\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'delete_tag', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t087",
+      "name": "Fmt delete_tag",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM list_tags($1::uuid);",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }}"
+        }
+      },
+      "id": "t088",
+      "name": "PG list_tags",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4240
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'list_tags', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'list_tags', data: {\n  tags: rows.map(r => ({ id: r.id, name: r.name, color: r.color,\n    tx_count: Number(r.tx_count || 0), total: Number(r.total_amount || 0) }))\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_tags', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t089",
+      "name": "Fmt list_tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM tag_transactions(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'tag_name',''), ''),\n        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'tx_ids'))::uuid[],\n        COALESCE(($2::jsonb->>'create_if_missing')::boolean, true)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t090",
+      "name": "PG tag_transactions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'tag_transactions', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'tag_transactions', data: {\n  id: r.tag_id, name: r.tag_name,\n  tagged_count: Number(r.tagged_count || 0),\n  was_created: !!r.was_created\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'tag_transactions', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t091",
+      "name": "Fmt tag_transactions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM untag_transactions(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'tag_name',''), ''),\n        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'tx_ids'))::uuid[]\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t092",
+      "name": "PG untag_transactions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4480
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'untag_transactions', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'untag_transactions', data: {\n  untagged_count: Number(r.untagged_count || 0)\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'untag_transactions', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t093",
+      "name": "Fmt untag_transactions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM suggest_tags(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'description',''), ''),\n        NULLIF($2::jsonb->>'amount','')::numeric,\n        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 5)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t094",
+      "name": "PG suggest_tags",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'suggest_tags', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'suggest_tags', data: {\n  suggestions: rows.map(r => ({ id: r.tag_id, name: r.tag_name,\n    score: Number(r.score || 0), uses: Number(r.sample_uses || 0) }))\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'suggest_tags', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t095",
+      "name": "Fmt suggest_tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM get_user_settings($1::uuid);",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }}"
+        }
+      },
+      "id": "t096",
+      "name": "PG get_settings",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4720
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'get_settings', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r) return [{ json: { ok: false, tool: 'get_settings', error: 'Usuario no encontrado' } }];\nreturn [{ json: { ok: true, tool: 'get_settings', data: {\n  name: r.name, phone: r.phone_number, currency: r.preferred_currency,\n  daily_summary_enabled: !!r.daily_summary_enabled,\n  daily_summary_hour: Number(r.daily_summary_hour || 0),\n  weekly_summary_enabled: !!r.weekly_summary_enabled,\n  onboarded: !!r.onboarded\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'get_settings', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t097",
+      "name": "Fmt get_settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4720
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM update_user_settings(\n        $1::uuid,\n        NULLIF($2::jsonb->>'name',''),\n        NULLIF($2::jsonb->>'preferred_currency',''),\n        NULLIF($2::jsonb->>'daily_summary_enabled','')::boolean,\n        NULLIF($2::jsonb->>'daily_summary_hour','')::int,\n        NULLIF($2::jsonb->>'weekly_summary_enabled','')::boolean\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t098",
+      "name": "PG update_settings",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4840
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'update_settings', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'update_settings', data: {\n  name: r.name, currency: r.preferred_currency,\n  daily_summary_enabled: !!r.daily_summary_enabled,\n  daily_summary_hour: Number(r.daily_summary_hour || 0),\n  weekly_summary_enabled: !!r.weekly_summary_enabled\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'update_settings', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t099",
+      "name": "Fmt update_settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4840
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM compute_financial_advice(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'mode',''), 'savings_capacity'),\n        NULLIF($2::jsonb->>'goal_amount','')::numeric,\n        NULLIF($2::jsonb->>'monthly_saving_override','')::numeric,\n        NULLIF($2::jsonb->>'monthly_income_override','')::numeric,\n        NULLIF($2::jsonb->>'monthly_expense_override','')::numeric,\n        COALESCE(NULLIF($2::jsonb->>'lookback_months','')::int, 3),\n        COALESCE(NULLIF($2::jsonb->>'extra_monthly_saving','')::numeric, 0)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t100",
+      "name": "PG financial_advice",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        4960
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'financial_advice', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r) return [{ json: { ok: false, tool: 'financial_advice', error: 'sin resultado' } }];\nconst numOrNull = v => (v === null || v === undefined || v === '') ? null : Number(v);\nreturn [{ json: { ok: true, tool: 'financial_advice', data: {\n  mode: r.mode,\n  avg_monthly_income: numOrNull(r.avg_monthly_income),\n  avg_monthly_expense: numOrNull(r.avg_monthly_expense),\n  monthly_saving: numOrNull(r.monthly_saving),\n  savings_rate_pct: numOrNull(r.savings_rate_pct),\n  months_used: numOrNull(r.months_used),\n  months_to_goal: numOrNull(r.months_to_goal),\n  target_date: r.target_date || null,\n  affordable: (r.affordable === null || r.affordable === undefined) ? null : !!r.affordable,\n  runway_months: numOrNull(r.runway_months),\n  projected_month_total_expense: numOrNull(r.projected_month_total_expense),\n  projected_month_total_income: numOrNull(r.projected_month_total_income),\n  note: r.note || ''\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'financial_advice', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t101",
+      "name": "Fmt financial_advice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        4960
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.params.content || '') }},\n  \"encoding_format\": \"float\"\n}",
+        "options": {}
+      },
+      "id": "t102",
+      "name": "Embed remember_fact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        5080
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst inp = $('Normalize Input').first().json;\nconst emb = resp?.data?.[0]?.embedding;\nif (!Array.isArray(emb)) {\n  return [{ json: { ok: false, tool: 'remember_fact', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];\n}\n// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)\nconst embStr = '[' + emb.join(',') + ']';\nreturn [{ json: { ...inp, embedding: embStr } }];"
+      },
+      "id": "t103",
+      "name": "Pack Embedding remember_fact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        5080
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM add_memory_chunk(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),\n        $2::jsonb->>'content',\n        $3::vector(1536),\n        COALESCE($2::jsonb->'metadata', '{}'::jsonb)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
+        }
+      },
+      "id": "t104",
+      "name": "PG remember_fact",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        5080
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'remember_fact', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'remember_fact', data: {\n  id: r.id, was_created: !!r.was_created, content: r.content, kind: r.kind\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'remember_fact', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t105",
+      "name": "Fmt remember_fact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        5080
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.params.new_content || '') }},\n  \"encoding_format\": \"float\"\n}",
+        "options": {}
+      },
+      "id": "t106",
+      "name": "Embed update_memory",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        5320
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst inp = $('Normalize Input').first().json;\nconst emb = resp?.data?.[0]?.embedding;\nif (!Array.isArray(emb)) {\n  return [{ json: { ok: false, tool: 'update_memory', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];\n}\n// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)\nconst embStr = '[' + emb.join(',') + ']';\nreturn [{ json: { ...inp, embedding: embStr } }];"
+      },
+      "id": "t107",
+      "name": "Pack Embedding update_memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        5320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM update_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid,\n        $2::jsonb->>'new_content',\n        $3::vector(1536),\n        NULLIF($2::jsonb->>'kind',''),\n        NULLIF($2::jsonb->'metadata', 'null'::jsonb)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
+        }
+      },
+      "id": "t108",
+      "name": "PG update_memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        5320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'update_memory', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.updated) {\n  return [{ json: { ok: false, tool: 'update_memory', error: 'No encontré ese recuerdo o no es tuyo' } }];\n}\nreturn [{ json: { ok: true, tool: 'update_memory', data: {\n  id: r.id, content: r.content, kind: r.kind\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'update_memory', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t109",
+      "name": "Fmt update_memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        5320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.params.query || '') }},\n  \"encoding_format\": \"float\"\n}",
+        "options": {}
+      },
+      "id": "t110",
+      "name": "Embed recall_memory",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        5200
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst inp = $('Normalize Input').first().json;\nconst emb = resp?.data?.[0]?.embedding;\nif (!Array.isArray(emb)) {\n  return [{ json: { ok: false, tool: 'recall_memory', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];\n}\n// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)\nconst embStr = '[' + emb.join(',') + ']';\nreturn [{ json: { ...inp, embedding: embStr } }];"
+      },
+      "id": "t111",
+      "name": "Pack Embedding recall_memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        5200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM search_memory_chunks(\n        $1::uuid,\n        $3::vector(1536),\n        COALESCE(NULLIF($2::jsonb->>'k','')::int, 5),\n        NULLIF($2::jsonb->>'kind',''),\n        COALESCE(NULLIF($2::jsonb->>'min_score','')::real, 0.5)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
+        }
+      },
+      "id": "t112",
+      "name": "PG recall_memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        5200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'recall_memory', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'recall_memory', data: {\n  matches: rows.map(r => ({\n    id: r.id, kind: r.kind, content: r.content,\n    metadata: r.metadata, similarity: Number(r.similarity || 0),\n    created_at: r.created_at, recall_count: Number(r.recall_count || 0)\n  })),\n  count: rows.length\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'recall_memory', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t113",
+      "name": "Fmt recall_memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        5200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM forget_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t114",
+      "name": "PG forget_memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        5440
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'forget_memory', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.forgot) {\n  return [{ json: { ok: false, tool: 'forget_memory', error: 'No encontré ese recuerdo o no es tuyo' } }];\n}\nreturn [{ json: { ok: true, tool: 'forget_memory', data: { id: r.id, forgot: !!r.forgot } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'forget_memory', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t115",
+      "name": "Fmt forget_memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        5440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM list_memory_chunks(\n        $1::uuid,\n        NULLIF($2::jsonb->>'kind',''),\n        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 20)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t116",
+      "name": "PG list_memories",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        5560
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'list_memories', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'list_memories', data: {\n  memories: rows.map(r => ({\n    id: r.id, kind: r.kind, content: r.content, metadata: r.metadata,\n    created_at: r.created_at, recall_count: Number(r.recall_count || 0)\n  })),\n  count: rows.length\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_memories', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t117",
+      "name": "Fmt list_memories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        5560
       ]
     },
     {
       "parameters": {
         "jsCode": "const inp = $input.first().json;\nreturn [{ json: { ok: false, tool: inp.tool_name, error: 'Unknown tool: ' + inp.tool_name } }];"
       },
-      "id": "t052",
+      "id": "t118",
       "name": "Unknown Tool",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         660,
-        2200
+        5800
       ]
     },
     {
       "parameters": {
         "jsCode": "const out = $input.first().json;\nreturn [{ json: out }];"
       },
-      "id": "t053",
+      "id": "t119",
       "name": "Wrap Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1975,35 +3654,210 @@
         ],
         [
           {
-            "node": "PG get_cashflow",
+            "node": "PG create_category",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "PG get_safe_to_spend",
+            "node": "PG rename_category",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "PG forecast_month_end",
+            "node": "PG delete_category",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "PG list_subscriptions",
+            "node": "PG list_recurring",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "PG list_anomalies",
+            "node": "PG update_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG pause_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG resume_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG cancel_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG update_group",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG rename_group",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG close_group",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG delete_group",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG delete_budget",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG pause_budget",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG resume_budget",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG create_tag",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG rename_tag",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG delete_tag",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG list_tags",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG tag_transactions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG untag_transactions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG suggest_tags",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG get_settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG update_settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG financial_advice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embed remember_fact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embed recall_memory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embed update_memory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG forget_memory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG list_memories",
             "type": "main",
             "index": 0
           }
@@ -2281,6 +4135,417 @@
         ]
       ]
     },
+    "PG create_category": {
+      "main": [
+        [
+          {
+            "node": "Fmt create_category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG rename_category": {
+      "main": [
+        [
+          {
+            "node": "Fmt rename_category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG delete_category": {
+      "main": [
+        [
+          {
+            "node": "Fmt delete_category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG list_recurring": {
+      "main": [
+        [
+          {
+            "node": "Fmt list_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG update_recurring": {
+      "main": [
+        [
+          {
+            "node": "Fmt update_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG pause_recurring": {
+      "main": [
+        [
+          {
+            "node": "Fmt pause_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG resume_recurring": {
+      "main": [
+        [
+          {
+            "node": "Fmt resume_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG cancel_recurring": {
+      "main": [
+        [
+          {
+            "node": "Fmt cancel_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG update_group": {
+      "main": [
+        [
+          {
+            "node": "Fmt update_group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG rename_group": {
+      "main": [
+        [
+          {
+            "node": "Fmt rename_group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG close_group": {
+      "main": [
+        [
+          {
+            "node": "Fmt close_group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG delete_group": {
+      "main": [
+        [
+          {
+            "node": "Fmt delete_group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG delete_budget": {
+      "main": [
+        [
+          {
+            "node": "Fmt delete_budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG pause_budget": {
+      "main": [
+        [
+          {
+            "node": "Fmt pause_budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG resume_budget": {
+      "main": [
+        [
+          {
+            "node": "Fmt resume_budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG create_tag": {
+      "main": [
+        [
+          {
+            "node": "Fmt create_tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG rename_tag": {
+      "main": [
+        [
+          {
+            "node": "Fmt rename_tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG delete_tag": {
+      "main": [
+        [
+          {
+            "node": "Fmt delete_tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG list_tags": {
+      "main": [
+        [
+          {
+            "node": "Fmt list_tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG tag_transactions": {
+      "main": [
+        [
+          {
+            "node": "Fmt tag_transactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG untag_transactions": {
+      "main": [
+        [
+          {
+            "node": "Fmt untag_transactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG suggest_tags": {
+      "main": [
+        [
+          {
+            "node": "Fmt suggest_tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG get_settings": {
+      "main": [
+        [
+          {
+            "node": "Fmt get_settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG update_settings": {
+      "main": [
+        [
+          {
+            "node": "Fmt update_settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG financial_advice": {
+      "main": [
+        [
+          {
+            "node": "Fmt financial_advice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed remember_fact": {
+      "main": [
+        [
+          {
+            "node": "Pack Embedding remember_fact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack Embedding remember_fact": {
+      "main": [
+        [
+          {
+            "node": "PG remember_fact",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fmt remember_fact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG remember_fact": {
+      "main": [
+        [
+          {
+            "node": "Fmt remember_fact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed update_memory": {
+      "main": [
+        [
+          {
+            "node": "Pack Embedding update_memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack Embedding update_memory": {
+      "main": [
+        [
+          {
+            "node": "PG update_memory",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fmt update_memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG update_memory": {
+      "main": [
+        [
+          {
+            "node": "Fmt update_memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed recall_memory": {
+      "main": [
+        [
+          {
+            "node": "Pack Embedding recall_memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack Embedding recall_memory": {
+      "main": [
+        [
+          {
+            "node": "PG recall_memory",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fmt recall_memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG recall_memory": {
+      "main": [
+        [
+          {
+            "node": "Fmt recall_memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG forget_memory": {
+      "main": [
+        [
+          {
+            "node": "Fmt forget_memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG list_memories": {
+      "main": [
+        [
+          {
+            "node": "Fmt list_memories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Fmt query_transactions": {
       "main": [
         [
@@ -2545,54 +4810,334 @@
         ]
       ]
     },
-    "PG get_cashflow": {
+    "Fmt create_category": {
       "main": [
-        [ { "node": "Fmt get_cashflow", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Fmt get_cashflow": {
+    "Fmt rename_category": {
       "main": [
-        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "PG get_safe_to_spend": {
+    "Fmt delete_category": {
       "main": [
-        [ { "node": "Fmt get_safe_to_spend", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Fmt get_safe_to_spend": {
+    "Fmt list_recurring": {
       "main": [
-        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "PG forecast_month_end": {
+    "Fmt update_recurring": {
       "main": [
-        [ { "node": "Fmt forecast_month_end", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Fmt forecast_month_end": {
+    "Fmt pause_recurring": {
       "main": [
-        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "PG list_subscriptions": {
+    "Fmt resume_recurring": {
       "main": [
-        [ { "node": "Fmt list_subscriptions", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Fmt list_subscriptions": {
+    "Fmt cancel_recurring": {
       "main": [
-        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "PG list_anomalies": {
+    "Fmt update_group": {
       "main": [
-        [ { "node": "Fmt list_anomalies", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Fmt list_anomalies": {
+    "Fmt rename_group": {
       "main": [
-        [ { "node": "Wrap Output", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt close_group": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt delete_group": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt delete_budget": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt pause_budget": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt resume_budget": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt create_tag": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt rename_tag": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt delete_tag": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt list_tags": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt tag_transactions": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt untag_transactions": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt suggest_tags": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt get_settings": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt update_settings": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt financial_advice": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt remember_fact": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt update_memory": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt recall_memory": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt forget_memory": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt list_memories": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Unknown Tool": {

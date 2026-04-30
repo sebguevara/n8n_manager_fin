@@ -779,6 +779,9 @@ $$ LANGUAGE plpgsql;
 
 -- ---------- 2. Recurring transactions: process due ones ----------
 -- (cron en n8n llama a esto cada 6h)
+-- DROP necesario: cambiamos los nombres de los OUT params (user_id -> out_user_id, etc.).
+-- CREATE OR REPLACE no permite cambiar el row type definido por los OUT.
+DROP FUNCTION IF EXISTS process_due_recurring();
 CREATE OR REPLACE FUNCTION process_due_recurring()
 RETURNS TABLE(out_user_id UUID, out_phone TEXT, out_transaction_id UUID, out_amount NUMERIC, out_description TEXT, out_category_name TEXT) AS $$
 BEGIN
@@ -1038,23 +1041,47 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Edit a transaction by id (returns updated row)
+-- Edit a transaction by id (returns updated row).
+-- Categoria: aceptamos UUID directo o hint por nombre (resuelto via find_best_category o
+-- resolve_or_create_category cuando p_create_category_if_missing=TRUE). Si llegan ambos,
+-- el UUID gana.
+DROP FUNCTION IF EXISTS update_tx(UUID, UUID, DATE, NUMERIC, TEXT, UUID);
 CREATE OR REPLACE FUNCTION update_tx(
     p_user_id UUID,
     p_tx_id UUID,
     p_new_date DATE DEFAULT NULL,
     p_new_amount NUMERIC DEFAULT NULL,
     p_new_description TEXT DEFAULT NULL,
-    p_new_category_id UUID DEFAULT NULL
+    p_new_category_id UUID DEFAULT NULL,
+    p_new_category_hint TEXT DEFAULT NULL,
+    p_create_category_if_missing BOOLEAN DEFAULT FALSE
 )
 RETURNS TABLE(id UUID, amount NUMERIC, description TEXT, transaction_date DATE, category_name TEXT) AS $$
+DECLARE
+    v_resolved_cat_id UUID := p_new_category_id;
+    v_tx_type TEXT;
 BEGIN
+    -- Resolver categoria por nombre si no vino UUID
+    IF v_resolved_cat_id IS NULL AND COALESCE(p_new_category_hint, '') <> '' THEN
+        SELECT t.type INTO v_tx_type
+        FROM transactions t
+        WHERE t.id = p_tx_id AND t.user_id = p_user_id;
+
+        IF p_create_category_if_missing THEN
+            SELECT category_id INTO v_resolved_cat_id
+            FROM resolve_or_create_category(p_user_id, p_new_category_hint, COALESCE(v_tx_type, 'expense'));
+        ELSE
+            SELECT category_id INTO v_resolved_cat_id
+            FROM find_best_category(p_user_id, p_new_category_hint, COALESCE(v_tx_type, 'expense'));
+        END IF;
+    END IF;
+
     RETURN QUERY
     UPDATE transactions t
     SET transaction_date = COALESCE(p_new_date, t.transaction_date),
         amount = COALESCE(p_new_amount, t.amount),
         description = COALESCE(NULLIF(p_new_description, ''), t.description),
-        category_id = COALESCE(p_new_category_id, t.category_id),
+        category_id = COALESCE(v_resolved_cat_id, t.category_id),
         updated_at = NOW()
     WHERE t.id = p_tx_id AND t.user_id = p_user_id
     RETURNING t.id, t.amount, t.description, t.transaction_date,
@@ -1523,6 +1550,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ---------- A8. bulk_update_by_ids ----------
+-- Mismo patron que update_tx: si viene UUID lo usa, si viene hint lo resuelve.
+DROP FUNCTION IF EXISTS bulk_update_by_ids(UUID, UUID[], UUID, DATE, UUID, NUMERIC, BOOLEAN);
 CREATE OR REPLACE FUNCTION bulk_update_by_ids(
     p_user_id UUID,
     p_ids UUID[],
@@ -1530,15 +1559,37 @@ CREATE OR REPLACE FUNCTION bulk_update_by_ids(
     p_new_date DATE DEFAULT NULL,
     p_new_group_id UUID DEFAULT NULL,
     p_amount_delta NUMERIC DEFAULT NULL,
-    p_set_excluded BOOLEAN DEFAULT NULL
+    p_set_excluded BOOLEAN DEFAULT NULL,
+    p_new_category_hint TEXT DEFAULT NULL,
+    p_create_category_if_missing BOOLEAN DEFAULT FALSE
 )
 RETURNS TABLE(updated_count BIGINT, updated_ids UUID[]) AS $$
 DECLARE
     v_count BIGINT; v_ids UUID[];
+    v_resolved_cat_id UUID := p_new_category_id;
+    v_sample_type TEXT;
 BEGIN
+    IF v_resolved_cat_id IS NULL AND COALESCE(p_new_category_hint, '') <> '' THEN
+        -- Inferimos el tipo dominante de las transacciones del batch para la resolucion
+        SELECT type INTO v_sample_type
+        FROM transactions
+        WHERE user_id = p_user_id AND id = ANY(p_ids)
+        GROUP BY type
+        ORDER BY COUNT(*) DESC
+        LIMIT 1;
+
+        IF p_create_category_if_missing THEN
+            SELECT category_id INTO v_resolved_cat_id
+            FROM resolve_or_create_category(p_user_id, p_new_category_hint, COALESCE(v_sample_type, 'expense'));
+        ELSE
+            SELECT category_id INTO v_resolved_cat_id
+            FROM find_best_category(p_user_id, p_new_category_hint, COALESCE(v_sample_type, 'expense'));
+        END IF;
+    END IF;
+
     WITH upd AS (
         UPDATE transactions t
-        SET category_id = COALESCE(p_new_category_id, t.category_id),
+        SET category_id = COALESCE(v_resolved_cat_id, t.category_id),
             transaction_date = COALESCE(p_new_date, t.transaction_date),
             group_id = COALESCE(p_new_group_id, t.group_id),
             amount = CASE WHEN p_amount_delta IS NOT NULL THEN t.amount + p_amount_delta ELSE t.amount END,
@@ -1715,30 +1766,38 @@ BEGIN
         RETURN;
     END IF;
 
-    -- exact normalized
+    -- exact normalized match (incl. inactive: lo reactivamos en vez de duplicar)
     SELECT c.id, c.name INTO v_id, v_name
     FROM categories c
-    WHERE c.user_id = p_user_id AND c.is_active AND c.type = p_type
+    WHERE c.user_id = p_user_id AND c.type = p_type
       AND c.normalized_name = v_norm
+    ORDER BY c.is_active DESC
     LIMIT 1;
     IF v_id IS NOT NULL THEN
+        UPDATE categories SET is_active = TRUE, updated_at = NOW()
+        WHERE id = v_id AND NOT is_active;
         RETURN QUERY SELECT v_id, v_name, FALSE;
         RETURN;
     END IF;
 
-    -- fuzzy match
-    SELECT c.id, c.name INTO v_id, v_name
-    FROM categories c
-    WHERE c.user_id = p_user_id AND c.is_active AND c.type = p_type
-      AND similarity(c.normalized_name, v_norm) >= 0.5
-    ORDER BY similarity(c.normalized_name, v_norm) DESC
-    LIMIT 1;
-    IF v_id IS NOT NULL THEN
-        RETURN QUERY SELECT v_id, v_name, FALSE;
-        RETURN;
+    -- Fuzzy match SOLO si el input es un token simple (puro alfabético, sin
+    -- guiones / espacios / dígitos). Eso permite colapsar inflexiones ("comidas"
+    -- → "Comida") sin colapsar nombres compuestos distintivos
+    -- ("mascotas-test", "viaje 2026") que el usuario quiere preservar.
+    IF v_norm ~ '^[a-zñáéíóúüç]+$' THEN
+        SELECT c.id, c.name INTO v_id, v_name
+        FROM categories c
+        WHERE c.user_id = p_user_id AND c.is_active AND c.type = p_type
+          AND similarity(c.normalized_name, v_norm) >= 0.6
+        ORDER BY similarity(c.normalized_name, v_norm) DESC
+        LIMIT 1;
+        IF v_id IS NOT NULL THEN
+            RETURN QUERY SELECT v_id, v_name, FALSE;
+            RETURN;
+        END IF;
     END IF;
 
-    -- create new
+    -- create new (no exact match, no fuzzy aplicable o no encontrado)
     INSERT INTO categories (user_id, name, normalized_name, emoji, color, keywords, type, is_active)
     VALUES (p_user_id, INITCAP(p_name), v_norm, '🏷️', '#888888', ARRAY[]::TEXT[], p_type, TRUE)
     RETURNING id, name INTO v_id, v_name;
@@ -1887,6 +1946,67 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- ---------- A13e. delete_category ----------
+-- Borra (soft-delete) una categoria del usuario. Si tiene transacciones u otras
+-- dependencias y no se pasa merge_into, falla con un error claro. Si se pasa
+-- merge_into, primero fusiona y despues desactiva. Nunca toca categorias de otros usuarios.
+CREATE OR REPLACE FUNCTION delete_category(
+    p_user_id UUID,
+    p_name TEXT,
+    p_merge_into TEXT DEFAULT NULL
+)
+RETURNS TABLE(
+    category_id UUID,
+    category_name TEXT,
+    deactivated BOOLEAN,
+    merged_into TEXT,
+    moved_transactions INT
+) AS $$
+DECLARE
+    v_id UUID; v_name TEXT; v_type TEXT;
+    v_tx_count INT; v_bud_count INT; v_rec_count INT;
+    v_merge RECORD;
+BEGIN
+    SELECT c.id, c.name, c.type INTO v_id, v_name, v_type
+    FROM categories c
+    WHERE c.user_id = p_user_id AND c.is_active
+      AND (c.normalized_name = normalize_text(p_name)
+           OR similarity(c.normalized_name, normalize_text(p_name)) >= 0.5)
+    ORDER BY (c.normalized_name = normalize_text(p_name)) DESC,
+             similarity(c.normalized_name, normalize_text(p_name)) DESC
+    LIMIT 1;
+
+    IF v_id IS NULL THEN
+        RETURN QUERY SELECT NULL::UUID, p_name, FALSE, NULL::TEXT, 0;
+        RETURN;
+    END IF;
+
+    -- Si pidieron merge, delegamos en merge_categories y devolvemos el resultado
+    IF COALESCE(p_merge_into, '') <> '' THEN
+        SELECT * INTO v_merge FROM merge_categories(p_user_id, v_name, p_merge_into);
+        RETURN QUERY SELECT v_id, v_name, TRUE, p_merge_into, COALESCE(v_merge.moved_transactions, 0);
+        RETURN;
+    END IF;
+
+    -- Sin merge: chequear dependencias (qualify cols: OUT params sombrean)
+    SELECT COUNT(*)::INT INTO v_tx_count
+    FROM transactions t WHERE t.user_id = p_user_id AND t.category_id = v_id;
+    SELECT COUNT(*)::INT INTO v_bud_count
+    FROM budgets b WHERE b.user_id = p_user_id AND b.category_id = v_id AND b.is_active;
+    SELECT COUNT(*)::INT INTO v_rec_count
+    FROM recurring_transactions r
+    WHERE r.user_id = p_user_id AND r.category_id = v_id AND r.is_active;
+
+    IF v_tx_count > 0 OR v_bud_count > 0 OR v_rec_count > 0 THEN
+        RAISE EXCEPTION 'La categoría "%" tiene % transacciones, % presupuestos y % recurrentes. Pasá merge_into para fusionarla en otra categoría.',
+            v_name, v_tx_count, v_bud_count, v_rec_count;
+    END IF;
+
+    UPDATE categories cc SET is_active = FALSE, updated_at = NOW() WHERE cc.id = v_id;
+    RETURN QUERY SELECT v_id, v_name, TRUE, NULL::TEXT, 0;
+END;
+$$ LANGUAGE plpgsql;
+
 -- ---------- A14. LangChain Postgres Chat Memory ----------
 -- Tabla que usa @n8n/n8n-nodes-langchain.memoryPostgresChat para persistir
 -- el historial conversacional por session_id (= user_id en nuestro caso).
@@ -2014,7 +2134,7 @@ $$ LANGUAGE SQL STABLE;
 CREATE OR REPLACE FUNCTION get_cashflow(
     p_user_id UUID,
     p_period_start DATE DEFAULT DATE_TRUNC('month', CURRENT_DATE)::DATE,
-    p_period_end   DATE DEFAULT (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE
+    p_period_end   DATE DEFAULT (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')::DATE
 )
 RETURNS TABLE(
     has_income       BOOLEAN,
@@ -2073,7 +2193,7 @@ RETURNS TABLE(
 ) AS $$
 DECLARE
     v_month_start DATE := DATE_TRUNC('month', CURRENT_DATE)::DATE;
-    v_month_end   DATE := (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE;
+    v_month_end   DATE := (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')::DATE;
     v_today       DATE := CURRENT_DATE;
     v_lookback    DATE := v_today - (p_lookback_days - 1);
     v_remaining   INT  := GREATEST(0, v_month_end - v_today);
@@ -2115,7 +2235,7 @@ RETURNS TABLE(
 DECLARE
     v_has_income     BOOLEAN;
     v_month_start    DATE := DATE_TRUNC('month', CURRENT_DATE)::DATE;
-    v_month_end      DATE := (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE;
+    v_month_end      DATE := (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')::DATE;
     v_today          DATE := CURRENT_DATE;
     v_days_remaining INT  := GREATEST(0, v_month_end - v_today + 1);
 BEGIN
@@ -2431,9 +2551,9 @@ BEGIN
                 ELSE              DATE_TRUNC('month', CURRENT_DATE)::DATE
             END AS p_start,
             CASE b.period
-                WHEN 'weekly' THEN (DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '7 days - 1 day')::DATE
-                WHEN 'yearly' THEN (DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year - 1 day')::DATE
-                ELSE              (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::DATE
+                WHEN 'weekly' THEN (DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '7 days' - INTERVAL '1 day')::DATE
+                WHEN 'yearly' THEN (DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year' - INTERVAL '1 day')::DATE
+                ELSE              (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')::DATE
             END AS p_end
         FROM budgets b
         JOIN users u ON u.id = b.user_id
@@ -2672,7 +2792,7 @@ CREATE OR REPLACE FUNCTION monthly_digest_snapshot(
 RETURNS JSONB AS $$
 DECLARE
     v_month_start DATE := DATE_TRUNC('month', p_target_month)::DATE;
-    v_month_end   DATE := (DATE_TRUNC('month', p_target_month) + INTERVAL '1 month - 1 day')::DATE;
+    v_month_end   DATE := (DATE_TRUNC('month', p_target_month) + INTERVAL '1 month' - INTERVAL '1 day')::DATE;
     v_prev_start  DATE := (v_month_start - INTERVAL '1 month')::DATE;
     v_prev_end    DATE := (v_month_start - INTERVAL '1 day')::DATE;
     v_has_income  BOOLEAN;
@@ -2812,3 +2932,1126 @@ BEGIN
     END LOOP;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
+
+-- =====================================================================
+-- Migration 002: CRUD completos de recurrentes, grupos, presupuestos,
+-- tags y settings de usuario. Todo idempotente y siempre filtrado por user_id.
+-- =====================================================================
+
+-- ---------- B1. list_recurring ----------
+-- Devuelve todas las recurrentes (activas o no) del usuario con su contexto.
+CREATE OR REPLACE FUNCTION list_recurring(
+    p_user_id UUID,
+    p_active_only BOOLEAN DEFAULT TRUE
+)
+RETURNS TABLE(
+    id UUID,
+    type TEXT,
+    amount NUMERIC,
+    description TEXT,
+    frequency TEXT,
+    next_occurrence DATE,
+    last_occurrence DATE,
+    end_date DATE,
+    is_active BOOLEAN,
+    category_id UUID,
+    category_name TEXT,
+    category_emoji TEXT,
+    payment_method_id UUID,
+    payment_method_name TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT r.id, r.type, r.amount, r.description, r.frequency,
+           r.next_occurrence, r.last_occurrence, r.end_date, r.is_active,
+           r.category_id, c.name, c.emoji,
+           r.payment_method_id, pm.name
+    FROM recurring_transactions r
+    LEFT JOIN categories c ON c.id = r.category_id
+    LEFT JOIN payment_methods pm ON pm.id = r.payment_method_id
+    WHERE r.user_id = p_user_id
+      AND (NOT p_active_only OR r.is_active)
+    ORDER BY r.is_active DESC, r.next_occurrence ASC NULLS LAST, r.created_at DESC;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- B2. find_recurring_by_hint ----------
+-- Resuelve una recurrente por nombre/descripción. Devuelve la más relevante.
+CREATE OR REPLACE FUNCTION find_recurring_by_hint(
+    p_user_id UUID,
+    p_hint TEXT
+)
+RETURNS TABLE(id UUID, description TEXT, amount NUMERIC, frequency TEXT, is_active BOOLEAN) AS $$
+BEGIN
+    IF COALESCE(p_hint, '') = '' THEN
+        RETURN;
+    END IF;
+    RETURN QUERY
+    SELECT r.id, r.description, r.amount, r.frequency, r.is_active
+    FROM recurring_transactions r
+    WHERE r.user_id = p_user_id
+      AND (normalize_text(r.description) = normalize_text(p_hint)
+           OR normalize_text(r.description) ILIKE '%' || normalize_text(p_hint) || '%'
+           OR similarity(normalize_text(r.description), normalize_text(p_hint)) >= 0.4)
+    ORDER BY (normalize_text(r.description) = normalize_text(p_hint)) DESC,
+             similarity(normalize_text(r.description), normalize_text(p_hint)) DESC,
+             r.is_active DESC
+    LIMIT 5;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- B3. update_recurring ----------
+-- Edita una recurrente existente. Acepta hints en lugar de UUIDs.
+CREATE OR REPLACE FUNCTION update_recurring(
+    p_user_id UUID,
+    p_recurring_id UUID,
+    p_new_amount NUMERIC DEFAULT NULL,
+    p_new_description TEXT DEFAULT NULL,
+    p_new_frequency TEXT DEFAULT NULL,
+    p_new_category_hint TEXT DEFAULT NULL,
+    p_new_next_occurrence DATE DEFAULT NULL,
+    p_new_end_date DATE DEFAULT NULL,
+    p_create_category_if_missing BOOLEAN DEFAULT FALSE
+)
+RETURNS TABLE(
+    id UUID, amount NUMERIC, description TEXT, frequency TEXT,
+    next_occurrence DATE, end_date DATE, is_active BOOLEAN,
+    category_name TEXT
+) AS $$
+DECLARE
+    v_resolved_cat_id UUID := NULL;
+    v_type TEXT;
+BEGIN
+    -- Validar frequency si vino
+    IF p_new_frequency IS NOT NULL AND p_new_frequency NOT IN ('daily','weekly','monthly','yearly') THEN
+        RAISE EXCEPTION 'frecuencia inválida "%"; usá daily, weekly, monthly o yearly', p_new_frequency;
+    END IF;
+
+    -- Resolver categoría por hint si vino
+    IF COALESCE(p_new_category_hint, '') <> '' THEN
+        SELECT r.type INTO v_type FROM recurring_transactions r
+        WHERE r.id = p_recurring_id AND r.user_id = p_user_id;
+
+        IF p_create_category_if_missing THEN
+            SELECT category_id INTO v_resolved_cat_id
+            FROM resolve_or_create_category(p_user_id, p_new_category_hint, COALESCE(v_type, 'expense'));
+        ELSE
+            SELECT category_id INTO v_resolved_cat_id
+            FROM find_best_category(p_user_id, p_new_category_hint, COALESCE(v_type, 'expense'));
+        END IF;
+    END IF;
+
+    RETURN QUERY
+    UPDATE recurring_transactions r
+    SET amount = COALESCE(p_new_amount, r.amount),
+        description = COALESCE(NULLIF(p_new_description,''), r.description),
+        frequency = COALESCE(NULLIF(p_new_frequency,''), r.frequency),
+        category_id = COALESCE(v_resolved_cat_id, r.category_id),
+        next_occurrence = COALESCE(p_new_next_occurrence, r.next_occurrence),
+        end_date = COALESCE(p_new_end_date, r.end_date),
+        updated_at = NOW()
+    WHERE r.id = p_recurring_id AND r.user_id = p_user_id
+    RETURNING r.id, r.amount, r.description, r.frequency, r.next_occurrence,
+              r.end_date, r.is_active,
+              (SELECT c.name FROM categories c WHERE c.id = r.category_id);
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- B4. pause_recurring / resume_recurring / cancel_recurring ----------
+-- pause: is_active=FALSE pero NO setea end_date (puede reanudarse)
+-- cancel: is_active=FALSE Y end_date=hoy (cierre definitivo)
+CREATE OR REPLACE FUNCTION pause_recurring(p_user_id UUID, p_recurring_id UUID)
+RETURNS TABLE(id UUID, description TEXT, was_active BOOLEAN, paused BOOLEAN) AS $$
+DECLARE v_prev BOOLEAN;
+BEGIN
+    SELECT r.is_active INTO v_prev FROM recurring_transactions r
+    WHERE r.id = p_recurring_id AND r.user_id = p_user_id;
+    IF v_prev IS NULL THEN
+        RETURN QUERY SELECT NULL::UUID, NULL::TEXT, FALSE, FALSE;
+        RETURN;
+    END IF;
+    UPDATE recurring_transactions
+    SET is_active = FALSE, updated_at = NOW()
+    WHERE recurring_transactions.id = p_recurring_id
+      AND recurring_transactions.user_id = p_user_id;
+    RETURN QUERY
+    SELECT r.id, r.description, v_prev, TRUE
+    FROM recurring_transactions r
+    WHERE r.id = p_recurring_id AND r.user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION resume_recurring(p_user_id UUID, p_recurring_id UUID)
+RETURNS TABLE(id UUID, description TEXT, resumed BOOLEAN) AS $$
+DECLARE v_exists BOOLEAN;
+BEGIN
+    SELECT TRUE INTO v_exists FROM recurring_transactions r
+    WHERE r.id = p_recurring_id AND r.user_id = p_user_id;
+    IF v_exists IS NULL THEN
+        RETURN QUERY SELECT NULL::UUID, NULL::TEXT, FALSE;
+        RETURN;
+    END IF;
+    UPDATE recurring_transactions
+    SET is_active = TRUE,
+        end_date = NULL,
+        next_occurrence = CASE
+            WHEN next_occurrence < CURRENT_DATE THEN CURRENT_DATE
+            ELSE next_occurrence
+        END,
+        updated_at = NOW()
+    WHERE recurring_transactions.id = p_recurring_id
+      AND recurring_transactions.user_id = p_user_id;
+    RETURN QUERY
+    SELECT r.id, r.description, TRUE FROM recurring_transactions r
+    WHERE r.id = p_recurring_id AND r.user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION cancel_recurring(p_user_id UUID, p_recurring_id UUID)
+RETURNS TABLE(id UUID, description TEXT, cancelled BOOLEAN) AS $$
+BEGIN
+    UPDATE recurring_transactions r
+    SET is_active = FALSE,
+        end_date = CURRENT_DATE,
+        updated_at = NOW()
+    WHERE r.id = p_recurring_id AND r.user_id = p_user_id;
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT NULL::UUID, NULL::TEXT, FALSE;
+        RETURN;
+    END IF;
+    RETURN QUERY
+    SELECT r.id, r.description, TRUE FROM recurring_transactions r
+    WHERE r.id = p_recurring_id AND r.user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- B5. update_group ----------
+-- Edita campos del grupo (nombre, kind, fechas, emoji). Idempotente: no toca lo que no le pasen.
+CREATE OR REPLACE FUNCTION update_group(
+    p_user_id UUID,
+    p_name TEXT,                  -- nombre actual del grupo (lookup)
+    p_new_name TEXT DEFAULT NULL,
+    p_new_kind TEXT DEFAULT NULL,
+    p_new_emoji TEXT DEFAULT NULL,
+    p_new_starts_at DATE DEFAULT NULL,
+    p_new_ends_at DATE DEFAULT NULL
+)
+RETURNS TABLE(
+    id UUID, name TEXT, kind TEXT, emoji TEXT,
+    starts_at DATE, ends_at DATE, is_active BOOLEAN
+) AS $$
+DECLARE
+    v_id UUID;
+    v_new_norm TEXT;
+    v_conflict UUID;
+BEGIN
+    SELECT g.id INTO v_id FROM expense_groups g
+    WHERE g.user_id = p_user_id
+      AND (g.normalized_name = normalize_text(p_name)
+           OR similarity(g.normalized_name, normalize_text(p_name)) >= 0.5)
+    ORDER BY (g.normalized_name = normalize_text(p_name)) DESC,
+             similarity(g.normalized_name, normalize_text(p_name)) DESC,
+             g.is_active DESC
+    LIMIT 1;
+    IF v_id IS NULL THEN
+        RAISE EXCEPTION 'No encontré el grupo "%"', p_name;
+    END IF;
+
+    -- Validar nuevo nombre si vino
+    IF COALESCE(p_new_name, '') <> '' THEN
+        v_new_norm := normalize_text(p_new_name);
+        SELECT g.id INTO v_conflict FROM expense_groups g
+        WHERE g.user_id = p_user_id AND g.normalized_name = v_new_norm AND g.id <> v_id
+        LIMIT 1;
+        IF v_conflict IS NOT NULL THEN
+            RAISE EXCEPTION 'Ya tenés un grupo con el nombre "%"', p_new_name;
+        END IF;
+    END IF;
+
+    -- Validar kind si vino
+    IF p_new_kind IS NOT NULL AND p_new_kind NOT IN ('trip','event','emergency','project','other') THEN
+        RAISE EXCEPTION 'kind inválido "%"; usá trip, event, emergency, project u other', p_new_kind;
+    END IF;
+
+    UPDATE expense_groups g
+    SET name = COALESCE(NULLIF(p_new_name,''), g.name),
+        kind = COALESCE(NULLIF(p_new_kind,''), g.kind),
+        emoji = COALESCE(NULLIF(p_new_emoji,''), g.emoji),
+        starts_at = COALESCE(p_new_starts_at, g.starts_at),
+        ends_at = COALESCE(p_new_ends_at, g.ends_at),
+        updated_at = NOW()
+    WHERE g.id = v_id;
+
+    RETURN QUERY
+    SELECT g.id, g.name, g.kind, g.emoji, g.starts_at, g.ends_at, g.is_active
+    FROM expense_groups g WHERE g.id = v_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- B6. rename_group (alias semántico de update_group) ----------
+CREATE OR REPLACE FUNCTION rename_group(
+    p_user_id UUID, p_old_name TEXT, p_new_name TEXT
+)
+RETURNS TABLE(id UUID, old_name TEXT, new_name TEXT, renamed BOOLEAN) AS $$
+DECLARE v_old TEXT; r RECORD;
+BEGIN
+    SELECT name INTO v_old FROM expense_groups
+    WHERE user_id = p_user_id
+      AND (normalized_name = normalize_text(p_old_name)
+           OR similarity(normalized_name, normalize_text(p_old_name)) >= 0.5)
+    ORDER BY (normalized_name = normalize_text(p_old_name)) DESC
+    LIMIT 1;
+    IF v_old IS NULL THEN
+        RETURN QUERY SELECT NULL::UUID, p_old_name, p_new_name, FALSE;
+        RETURN;
+    END IF;
+    SELECT * INTO r FROM update_group(p_user_id, v_old, p_new_name);
+    RETURN QUERY SELECT r.id, v_old, r.name, TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- B7. close_group ----------
+-- Marca un grupo como cerrado: ends_at=hoy, is_active=FALSE.
+-- No borra nada — las transacciones siguen ahí, solo deja de aceptar nuevas asociaciones.
+CREATE OR REPLACE FUNCTION close_group(p_user_id UUID, p_name TEXT)
+RETURNS TABLE(id UUID, name TEXT, ends_at DATE, closed BOOLEAN) AS $$
+BEGIN
+    UPDATE expense_groups g
+    SET is_active = FALSE,
+        ends_at = COALESCE(g.ends_at, CURRENT_DATE),
+        updated_at = NOW()
+    WHERE g.user_id = p_user_id
+      AND (g.normalized_name = normalize_text(p_name)
+           OR similarity(g.normalized_name, normalize_text(p_name)) >= 0.5);
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT NULL::UUID, p_name, NULL::DATE, FALSE;
+        RETURN;
+    END IF;
+    RETURN QUERY
+    SELECT g.id, g.name, g.ends_at, TRUE
+    FROM expense_groups g
+    WHERE g.user_id = p_user_id
+      AND (g.normalized_name = normalize_text(p_name)
+           OR similarity(g.normalized_name, normalize_text(p_name)) >= 0.5)
+    ORDER BY (g.normalized_name = normalize_text(p_name)) DESC
+    LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- B8. delete_group ----------
+-- Borra un grupo. Si tiene transacciones, requiere reasignar (reassign_to_name) o
+-- pasar p_unassign=TRUE para dejarlas sin grupo (group_id=NULL).
+CREATE OR REPLACE FUNCTION delete_group(
+    p_user_id UUID,
+    p_name TEXT,
+    p_reassign_to_name TEXT DEFAULT NULL,
+    p_unassign BOOLEAN DEFAULT FALSE
+)
+RETURNS TABLE(
+    id UUID, name TEXT, deleted BOOLEAN,
+    moved_transactions INT, reassigned_to TEXT
+) AS $$
+DECLARE
+    v_id UUID; v_name TEXT;
+    v_target UUID; v_target_name TEXT;
+    v_moved INT;
+BEGIN
+    SELECT g.id, g.name INTO v_id, v_name FROM expense_groups g
+    WHERE g.user_id = p_user_id
+      AND (g.normalized_name = normalize_text(p_name)
+           OR similarity(g.normalized_name, normalize_text(p_name)) >= 0.5)
+    ORDER BY (g.normalized_name = normalize_text(p_name)) DESC
+    LIMIT 1;
+    IF v_id IS NULL THEN
+        RETURN QUERY SELECT NULL::UUID, p_name, FALSE, 0, NULL::TEXT;
+        RETURN;
+    END IF;
+
+    -- Contar tx vinculadas
+    SELECT COUNT(*)::INT INTO v_moved
+    FROM transactions WHERE user_id = p_user_id AND group_id = v_id;
+
+    IF v_moved > 0 THEN
+        IF COALESCE(p_reassign_to_name, '') <> '' THEN
+            SELECT g.id, g.name INTO v_target, v_target_name FROM expense_groups g
+            WHERE g.user_id = p_user_id AND g.is_active
+              AND g.normalized_name = normalize_text(p_reassign_to_name);
+            IF v_target IS NULL THEN
+                RAISE EXCEPTION 'El grupo destino "%" no existe', p_reassign_to_name;
+            END IF;
+            UPDATE transactions SET group_id = v_target, updated_at = NOW()
+            WHERE user_id = p_user_id AND group_id = v_id;
+        ELSIF p_unassign THEN
+            UPDATE transactions SET group_id = NULL, updated_at = NOW()
+            WHERE user_id = p_user_id AND group_id = v_id;
+        ELSE
+            RAISE EXCEPTION 'El grupo "%" tiene % transacciones. Pasá reassign_to_name o unassign=true.', v_name, v_moved;
+        END IF;
+    END IF;
+
+    DELETE FROM expense_groups eg WHERE eg.id = v_id;
+    RETURN QUERY SELECT v_id, v_name, TRUE, v_moved, v_target_name;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- B9. delete_budget / pause_budget / resume_budget ----------
+-- delete_budget: hard-delete del row (no hay tx asociadas, es solo un límite).
+-- pause/resume: toggle is_active sin perder el monto.
+CREATE OR REPLACE FUNCTION delete_budget(
+    p_user_id UUID,
+    p_category_hint TEXT,
+    p_period TEXT DEFAULT NULL
+)
+RETURNS TABLE(deleted_count INT, category_name TEXT) AS $$
+DECLARE v_cat_id UUID; v_cat_name TEXT; v_count INT;
+BEGIN
+    SELECT fbc.category_id, fbc.category_name INTO v_cat_id, v_cat_name
+    FROM find_best_category(p_user_id, p_category_hint, 'expense') fbc;
+    IF v_cat_id IS NULL THEN
+        RETURN QUERY SELECT 0, p_category_hint;
+        RETURN;
+    END IF;
+    DELETE FROM budgets b
+    WHERE b.user_id = p_user_id
+      AND b.category_id = v_cat_id
+      AND (p_period IS NULL OR b.period = p_period);
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN QUERY SELECT v_count, v_cat_name;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pause_budget(
+    p_user_id UUID, p_category_hint TEXT, p_period TEXT DEFAULT NULL
+)
+RETURNS TABLE(paused_count INT, category_name TEXT) AS $$
+DECLARE v_cat_id UUID; v_cat_name TEXT; v_count INT;
+BEGIN
+    SELECT fbc.category_id, fbc.category_name INTO v_cat_id, v_cat_name
+    FROM find_best_category(p_user_id, p_category_hint, 'expense') fbc;
+    IF v_cat_id IS NULL THEN
+        RETURN QUERY SELECT 0, p_category_hint;
+        RETURN;
+    END IF;
+    UPDATE budgets b
+    SET is_active = FALSE, updated_at = NOW()
+    WHERE b.user_id = p_user_id
+      AND b.category_id = v_cat_id
+      AND b.is_active
+      AND (p_period IS NULL OR b.period = p_period);
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN QUERY SELECT v_count, v_cat_name;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION resume_budget(
+    p_user_id UUID, p_category_hint TEXT, p_period TEXT DEFAULT NULL
+)
+RETURNS TABLE(resumed_count INT, category_name TEXT) AS $$
+DECLARE v_cat_id UUID; v_cat_name TEXT; v_count INT;
+BEGIN
+    SELECT fbc.category_id, fbc.category_name INTO v_cat_id, v_cat_name
+    FROM find_best_category(p_user_id, p_category_hint, 'expense') fbc;
+    IF v_cat_id IS NULL THEN
+        RETURN QUERY SELECT 0, p_category_hint;
+        RETURN;
+    END IF;
+    UPDATE budgets b
+    SET is_active = TRUE, updated_at = NOW()
+    WHERE b.user_id = p_user_id
+      AND b.category_id = v_cat_id
+      AND NOT b.is_active
+      AND (p_period IS NULL OR b.period = p_period);
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN QUERY SELECT v_count, v_cat_name;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- B10. Tags CRUD ----------
+-- create_tag: idempotente. Si ya existe (exact o fuzzy) la devuelve.
+CREATE OR REPLACE FUNCTION create_tag(
+    p_user_id UUID, p_name TEXT, p_color TEXT DEFAULT NULL
+)
+RETURNS TABLE(tag_id UUID, tag_name TEXT, was_created BOOLEAN) AS $$
+DECLARE v_id UUID; v_name TEXT; v_norm TEXT := normalize_text(p_name);
+BEGIN
+    IF COALESCE(v_norm, '') = '' THEN
+        RAISE EXCEPTION 'el nombre del tag no puede estar vacío';
+    END IF;
+    SELECT id, name INTO v_id, v_name FROM tags
+    WHERE user_id = p_user_id AND normalized_name = v_norm
+    LIMIT 1;
+    IF v_id IS NOT NULL THEN
+        RETURN QUERY SELECT v_id, v_name, FALSE;
+        RETURN;
+    END IF;
+    INSERT INTO tags (user_id, name, normalized_name, color)
+    VALUES (p_user_id, INITCAP(p_name), v_norm, COALESCE(p_color, '#888888'))
+    RETURNING id, name INTO v_id, v_name;
+    RETURN QUERY SELECT v_id, v_name, TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rename_tag(
+    p_user_id UUID, p_old_name TEXT, p_new_name TEXT
+)
+RETURNS TABLE(tag_id UUID, old_name TEXT, new_name TEXT, renamed BOOLEAN) AS $$
+DECLARE v_id UUID; v_old TEXT; v_new_norm TEXT := normalize_text(p_new_name);
+BEGIN
+    SELECT id, name INTO v_id, v_old FROM tags
+    WHERE user_id = p_user_id
+      AND (normalized_name = normalize_text(p_old_name)
+           OR similarity(normalized_name, normalize_text(p_old_name)) >= 0.5)
+    ORDER BY (normalized_name = normalize_text(p_old_name)) DESC
+    LIMIT 1;
+    IF v_id IS NULL THEN
+        RETURN QUERY SELECT NULL::UUID, p_old_name, p_new_name, FALSE;
+        RETURN;
+    END IF;
+    IF EXISTS (SELECT 1 FROM tags WHERE user_id = p_user_id AND normalized_name = v_new_norm AND id <> v_id) THEN
+        RAISE EXCEPTION 'Ya tenés un tag llamado "%"', p_new_name;
+    END IF;
+    UPDATE tags SET name = INITCAP(p_new_name), normalized_name = v_new_norm
+    WHERE id = v_id;
+    RETURN QUERY SELECT v_id, v_old, INITCAP(p_new_name), TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION delete_tag(p_user_id UUID, p_name TEXT)
+RETURNS TABLE(tag_id UUID, tag_name TEXT, untagged_transactions INT, deleted BOOLEAN) AS $$
+DECLARE v_id UUID; v_name TEXT; v_count INT;
+BEGIN
+    SELECT t.id, t.name INTO v_id, v_name FROM tags t
+    WHERE t.user_id = p_user_id
+      AND (t.normalized_name = normalize_text(p_name)
+           OR similarity(t.normalized_name, normalize_text(p_name)) >= 0.5)
+    ORDER BY (t.normalized_name = normalize_text(p_name)) DESC
+    LIMIT 1;
+    IF v_id IS NULL THEN
+        RETURN QUERY SELECT NULL::UUID, p_name, 0, FALSE;
+        RETURN;
+    END IF;
+    SELECT COUNT(*)::INT INTO v_count
+    FROM transaction_tags tt WHERE tt.tag_id = v_id;
+    DELETE FROM tags t WHERE t.id = v_id;
+    -- transaction_tags se borra por CASCADE
+    RETURN QUERY SELECT v_id, v_name, v_count, TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- list_tags: incluye conteo y total gastado, para que el agente pueda mostrar resúmenes útiles.
+CREATE OR REPLACE FUNCTION list_tags(p_user_id UUID)
+RETURNS TABLE(
+    id UUID, name TEXT, color TEXT,
+    tx_count BIGINT, total_amount NUMERIC
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT t.id, t.name, t.color,
+           COUNT(tt.transaction_id)::BIGINT AS tx_count,
+           COALESCE(SUM(tx.amount), 0)::NUMERIC AS total_amount
+    FROM tags t
+    LEFT JOIN transaction_tags tt ON tt.tag_id = t.id
+    LEFT JOIN transactions tx ON tx.id = tt.transaction_id AND tx.user_id = p_user_id
+    WHERE t.user_id = p_user_id
+    GROUP BY t.id, t.name, t.color
+    ORDER BY tx_count DESC, t.name;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- tag_transactions: aplica un tag a un set de transacciones (idempotente vía ON CONFLICT).
+-- Si create_if_missing=TRUE, crea el tag si no existe.
+CREATE OR REPLACE FUNCTION tag_transactions(
+    p_user_id UUID,
+    p_tag_name TEXT,
+    p_tx_ids UUID[],
+    p_create_if_missing BOOLEAN DEFAULT TRUE
+)
+RETURNS TABLE(tag_id UUID, tag_name TEXT, tagged_count INT, was_created BOOLEAN) AS $$
+DECLARE v_id UUID; v_name TEXT; v_created BOOLEAN := FALSE; v_count INT;
+BEGIN
+    SELECT t.id, t.name INTO v_id, v_name FROM tags t
+    WHERE t.user_id = p_user_id AND t.normalized_name = normalize_text(p_tag_name)
+    LIMIT 1;
+    IF v_id IS NULL THEN
+        IF NOT p_create_if_missing THEN
+            RAISE EXCEPTION 'No existe el tag "%". Pasá create_if_missing=true o creálo primero.', p_tag_name;
+        END IF;
+        SELECT ct.tag_id, ct.tag_name INTO v_id, v_name FROM create_tag(p_user_id, p_tag_name) ct;
+        v_created := TRUE;
+    END IF;
+
+    -- Insertar relaciones, validando que las tx pertenezcan al usuario
+    WITH ins AS (
+        INSERT INTO transaction_tags (transaction_id, tag_id)
+        SELECT t.id, v_id FROM transactions t
+        WHERE t.user_id = p_user_id AND t.id = ANY(p_tx_ids)
+        ON CONFLICT DO NOTHING
+        RETURNING transaction_id
+    )
+    SELECT COUNT(*)::INT INTO v_count FROM ins;
+
+    RETURN QUERY SELECT v_id, v_name, v_count, v_created;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION untag_transactions(
+    p_user_id UUID, p_tag_name TEXT, p_tx_ids UUID[]
+)
+RETURNS TABLE(untagged_count INT) AS $$
+DECLARE v_id UUID; v_count INT;
+BEGIN
+    SELECT id INTO v_id FROM tags
+    WHERE user_id = p_user_id AND normalized_name = normalize_text(p_tag_name)
+    LIMIT 1;
+    IF v_id IS NULL THEN
+        RETURN QUERY SELECT 0;
+        RETURN;
+    END IF;
+    WITH del AS (
+        DELETE FROM transaction_tags tt
+        USING transactions t
+        WHERE tt.tag_id = v_id
+          AND tt.transaction_id = t.id
+          AND t.user_id = p_user_id
+          AND tt.transaction_id = ANY(p_tx_ids)
+        RETURNING tt.transaction_id
+    )
+    SELECT COUNT(*)::INT INTO v_count FROM del;
+    RETURN QUERY SELECT v_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- suggest_tags: sugiere tags para una descripción / monto basándose en
+-- transacciones similares ya tageadas por el usuario. Útil para que el LLM
+-- ofrezca tags al loggear sin pedirle al usuario que los recuerde de memoria.
+CREATE OR REPLACE FUNCTION suggest_tags(
+    p_user_id UUID,
+    p_description TEXT,
+    p_amount NUMERIC DEFAULT NULL,
+    p_limit INT DEFAULT 5
+)
+RETURNS TABLE(tag_id UUID, tag_name TEXT, score REAL, sample_uses INT) AS $$
+DECLARE v_norm TEXT := normalize_text(COALESCE(p_description,''));
+BEGIN
+    IF v_norm = '' THEN RETURN; END IF;
+    RETURN QUERY
+    SELECT t.id, t.name,
+           AVG(similarity(normalize_text(tx.description), v_norm))::REAL AS score,
+           COUNT(*)::INT AS sample_uses
+    FROM tags t
+    JOIN transaction_tags tt ON tt.tag_id = t.id
+    JOIN transactions tx ON tx.id = tt.transaction_id AND tx.user_id = p_user_id
+    WHERE t.user_id = p_user_id
+      AND similarity(normalize_text(tx.description), v_norm) >= 0.2
+    GROUP BY t.id, t.name
+    HAVING AVG(similarity(normalize_text(tx.description), v_norm)) >= 0.25
+    ORDER BY AVG(similarity(normalize_text(tx.description), v_norm)) DESC,
+             COUNT(*) DESC
+    LIMIT GREATEST(p_limit, 1);
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- B11. User settings ----------
+-- get_user_settings: devuelve preferencias actuales para que el agente las muestre.
+CREATE OR REPLACE FUNCTION get_user_settings(p_user_id UUID)
+RETURNS TABLE(
+    name TEXT,
+    phone_number TEXT,
+    preferred_currency TEXT,
+    daily_summary_enabled BOOLEAN,
+    daily_summary_hour INT,
+    weekly_summary_enabled BOOLEAN,
+    onboarded BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT u.name, u.phone_number, u.preferred_currency,
+           u.daily_summary_enabled, u.daily_summary_hour, u.weekly_summary_enabled,
+           u.onboarded
+    FROM users u WHERE u.id = p_user_id;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- update_user_settings: edita las preferencias. Solo modifica los campos que vienen NOT NULL.
+CREATE OR REPLACE FUNCTION update_user_settings(
+    p_user_id UUID,
+    p_name TEXT DEFAULT NULL,
+    p_preferred_currency TEXT DEFAULT NULL,
+    p_daily_summary_enabled BOOLEAN DEFAULT NULL,
+    p_daily_summary_hour INT DEFAULT NULL,
+    p_weekly_summary_enabled BOOLEAN DEFAULT NULL
+)
+RETURNS TABLE(
+    name TEXT,
+    preferred_currency TEXT,
+    daily_summary_enabled BOOLEAN,
+    daily_summary_hour INT,
+    weekly_summary_enabled BOOLEAN
+) AS $$
+BEGIN
+    IF p_daily_summary_hour IS NOT NULL AND (p_daily_summary_hour < 0 OR p_daily_summary_hour > 23) THEN
+        RAISE EXCEPTION 'daily_summary_hour debe estar entre 0 y 23, recibí %', p_daily_summary_hour;
+    END IF;
+    UPDATE users u
+    SET name = COALESCE(NULLIF(p_name,''), u.name),
+        preferred_currency = COALESCE(NULLIF(p_preferred_currency,''), u.preferred_currency),
+        daily_summary_enabled = COALESCE(p_daily_summary_enabled, u.daily_summary_enabled),
+        daily_summary_hour = COALESCE(p_daily_summary_hour, u.daily_summary_hour),
+        weekly_summary_enabled = COALESCE(p_weekly_summary_enabled, u.weekly_summary_enabled),
+        updated_at = NOW()
+    WHERE u.id = p_user_id;
+    RETURN QUERY
+    SELECT u.name, u.preferred_currency,
+           u.daily_summary_enabled, u.daily_summary_hour, u.weekly_summary_enabled
+    FROM users u WHERE u.id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================================
+-- compute_financial_advice — asesor financiero con 5 modos
+-- =====================================================================
+-- Calcula promedios de ingresos/gastos a partir de los últimos
+-- p_lookback_months meses CALENDARIO COMPLETOS (excluye el mes actual,
+-- que está incompleto por definición y rompería el promedio).
+-- Si no hay meses históricos con data, cae al mes actual proporcional.
+--
+-- Modos:
+--   'time_to_goal'      → cuántos meses para juntar p_goal_amount.
+--   'affordability'     → ¿el ahorro mensual cubre p_goal_amount de un saque?
+--   'savings_capacity'  → ingresos/gastos/ahorro/savings-rate promedio.
+--   'runway'            → con un ahorro acumulado p_goal_amount, cuántos
+--                         meses durás si mantenés el gasto promedio.
+--   'forecast_month'    → proyecta gasto e ingreso del MES ACTUAL al cierre,
+--                         usando el ritmo del mes hasta hoy.
+--
+-- Overrides (opcionales):
+--   p_monthly_saving_override   — fija el ahorro mensual
+--   p_monthly_income_override   — fija el ingreso mensual
+--   p_monthly_expense_override  — fija el gasto mensual
+--   p_extra_monthly_saving      — sumar (o restar) al ahorro calculado
+-- =====================================================================
+CREATE OR REPLACE FUNCTION compute_financial_advice(
+    p_user_id UUID,
+    p_mode TEXT,
+    p_goal_amount NUMERIC DEFAULT NULL,
+    p_monthly_saving_override NUMERIC DEFAULT NULL,
+    p_monthly_income_override NUMERIC DEFAULT NULL,
+    p_monthly_expense_override NUMERIC DEFAULT NULL,
+    p_lookback_months INT DEFAULT 3,
+    p_extra_monthly_saving NUMERIC DEFAULT 0
+)
+RETURNS TABLE(
+    mode TEXT,
+    avg_monthly_income NUMERIC,
+    avg_monthly_expense NUMERIC,
+    monthly_saving NUMERIC,
+    savings_rate_pct NUMERIC,
+    months_used INT,
+    months_to_goal NUMERIC,
+    target_date DATE,
+    affordable BOOLEAN,
+    runway_months NUMERIC,
+    projected_month_total_expense NUMERIC,
+    projected_month_total_income NUMERIC,
+    note TEXT
+) AS $$
+DECLARE
+    v_lookback INT := GREATEST(COALESCE(p_lookback_months, 3), 1);
+    v_period_start DATE :=
+        (DATE_TRUNC('month', CURRENT_DATE) - (v_lookback || ' months')::INTERVAL)::DATE;
+    v_period_end DATE :=
+        (DATE_TRUNC('month', CURRENT_DATE)::DATE - INTERVAL '1 day')::DATE;
+    v_total_inc NUMERIC := 0;
+    v_total_exp NUMERIC := 0;
+    v_distinct_months INT := 0;
+    v_months_used INT := 0;
+    v_avg_income NUMERIC := 0;
+    v_avg_expense NUMERIC := 0;
+    v_saving NUMERIC := 0;
+    v_savings_rate NUMERIC := 0;
+    v_curmo_inc NUMERIC := 0;
+    v_curmo_exp NUMERIC := 0;
+    v_days_elapsed INT := DATE_PART('day', CURRENT_DATE)::INT;
+    v_days_in_month INT :=
+        DATE_PART('day',
+            (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')
+        )::INT;
+    -- mode-specific outputs
+    v_months_to_goal NUMERIC := NULL;
+    v_target_date DATE := NULL;
+    v_affordable BOOLEAN := NULL;
+    v_runway NUMERIC := NULL;
+    v_proj_exp NUMERIC := NULL;
+    v_proj_inc NUMERIC := NULL;
+    v_note TEXT := '';
+    v_fallback_used BOOLEAN := FALSE;
+BEGIN
+    IF p_mode IS NULL OR p_mode = '' THEN
+        RAISE EXCEPTION 'compute_financial_advice: mode requerido';
+    END IF;
+
+    -- 1) totales históricos en meses completos previos
+    SELECT
+        COALESCE(SUM(CASE WHEN type = 'income'  THEN amount ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0),
+        COUNT(DISTINCT DATE_TRUNC('month', transaction_date))::INT
+    INTO v_total_inc, v_total_exp, v_distinct_months
+    FROM v_reportable_transactions
+    WHERE user_id = p_user_id
+      AND transaction_date BETWEEN v_period_start AND v_period_end;
+
+    -- 2) totales del mes actual (para forecast y fallback)
+    SELECT
+        COALESCE(SUM(CASE WHEN type = 'income'  THEN amount ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)
+    INTO v_curmo_inc, v_curmo_exp
+    FROM v_reportable_transactions
+    WHERE user_id = p_user_id
+      AND DATE_TRUNC('month', transaction_date) = DATE_TRUNC('month', CURRENT_DATE);
+
+    -- 3) elegir base de cálculo: meses completos > mes actual proporcional
+    IF v_distinct_months > 0 THEN
+        v_months_used := v_distinct_months;
+        v_avg_income  := v_total_inc::NUMERIC  / v_months_used;
+        v_avg_expense := v_total_exp::NUMERIC  / v_months_used;
+    ELSIF v_days_elapsed > 0 AND (v_curmo_inc + v_curmo_exp) > 0 THEN
+        -- fallback: usar mes actual proporcional
+        v_months_used := 0;
+        v_avg_income  := v_curmo_inc::NUMERIC / v_days_elapsed * v_days_in_month;
+        v_avg_expense := v_curmo_exp::NUMERIC / v_days_elapsed * v_days_in_month;
+        v_fallback_used := TRUE;
+    ELSE
+        v_months_used := 0;
+        v_avg_income := 0;
+        v_avg_expense := 0;
+    END IF;
+
+    -- 4) overrides
+    IF p_monthly_income_override  IS NOT NULL THEN v_avg_income  := p_monthly_income_override;  END IF;
+    IF p_monthly_expense_override IS NOT NULL THEN v_avg_expense := p_monthly_expense_override; END IF;
+
+    v_saving := COALESCE(p_monthly_saving_override, v_avg_income - v_avg_expense)
+              + COALESCE(p_extra_monthly_saving, 0);
+
+    v_savings_rate := CASE
+        WHEN v_avg_income > 0 THEN ROUND((v_saving / v_avg_income) * 100, 2)
+        ELSE 0
+    END;
+
+    -- 5) dispatch por modo
+    CASE LOWER(p_mode)
+    WHEN 'time_to_goal' THEN
+        IF p_goal_amount IS NULL OR p_goal_amount <= 0 THEN
+            v_note := 'falta goal_amount válido (>0)';
+        ELSIF v_saving <= 0 THEN
+            v_note := 'al ritmo actual no estás ahorrando (gastás >= ingresos); meta inalcanzable sin ajustar';
+        ELSE
+            v_months_to_goal := ROUND(p_goal_amount::NUMERIC / v_saving, 2);
+            v_target_date := (CURRENT_DATE + (CEIL(v_months_to_goal)::INT || ' months')::INTERVAL)::DATE;
+            v_note := 'asumiendo ahorro mensual constante de ' || ROUND(v_saving, 0)::TEXT
+                   || CASE WHEN v_fallback_used THEN ' (usando mes actual proporcional, todavía no hay historial completo)' ELSE '' END;
+        END IF;
+
+    WHEN 'affordability' THEN
+        IF p_goal_amount IS NULL OR p_goal_amount <= 0 THEN
+            v_note := 'falta goal_amount válido';
+        ELSE
+            v_affordable := v_saving >= p_goal_amount;
+            IF v_saving <= 0 THEN
+                v_note := 'tu ahorro mensual es 0 o negativo; ese gasto te hunde el mes';
+            ELSIF v_affordable THEN
+                v_note := 'tu ahorro mensual lo cubre de un saque';
+            ELSE
+                v_months_to_goal := ROUND(p_goal_amount::NUMERIC / v_saving, 2);
+                v_note := 'no entra de un saque; necesitarías ' || v_months_to_goal::TEXT || ' meses ahorrando para cubrirlo';
+            END IF;
+        END IF;
+
+    WHEN 'savings_capacity' THEN
+        v_note := CASE WHEN v_fallback_used
+            THEN 'ingreso/gasto basado en el mes actual proyectado (sin historial todavía)'
+            ELSE 'promedio últimos ' || v_months_used::TEXT || ' meses con movimientos' END;
+
+    WHEN 'runway' THEN
+        IF p_goal_amount IS NULL OR p_goal_amount < 0 THEN
+            v_note := 'pasá el ahorro acumulado actual en goal_amount';
+        ELSIF v_avg_expense <= 0 THEN
+            v_runway := NULL;
+            v_note := 'sin gasto promedio: runway indefinido';
+        ELSE
+            v_runway := ROUND(p_goal_amount::NUMERIC / v_avg_expense, 2);
+            v_note := 'meses que durás si dejás de cobrar y mantenés el gasto promedio actual';
+        END IF;
+
+    WHEN 'forecast_month' THEN
+        IF v_days_elapsed > 0 THEN
+            v_proj_exp := ROUND(v_curmo_exp::NUMERIC / v_days_elapsed * v_days_in_month, 2);
+            v_proj_inc := ROUND(v_curmo_inc::NUMERIC / v_days_elapsed * v_days_in_month, 2);
+        ELSE
+            v_proj_exp := 0;
+            v_proj_inc := 0;
+        END IF;
+        v_note := 'proyección lineal del cierre del mes (gasto-actual / días-transcurridos × días-del-mes)';
+
+    ELSE
+        RAISE EXCEPTION 'compute_financial_advice: mode desconocido %, valores válidos: time_to_goal | affordability | savings_capacity | runway | forecast_month', p_mode;
+    END CASE;
+
+    RETURN QUERY SELECT
+        p_mode,
+        ROUND(v_avg_income, 2),
+        ROUND(v_avg_expense, 2),
+        ROUND(v_saving, 2),
+        v_savings_rate,
+        v_months_used,
+        v_months_to_goal,
+        v_target_date,
+        v_affordable,
+        v_runway,
+        v_proj_exp,
+        v_proj_inc,
+        v_note;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- =====================================================================
+-- SEMANTIC MEMORY (pgvector)
+-- =====================================================================
+-- Memoria persistente por usuario, indexada con embeddings de OpenAI.
+-- El agente la usa de forma EXPLÍCITA — guarda hechos relevantes con
+-- `remember_fact` y los recupera con `recall_memory(query)` cuando el
+-- mensaje del usuario tiene contexto temporal/referencial vago
+-- ("la semana pasada", "ese gasto que te dije", "el viaje aquel").
+--
+-- Decisiones de diseño:
+--   • Embedding model: text-embedding-3-small (1536 dim, $0.02/1M tokens).
+--   • Storage: vector(1536) — suficiente, escalable a HNSW.
+--   • Index: HNSW con cosine — buen recall sin tunear ef_search.
+--   • Ownership: row-level por user_id; función search_memory filtra antes.
+--   • Soft delete: kind='__forgotten__' marca borrado lógico (audit trail).
+--
+-- Por qué OPCIONAL (no auto-embedding por turno):
+--   • No queremos meter latencia + costo a cada mensaje.
+--   • El agente es mejor que un heurístico pre-canned para decidir QUÉ
+--     vale la pena recordar (preferencias, contexto de viaje, metas).
+--   • Si después queremos auto-embedding, agregamos un trigger.
+-- =====================================================================
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS memory_chunks (
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL DEFAULT 'fact',  -- 'fact'|'preference'|'context'|'goal'|'__forgotten__'|...
+    content      TEXT NOT NULL,
+    embedding    vector(1536) NOT NULL,
+    metadata     JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_recalled_at TIMESTAMPTZ,
+    recall_count INT NOT NULL DEFAULT 0
+);
+
+-- HNSW index para búsqueda KNN por cosine. Filtramos por user_id ANTES de buscar.
+-- Con pocos miles de chunks por user es overkill, pero crece bien.
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_user
+    ON memory_chunks (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_embedding
+    ON memory_chunks USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_kind
+    ON memory_chunks (user_id, kind) WHERE kind <> '__forgotten__';
+
+-- ---------- add_memory_chunk ----------
+-- Insert + dedup blando: si ya existe un chunk del mismo user con
+-- similaridad >= 0.95 al nuevo embedding, NO duplica — actualiza recall_count.
+CREATE OR REPLACE FUNCTION add_memory_chunk(
+    p_user_id      UUID,
+    p_kind         TEXT,
+    p_content      TEXT,
+    p_embedding    vector(1536),
+    p_metadata     JSONB DEFAULT '{}'::jsonb
+)
+RETURNS TABLE(id UUID, was_created BOOLEAN, content TEXT, kind TEXT) AS $$
+DECLARE
+    v_id UUID;
+    v_existing UUID;
+BEGIN
+    IF p_user_id IS NULL OR p_content IS NULL OR length(trim(p_content)) = 0 THEN
+        RAISE EXCEPTION 'add_memory_chunk: user_id y content son requeridos';
+    END IF;
+
+    -- Dedup blando: 1 - cosine_distance >= 0.95 ↔ cosine_distance <= 0.05
+    SELECT mc.id INTO v_existing
+    FROM memory_chunks mc
+    WHERE mc.user_id = p_user_id
+      AND mc.kind <> '__forgotten__'
+      AND mc.embedding <=> p_embedding <= 0.05
+    ORDER BY mc.embedding <=> p_embedding
+    LIMIT 1;
+
+    IF v_existing IS NOT NULL THEN
+        UPDATE memory_chunks
+        SET recall_count = recall_count + 1,
+            last_recalled_at = NOW(),
+            metadata = metadata || COALESCE(p_metadata, '{}'::jsonb)
+        WHERE memory_chunks.id = v_existing
+        RETURNING memory_chunks.id INTO v_id;
+        RETURN QUERY
+        SELECT v_id, FALSE,
+               (SELECT mc.content FROM memory_chunks mc WHERE mc.id = v_id),
+               (SELECT mc.kind    FROM memory_chunks mc WHERE mc.id = v_id);
+        RETURN;
+    END IF;
+
+    INSERT INTO memory_chunks (user_id, kind, content, embedding, metadata)
+    VALUES (p_user_id, COALESCE(NULLIF(p_kind, ''), 'fact'),
+            trim(p_content), p_embedding, COALESCE(p_metadata, '{}'::jsonb))
+    RETURNING memory_chunks.id INTO v_id;
+
+    RETURN QUERY
+    SELECT v_id, TRUE, p_content, COALESCE(NULLIF(p_kind, ''), 'fact');
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- search_memory_chunks ----------
+-- KNN search por cosine. Devuelve top K filtrado por user (siempre) y
+-- opcionalmente por kind. Excluye soft-deleted.
+CREATE OR REPLACE FUNCTION search_memory_chunks(
+    p_user_id     UUID,
+    p_embedding   vector(1536),
+    p_k           INT DEFAULT 5,
+    p_kind        TEXT DEFAULT NULL,
+    p_min_score   REAL DEFAULT 0.65  -- 1-cosine_distance ≥ 0.65 (subido de 0.5 → menos ruido)
+)
+RETURNS TABLE(
+    id          UUID,
+    kind        TEXT,
+    content     TEXT,
+    metadata    JSONB,
+    similarity  REAL,
+    created_at  TIMESTAMPTZ,
+    recall_count INT
+) AS $$
+DECLARE
+    v_k INT := GREATEST(COALESCE(p_k, 5), 1);
+BEGIN
+    RETURN QUERY
+    SELECT mc.id,
+           mc.kind,
+           mc.content,
+           mc.metadata,
+           (1 - (mc.embedding <=> p_embedding))::REAL AS similarity,
+           mc.created_at,
+           mc.recall_count
+    FROM memory_chunks mc
+    WHERE mc.user_id = p_user_id
+      AND mc.kind <> '__forgotten__'
+      AND (p_kind IS NULL OR mc.kind = p_kind)
+      AND (1 - (mc.embedding <=> p_embedding))::REAL >= p_min_score
+    ORDER BY mc.embedding <=> p_embedding
+    LIMIT v_k;
+
+    -- Bumpear recall_count para los chunks recuperados (separado para no
+    -- alterar el ORDER BY KNN).
+    UPDATE memory_chunks mc
+    SET recall_count = mc.recall_count + 1, last_recalled_at = NOW()
+    WHERE mc.user_id = p_user_id
+      AND mc.kind <> '__forgotten__'
+      AND (p_kind IS NULL OR mc.kind = p_kind)
+      AND mc.id IN (
+          SELECT mc2.id FROM memory_chunks mc2
+          WHERE mc2.user_id = p_user_id
+            AND mc2.kind <> '__forgotten__'
+            AND (p_kind IS NULL OR mc2.kind = p_kind)
+            AND (1 - (mc2.embedding <=> p_embedding))::REAL >= p_min_score
+          ORDER BY mc2.embedding <=> p_embedding
+          LIMIT v_k
+      );
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- forget_memory_chunk ----------
+-- Soft-delete por id, con dueño-check. El chunk queda en la tabla con
+-- kind='__forgotten__' (audit trail) y deja de aparecer en search.
+CREATE OR REPLACE FUNCTION forget_memory_chunk(
+    p_user_id UUID,
+    p_id      UUID
+)
+RETURNS TABLE(id UUID, forgot BOOLEAN) AS $$
+BEGIN
+    UPDATE memory_chunks mc
+    SET kind = '__forgotten__'
+    WHERE mc.id = p_id AND mc.user_id = p_user_id AND mc.kind <> '__forgotten__';
+    IF FOUND THEN
+        RETURN QUERY SELECT p_id, TRUE;
+    ELSE
+        RETURN QUERY SELECT p_id, FALSE;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- update_memory_chunk ----------
+-- Actualiza content + embedding + (opcional) kind y metadata de un chunk existente.
+-- Se usa cuando un hecho evoluciona (ej. "ahorra 500k" → "ahora ahorra 700k") sin
+-- perder el id ni romper referencias. Re-embedea el contenido nuevo.
+-- Si p_id no pertenece al user → updated=false.
+CREATE OR REPLACE FUNCTION update_memory_chunk(
+    p_user_id      UUID,
+    p_id           UUID,
+    p_new_content  TEXT,
+    p_new_embedding vector(1536),
+    p_new_kind     TEXT DEFAULT NULL,
+    p_new_metadata JSONB DEFAULT NULL
+)
+RETURNS TABLE(id UUID, updated BOOLEAN, content TEXT, kind TEXT) AS $$
+BEGIN
+    IF p_user_id IS NULL OR p_id IS NULL OR p_new_content IS NULL OR length(trim(p_new_content)) = 0 THEN
+        RAISE EXCEPTION 'update_memory_chunk: user_id, id y new_content son requeridos';
+    END IF;
+
+    UPDATE memory_chunks mc
+    SET content = trim(p_new_content),
+        embedding = p_new_embedding,
+        kind = COALESCE(NULLIF(p_new_kind, ''), mc.kind),
+        metadata = CASE WHEN p_new_metadata IS NOT NULL THEN mc.metadata || p_new_metadata ELSE mc.metadata END
+    WHERE mc.id = p_id
+      AND mc.user_id = p_user_id
+      AND mc.kind <> '__forgotten__';
+
+    IF FOUND THEN
+        RETURN QUERY
+        SELECT mc.id, TRUE, mc.content, mc.kind
+        FROM memory_chunks mc WHERE mc.id = p_id;
+    ELSE
+        RETURN QUERY SELECT p_id, FALSE, NULL::TEXT, NULL::TEXT;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- list_memory_chunks ----------
+-- Listado simple por user, con filtros opcionales — útil para "qué recordás de mí".
+CREATE OR REPLACE FUNCTION list_memory_chunks(
+    p_user_id UUID,
+    p_kind    TEXT DEFAULT NULL,
+    p_limit   INT DEFAULT 20
+)
+RETURNS TABLE(
+    id          UUID,
+    kind        TEXT,
+    content     TEXT,
+    metadata    JSONB,
+    created_at  TIMESTAMPTZ,
+    recall_count INT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT mc.id, mc.kind, mc.content, mc.metadata, mc.created_at, mc.recall_count
+    FROM memory_chunks mc
+    WHERE mc.user_id = p_user_id
+      AND mc.kind <> '__forgotten__'
+      AND (p_kind IS NULL OR mc.kind = p_kind)
+    ORDER BY mc.recall_count DESC, mc.created_at DESC
+    LIMIT GREATEST(COALESCE(p_limit, 20), 1);
+END;
+$$ LANGUAGE plpgsql STABLE;

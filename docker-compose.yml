@@ -12,10 +12,14 @@ volumes:
 
 services:
   # -------------------------------------------------------------------
-  # PostgreSQL 18.3 — internal only
+  # PostgreSQL 18 alpine + pgvector 0.8.2 (custom build — Dockerfile.postgres)
+  # No hay tag alpine oficial de pgvector/pgvector, así que compilamos in-place.
   # -------------------------------------------------------------------
   n8n_postgres:
-    image: postgres:18.3-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: pgvector/pgvector:0.8.2-pg18-trixie
     container_name: n8n_postgres
     restart: unless-stopped
     ports:
@@ -42,7 +46,8 @@ services:
   # Creates missing databases and applies schema.sql when expenses is empty
   # -------------------------------------------------------------------
   db-init:
-    image: postgres:18.3-alpine
+    image: pgvector/pgvector:0.8.2-pg18-trixie
+
     container_name: db-init
     restart: "no"
     environment:

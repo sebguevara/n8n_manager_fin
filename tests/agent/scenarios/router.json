@@ -1,0 +1,174 @@
+[
+  {
+    "name": "tx: gasto simple",
+    "message": "compré 2500 de café",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: gasto con método",
+    "message": "pagué 30k de nafta con débito",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: ingreso",
+    "message": "cobré 800 mil de sueldo",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: pregunta cuanto gasté",
+    "message": "cuánto gasté este mes",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: borrar último",
+    "message": "borrá el último gasto",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: editar monto",
+    "message": "el último gasto fue de 5000 no de 2000",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: buscar por descripción",
+    "message": "buscame todos los café de abril",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: cambiar categoría",
+    "message": "no le pongas salidas, es comida",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: duplicados",
+    "message": "tengo gastos repetidos?",
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "tx: lista últimos N",
+    "message": "mostrame los últimos 5 movimientos",
+    "expected": { "intent": "transaction" }
+  },
+
+  {
+    "name": "config: crear categoría",
+    "message": "creá una categoría llamada salidas",
+    "expected": { "intent": "config" }
+  },
+  {
+    "name": "config: borrar categoría",
+    "message": "borrá la categoría salidas",
+    "expected": { "intent": "config" }
+  },
+  {
+    "name": "config: crear viaje",
+    "message": "armá un viaje a Brasil",
+    "expected": { "intent": "config" }
+  },
+  {
+    "name": "config: presupuesto",
+    "message": "ponéle un presupuesto de 50k a comida",
+    "expected": { "intent": "config" }
+  },
+  {
+    "name": "config: pausar Netflix",
+    "message": "pausá Netflix",
+    "expected": { "intent": "config" }
+  },
+  {
+    "name": "config: tag",
+    "message": "etiquetá los últimos 3 cafés como trabajo",
+    "expected": { "intent": "config" }
+  },
+  {
+    "name": "config: settings hora",
+    "message": "el resumen mandámelo a las 8 de la noche",
+    "expected": { "intent": "config" }
+  },
+
+  {
+    "name": "insights: gráfico",
+    "message": "haceme un gráfico de mis gastos",
+    "expected": { "intent": "insights" }
+  },
+  {
+    "name": "insights: comparativa",
+    "message": "comparame con el mes pasado",
+    "expected": { "intent": "insights" }
+  },
+  {
+    "name": "insights: en cuánto junto",
+    "message": "en cuánto tiempo junto 500 mil",
+    "expected": { "intent": "insights" }
+  },
+  {
+    "name": "insights: puedo gastar",
+    "message": "puedo gastar 30 mil en una salida?",
+    "expected": { "intent": "insights" }
+  },
+  {
+    "name": "insights: forecast",
+    "message": "proyectame cuánto voy a gastar este mes",
+    "expected": { "intent": "insights" }
+  },
+  {
+    "name": "insights: en qué gasté más",
+    "message": "en qué gasté más este mes",
+    "expected": { "intent": "insights" }
+  },
+
+  {
+    "name": "chitchat: hola",
+    "message": "hola",
+    "expected": { "intent": "chitchat" }
+  },
+  {
+    "name": "chitchat: gracias",
+    "message": "gracias!",
+    "expected": { "intent": "chitchat" }
+  },
+  {
+    "name": "chitchat: qué fecha",
+    "message": "qué fecha es hoy?",
+    "expected": { "intent": "chitchat" }
+  },
+  {
+    "name": "chitchat: ayuda",
+    "message": "qué podés hacer",
+    "expected": { "intent": "chitchat" }
+  },
+  {
+    "name": "chitchat: como andas",
+    "message": "cómo andás?",
+    "expected": { "intent": "chitchat" }
+  },
+
+  {
+    "name": "convState awaiting_category → tx",
+    "message": "ponelo en familia",
+    "convState": "awaiting_category",
+    "convContext": { "amount": 3300, "description": "Transferencia a Maximiliano", "date": "2026-04-27" },
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "convState awaiting_bulk_delete → tx",
+    "message": "sí, hacelo",
+    "convState": "awaiting_bulk_delete",
+    "convContext": { "ids": ["uuid1","uuid2"] },
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "convState awaiting_dup_confirmation → tx",
+    "message": "dale registralo igual",
+    "convState": "awaiting_dup_confirmation",
+    "convContext": {},
+    "expected": { "intent": "transaction" }
+  },
+  {
+    "name": "convState awaiting_category_merge → config",
+    "message": "fusionalo con comida",
+    "convState": "awaiting_category_merge",
+    "convContext": { "name": "salidas" },
+    "expected": { "intent": "config" }
+  }
+]

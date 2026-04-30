@@ -1,0 +1,188 @@
+[
+  {
+    "name": "tx: gasto simple → log_transaction",
+    "agent": "transaction",
+    "message": "compré 2500 de café",
+    "expected": { "first_tool": "log_transaction" }
+  },
+  {
+    "name": "tx: gasto con método y fecha → log_transaction",
+    "agent": "transaction",
+    "message": "pagué 30k de nafta con débito ayer",
+    "expected": { "first_tool": "log_transaction" }
+  },
+  {
+    "name": "tx: cuanto gasté → get_total o query/find",
+    "agent": "transaction",
+    "message": "cuánto gasté este mes",
+    "expected": { "tools_include": ["get_total", "query_transactions", "find_transactions"] }
+  },
+  {
+    "name": "tx: mostrame últimos N → query_transactions",
+    "agent": "transaction",
+    "message": "mostrame los últimos 5 movimientos",
+    "expected": { "first_tool": "query_transactions" }
+  },
+  {
+    "name": "tx: buscar por descripción → find_transactions",
+    "agent": "transaction",
+    "message": "buscame todos los café de abril",
+    "expected": { "first_tool": "find_transactions" }
+  },
+  {
+    "name": "tx: duplicados → find_duplicates",
+    "agent": "transaction",
+    "message": "tengo gastos repetidos?",
+    "expected": { "first_tool": "find_duplicates" }
+  },
+  {
+    "name": "tx: borrar último → query/find primero (necesita ID)",
+    "agent": "transaction",
+    "message": "borrá el último gasto",
+    "expected": { "tools_include": ["query_transactions", "find_transactions"] }
+  },
+  {
+    "name": "tx: cambiar categoría con find primero",
+    "agent": "transaction",
+    "message": "el último gasto era comida no salidas",
+    "expected": { "tools_include": ["query_transactions", "find_transactions"] }
+  },
+  {
+    "name": "tx: log con awaiting_category → log_transaction directo",
+    "agent": "transaction",
+    "message": "ponelo en familia",
+    "convState": "awaiting_category",
+    "convContext": { "amount": 3300, "description": "Transferencia a Maximiliano", "date": "2026-04-27", "type": "expense", "payment_method_hint": "transferencia" },
+    "expected": { "first_tool": "log_transaction" }
+  },
+  {
+    "name": "tx: confirmacion bulk_delete → bulk_delete",
+    "agent": "transaction",
+    "message": "sí dale",
+    "convState": "awaiting_bulk_delete",
+    "convContext": { "ids": ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"] },
+    "expected": { "first_tool": "bulk_delete" }
+  },
+
+  {
+    "name": "config: crear categoría → create_category",
+    "agent": "config",
+    "message": "creá una categoría llamada salidas",
+    "expected": { "first_tool": "create_category" }
+  },
+  {
+    "name": "config: borrar categoría sin tx → delete_category",
+    "agent": "config",
+    "message": "borrá la categoría salidas",
+    "expected": { "tools_include": ["delete_category", "list_categories"] }
+  },
+  {
+    "name": "config: renombrar grupo → rename_group",
+    "agent": "config",
+    "message": "renombrá el viaje a Brasil a vacaciones playa",
+    "expected": { "first_tool": "rename_group" }
+  },
+  {
+    "name": "config: presupuesto → set_budget",
+    "agent": "config",
+    "message": "ponéle un presupuesto de 50k a comida",
+    "expected": { "first_tool": "set_budget" }
+  },
+  {
+    "name": "config: pausar Netflix → list_recurring primero",
+    "agent": "config",
+    "message": "pausá Netflix",
+    "expected": { "tools_include": ["list_recurring"] }
+  },
+  {
+    "name": "config: cancelar Netflix → list_recurring primero",
+    "agent": "config",
+    "message": "dá de baja Netflix",
+    "expected": { "tools_include": ["list_recurring"] }
+  },
+  {
+    "name": "config: tagear últimos cafés → find_transactions primero",
+    "agent": "config",
+    "message": "etiquetá los últimos 3 cafés como trabajo",
+    "expected": { "tools_include": ["find_transactions"] }
+  },
+  {
+    "name": "config: settings hora resumen → update_settings",
+    "agent": "config",
+    "message": "el resumen mandámelo a las 8 de la noche",
+    "expected": { "first_tool": "update_settings" }
+  },
+  {
+    "name": "config: lista de tags → list_tags",
+    "agent": "config",
+    "message": "qué tags tengo",
+    "expected": { "first_tool": "list_tags" }
+  },
+  {
+    "name": "config: cerrar viaje → close_group",
+    "agent": "config",
+    "message": "cerrá el viaje a Brasil que ya terminó",
+    "expected": { "first_tool": "close_group" }
+  },
+  {
+    "name": "config: ver settings → get_settings",
+    "agent": "config",
+    "message": "qué configuración tengo",
+    "expected": { "first_tool": "get_settings" }
+  },
+
+  {
+    "name": "insights: total → get_total",
+    "agent": "insights",
+    "message": "cuánto gasté este mes",
+    "expected": { "first_tool": "get_total" }
+  },
+  {
+    "name": "insights: en qué gasté más → get_breakdown",
+    "agent": "insights",
+    "message": "en qué gasté más este mes",
+    "expected": { "first_tool": "get_breakdown" }
+  },
+  {
+    "name": "insights: comparativa → compare_periods",
+    "agent": "insights",
+    "message": "comparame con el mes pasado",
+    "expected": { "first_tool": "compare_periods" }
+  },
+  {
+    "name": "insights: gráfico → get_total primero (regla del prompt)",
+    "agent": "insights",
+    "message": "haceme un gráfico de mis gastos de este mes",
+    "expected": { "tools_include": ["get_total"] }
+  },
+  {
+    "name": "insights: en cuanto junto X → financial_advice",
+    "agent": "insights",
+    "message": "en cuánto tiempo junto 500 mil",
+    "expected": { "first_tool": "financial_advice" }
+  },
+  {
+    "name": "insights: puedo gastar X → financial_advice",
+    "agent": "insights",
+    "message": "puedo gastar 30 mil en una salida?",
+    "expected": { "first_tool": "financial_advice" }
+  },
+  {
+    "name": "insights: forecast → financial_advice",
+    "agent": "insights",
+    "message": "proyectame cuánto voy a gastar este mes",
+    "expected": { "first_tool": "financial_advice" }
+  },
+  {
+    "name": "insights: cuanto ahorro → financial_advice",
+    "agent": "insights",
+    "message": "cuánto ahorro al mes en promedio",
+    "expected": { "first_tool": "financial_advice" }
+  },
+  {
+    "name": "insights: con override → financial_advice",
+    "agent": "insights",
+    "message": "si pongo 100k extra al mes, en cuánto tiempo junto 1 millón",
+    "expected": { "first_tool": "financial_advice" }
+  }
+]
