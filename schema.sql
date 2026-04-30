@@ -1552,6 +1552,12 @@ $$ LANGUAGE plpgsql;
 -- ---------- A8. bulk_update_by_ids ----------
 -- Mismo patron que update_tx: si viene UUID lo usa, si viene hint lo resuelve.
 DROP FUNCTION IF EXISTS bulk_update_by_ids(UUID, UUID[], UUID, DATE, UUID, NUMERIC, BOOLEAN);
+-- DROP all overloads first — CREATE OR REPLACE solo reemplaza si el signature
+-- match exacto. Como agregamos params nuevos, sin DROP queda una vieja firma
+-- coexistiendo y los call sites con NULL explotan con "is not unique".
+DROP FUNCTION IF EXISTS bulk_update_by_ids(UUID, UUID[], UUID, DATE, UUID, NUMERIC, BOOLEAN);
+DROP FUNCTION IF EXISTS bulk_update_by_ids(UUID, UUID[], UUID, DATE, UUID, NUMERIC, BOOLEAN, TEXT, BOOLEAN);
+DROP FUNCTION IF EXISTS bulk_update_by_ids(UUID, UUID[], UUID, DATE, UUID, NUMERIC, BOOLEAN, TEXT, BOOLEAN, NUMERIC, TEXT);
 CREATE OR REPLACE FUNCTION bulk_update_by_ids(
     p_user_id UUID,
     p_ids UUID[],
@@ -1561,7 +1567,9 @@ CREATE OR REPLACE FUNCTION bulk_update_by_ids(
     p_amount_delta NUMERIC DEFAULT NULL,
     p_set_excluded BOOLEAN DEFAULT NULL,
     p_new_category_hint TEXT DEFAULT NULL,
-    p_create_category_if_missing BOOLEAN DEFAULT FALSE
+    p_create_category_if_missing BOOLEAN DEFAULT FALSE,
+    p_new_amount NUMERIC DEFAULT NULL,        -- SET absoluto (gana sobre amount_delta)
+    p_new_description TEXT DEFAULT NULL       -- SET descripción para todos
 )
 RETURNS TABLE(updated_count BIGINT, updated_ids UUID[]) AS $$
 DECLARE
@@ -1592,7 +1600,12 @@ BEGIN
         SET category_id = COALESCE(v_resolved_cat_id, t.category_id),
             transaction_date = COALESCE(p_new_date, t.transaction_date),
             group_id = COALESCE(p_new_group_id, t.group_id),
-            amount = CASE WHEN p_amount_delta IS NOT NULL THEN t.amount + p_amount_delta ELSE t.amount END,
+            amount = CASE
+                WHEN p_new_amount   IS NOT NULL THEN p_new_amount
+                WHEN p_amount_delta IS NOT NULL THEN t.amount + p_amount_delta
+                ELSE t.amount
+            END,
+            description = COALESCE(NULLIF(p_new_description, ''), t.description),
             excluded_from_reports = COALESCE(p_set_excluded, t.excluded_from_reports),
             updated_at = NOW()
         WHERE t.user_id = p_user_id AND t.id = ANY(p_ids)

@@ -128,8 +128,16 @@
               "type": "string"
             },
             {
+              "name": "new_amount",
+              "type": "number"
+            },
+            {
               "name": "amount_delta",
               "type": "number"
+            },
+            {
+              "name": "new_description",
+              "type": "string"
             },
             {
               "name": "set_excluded",
@@ -161,14 +169,6 @@
             },
             {
               "name": "transaction_id",
-              "type": "string"
-            },
-            {
-              "name": "new_amount",
-              "type": "number"
-            },
-            {
-              "name": "new_description",
               "type": "string"
             },
             {
@@ -1964,7 +1964,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM bulk_update_by_ids(\n        $1::uuid,\n        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'ids'))::uuid[],\n        NULLIF($2::jsonb->>'new_category_id','')::uuid,\n        NULLIF($2::jsonb->>'new_date','')::date,\n        NULLIF($2::jsonb->>'new_group_id','')::uuid,\n        NULLIF($2::jsonb->>'amount_delta','')::numeric,\n        NULLIF($2::jsonb->>'set_excluded','')::boolean,\n        NULLIF($2::jsonb->>'new_category_hint',''),\n        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)\n    );",
+        "query": "SELECT * FROM bulk_update_by_ids(\n        $1::uuid,\n        ARRAY(SELECT jsonb_array_elements_text($2::jsonb->'ids'))::uuid[],\n        NULLIF($2::jsonb->>'new_category_id','')::uuid,\n        NULLIF($2::jsonb->>'new_date','')::date,\n        NULLIF($2::jsonb->>'new_group_id','')::uuid,\n        NULLIF($2::jsonb->>'amount_delta','')::numeric,\n        NULLIF($2::jsonb->>'set_excluded','')::boolean,\n        NULLIF($2::jsonb->>'new_category_hint',''),\n        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false),\n        NULLIF($2::jsonb->>'new_amount','')::numeric,\n        NULLIF($2::jsonb->>'new_description','')\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }

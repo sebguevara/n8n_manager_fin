@@ -38,10 +38,18 @@ err()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; }
 bold "[1/6] Building workflow JSONs"
 node build-tools-subworkflow.js > workflows/chefin-tools-v3.json
 ok "chefin-tools-v3.json"
+node build-error-workflow.js    > workflows/chefin-error-v3.json
+ok "chefin-error-v3.json"
 node build-agent-workflow.js    > workflows/chefin-agent-v3.json
 ok "chefin-agent-v3.json"
 node build-cron-workflow.js     > workflows/chefin-cron-v3.json
 ok "chefin-cron-v3.json"
+
+# Aseguramos que la carpeta de logs exista en el host (bind-mounted en n8n a
+# /data/logs). Sin esto, docker la crearía como root y el contenedor no podría
+# escribir.
+mkdir -p logs
+ok "logs/ ready"
 
 if [ "$BUILD_ONLY" -eq 1 ]; then
     bold "Build complete. Exiting (--build-only)."
@@ -93,6 +101,14 @@ if [ "$SKIP_TESTS" -eq 0 ]; then
     node tests/sql/test-tool-integration.mjs > /tmp/chefin-deploy-tools.log 2>&1
     grep -E "pass · 0 fail" /tmp/chefin-deploy-tools.log || (cat /tmp/chefin-deploy-tools.log; err "Tool integration failed"; exit 1)
     ok "Tool integration (51 tests)"
+
+    node tests/sql/test-edits.mjs > /tmp/chefin-deploy-edits.log 2>&1
+    grep -E "pass · 0 fail" /tmp/chefin-deploy-edits.log || (cat /tmp/chefin-deploy-edits.log; err "Edit operations failed"; exit 1)
+    ok "Edit operations (29 tests)"
+
+    node tests/agent/test-error-handler.mjs > /tmp/chefin-deploy-errors.log 2>&1
+    grep -E "pass · 0 fail" /tmp/chefin-deploy-errors.log || (cat /tmp/chefin-deploy-errors.log; err "Error handler tests failed"; exit 1)
+    ok "Error handler (20 tests)"
 else
     bold "[4/6] Skipping tests (--skip-tests)"
 fi
@@ -117,32 +133,47 @@ for i in $(seq 1 60); do
     sleep 1
 done
 
-# Import tools sub-workflow first — we need its ID
+# Importamos primero los dos "satélites" (tools sub-workflow + error handler)
+# porque el agente y el cron los referencian por id.
 docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < workflows/chefin-tools-v3.json
 ok "imported chefin-tools-v3"
 
-docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < workflows/chefin-cron-v3.json
-ok "imported chefin-cron-v3"
+docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < workflows/chefin-error-v3.json
+ok "imported chefin-error-v3"
 
-# Look up the tools workflow id from n8n's own postgres
-TOOLS_ID=$(docker compose exec -T n8n_postgres sh -c "PGPASSWORD=\$POSTGRES_PASSWORD psql -t -A -U \$POSTGRES_USER -d n8n -c \"SELECT id FROM workflow_entity WHERE name = 'Chefin Agent Tools v3' ORDER BY \\\"updatedAt\\\" DESC LIMIT 1\"" | tr -d '\r\n')
+# Look up workflow ids from n8n's own postgres
+lookup_wf_id() {
+    local name="$1"
+    docker compose exec -T n8n_postgres sh -c "PGPASSWORD=\$POSTGRES_PASSWORD psql -t -A -U \$POSTGRES_USER -d n8n -c \"SELECT id FROM workflow_entity WHERE name = '$name' ORDER BY \\\"updatedAt\\\" DESC LIMIT 1\"" | tr -d '\r\n'
+}
+
+TOOLS_ID=$(lookup_wf_id 'Chefin Agent Tools v3')
+ERROR_ID=$(lookup_wf_id 'Chefin Error Handler v3')
 
 if [ -z "$TOOLS_ID" ]; then
-    err "Could not find imported sub-workflow id. Check n8n manually."
+    err "Could not find imported tools sub-workflow id. Check n8n manually."
+    exit 1
+fi
+if [ -z "$ERROR_ID" ]; then
+    err "Could not find imported error handler workflow id. Check n8n manually."
     exit 1
 fi
 ok "tools sub-workflow id: $TOOLS_ID"
+ok "error handler id:      $ERROR_ID"
 
-# Splice the id into the agent JSON, then import
-node apply-tools-id.js "$TOOLS_ID"
+# Splice ids into agent + cron JSONs, then import them
+node apply-tools-id.js --tools "$TOOLS_ID" --error "$ERROR_ID"
 docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < workflows/chefin-agent-v3.json
-ok "imported chefin-agent-v3 with id linked"
+ok "imported chefin-agent-v3 with ids linked"
+
+docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < workflows/chefin-cron-v3.json
+ok "imported chefin-cron-v3 with error id linked"
 
 # ---------------------------------------------------------------------------
 # 6. Activate the 3 workflows
 # ---------------------------------------------------------------------------
 bold "[6/6] Activating workflows"
-for name in "Chefin Agent Tools v3" "Chefin Cron v3 (consolidated)" "Chefin Agent v3"; do
+for name in "Chefin Agent Tools v3" "Chefin Error Handler v3" "Chefin Cron v3 (consolidated)" "Chefin Agent v3"; do
     if docker compose exec -T n8n n8n update:workflow --all=false --active=true --name "$name" >/dev/null 2>&1; then
         ok "activated: $name"
     else

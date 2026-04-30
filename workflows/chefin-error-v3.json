@@ -1,0 +1,179 @@
+{
+  "id": "chefin_error_v3",
+  "name": "Chefin Error Handler v3",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json || {};\nconst exec = item.execution || {};\nconst wf = item.workflow || {};\nconst errObj = exec.error || {};\n\n// Intentamos sacar el body original del webhook desde varias rutas posibles.\n// Distintas versiones de n8n exponen runData de forma distinta en el error\n// trigger. Si ninguna funciona, fallback a vacío y no respondemos.\nfunction findWebhookBody(root) {\n  const candidates = [\n    root?.executionData?.resultData?.runData,\n    root?.execution?.executionData?.resultData?.runData,\n    root?.runData,\n  ];\n  for (const rd of candidates) {\n    if (!rd) continue;\n    const webhookKey = Object.keys(rd).find(k => /webhook/i.test(k));\n    if (!webhookKey) continue;\n    const body = rd[webhookKey]?.[0]?.data?.main?.[0]?.[0]?.json?.body;\n    if (body) return body;\n  }\n  return null;\n}\n\nconst body = findWebhookBody(item);\nconst remoteJid = body?.data?.key?.remoteJid || '';\nconst phone = remoteJid ? remoteJid.split('@')[0] : '';\nconst instance = body?.instance || '';\nconst messageId = body?.data?.key?.id || '';\nconst userText =\n  body?.data?.message?.conversation ||\n  body?.data?.message?.extendedTextMessage?.text ||\n  body?.data?.message?.imageMessage?.caption ||\n  '';\n\nconst canReply = Boolean(phone && instance);\n\n// Mensaje amable (rioplatense) — no exponemos detalle técnico al usuario.\n// Variamos un poco según el tipo de error: timeout/red vs. cualquier otra cosa.\nconst errMsg = String(errObj.message || '');\nlet userReply = '😅 Uh, en este momento no pude resolver tu pedido. Estoy mirando qué pasó. Probá de nuevo en un ratito y, si sigue, escribime de otra forma.';\nif (/timeout|ETIMEDOUT|ECONN|fetch failed|network/i.test(errMsg)) {\n  userReply = '😅 Tuve un problema de conexión y no pude completar lo que pediste. Probá de nuevo en un minuto.';\n} else if (/postgres|database|relation|column/i.test(errMsg)) {\n  userReply = '😅 No pude guardar/leer tu info en este momento. Estoy revisando. Probá de nuevo enseguida.';\n}\n\n// Payload del log — JSON Line, una entrada por error. Mantenemos el stack\n// completo para poder debuggear; el resto va resumido.\nconst logEntry = {\n  timestamp: new Date().toISOString(),\n  workflow: { id: wf.id || '', name: wf.name || '' },\n  execution: {\n    id: exec.id || '',\n    url: exec.url || '',\n    mode: exec.mode || '',\n    lastNodeExecuted: exec.lastNodeExecuted || ''\n  },\n  error: {\n    name: errObj.name || '',\n    message: errMsg,\n    description: errObj.description || '',\n    stack: String(errObj.stack || '').split('\\n').slice(0, 30).join('\\n')\n  },\n  user: { phone, instance, messageId, remoteJid, userText: userText.slice(0, 300) },\n  replied: canReply\n};\n\nreturn [{ json: { canReply, phone, instance, messageId, remoteJid, userReply, logEntry } }];"
+      },
+      "id": "e002",
+      "name": "Extract Error Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst item = $input.first().json;\nconst entry = item.logEntry || {};\n\nconst LOG_DIR = '/data/logs';\nconst day = (entry.timestamp || new Date().toISOString()).slice(0, 10);\nconst file = path.join(LOG_DIR, 'errors-' + day + '.jsonl');\n\ntry {\n  fs.mkdirSync(LOG_DIR, { recursive: true });\n  fs.appendFileSync(file, JSON.stringify(entry) + '\\n', 'utf8');\n} catch (e) {\n  // No reventamos el flujo: el reply al usuario es prioritario al log.\n  console.error('[chefin-error] failed to write log:', e.message);\n}\n\nreturn [{ json: { ...item, logFile: file } }];"
+      },
+      "id": "e003",
+      "name": "Write Error Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json.canReply }}",
+              "rightValue": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e004",
+      "name": "IF Can Reply",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "={{ $json.instance }}",
+        "remoteJid": "={{ $json.phone }}",
+        "messageText": "={{ $json.userReply }}",
+        "options_message": {}
+      },
+      "id": "e005",
+      "name": "Send Error Reply",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -100
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "FgeqqvxAqTER4oeD",
+          "name": "Evolution account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "id": "e006",
+      "name": "Skip Reply",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Error Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Error Context": {
+      "main": [
+        [
+          {
+            "node": "Write Error Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Error Log": {
+      "main": [
+        [
+          {
+            "node": "IF Can Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Can Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Error Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

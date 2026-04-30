@@ -1,0 +1,228 @@
+// Builds the Chefin Error Handler workflow.
+// Run with: node build-error-workflow.js > workflows/chefin-error-v3.json
+//
+// Se dispara automáticamente cuando CUALQUIER nodo del workflow principal
+// (Chefin Agent v3) o del cron (Chefin Cron v3) revienta. Cumple dos funciones:
+//
+//   1) Le manda al usuario un mensaje amable por WhatsApp diciendo que en este
+//      momento no pudimos atender su pedido, así no se queda en silencio. Si no
+//      pudimos extraer el teléfono del payload original (porque el error fue
+//      antes de tener `remoteJid`), se omite el envío.
+//
+//   2) Escribe la entrada de log a `/data/logs/errors-YYYY-MM-DD.jsonl` (un
+//      archivo por día). El path está bind-mounted al host en `./logs/` así
+//      podemos leer/rotar los logs sin entrar al contenedor.
+//
+// El workflow se enlaza al agente vía `settings.errorWorkflow = "<id>"`. El
+// deploy.sh importa este JSON primero, busca su id en n8n_postgres y lo
+// inyecta antes de importar el agente.
+
+const EVO = { id: 'FgeqqvxAqTER4oeD', name: 'Evolution account' };
+
+let idCounter = 1;
+const newId = () => `e${(idCounter++).toString().padStart(3, '0')}`;
+const nodes = [];
+const connections = {};
+
+const addNode = (name, type, params, x, y, extras = {}) => {
+    nodes.push({
+        parameters: params, id: newId(), name, type,
+        typeVersion: extras.tv || 2, position: [x, y],
+        ...(extras.creds && { credentials: extras.creds }),
+        ...(extras.cof && { continueOnFail: true }),
+        ...(extras.always && { alwaysOutputData: true })
+    });
+    return name;
+};
+const connect = (from, to, fromIdx = 0, toIdx = 0) => {
+    if (!connections[from]) connections[from] = { main: [] };
+    while (connections[from].main.length <= fromIdx) connections[from].main.push([]);
+    connections[from].main[fromIdx].push({ node: to, type: 'main', index: toIdx });
+};
+
+// =========================================================================
+// 1. ERROR TRIGGER — entrada del workflow
+// =========================================================================
+addNode('Error Trigger', 'n8n-nodes-base.errorTrigger', {}, 0, 0, { tv: 1 });
+
+// =========================================================================
+// 2. EXTRACT ERROR CONTEXT — saca teléfono/instancia + arma payload de log
+// =========================================================================
+// El errorTrigger nos pasa un objeto con esta forma:
+//   {
+//     execution: {
+//       id, url, retryOf, error: { message, stack, name, ... },
+//       lastNodeExecuted, mode
+//     },
+//     workflow: { id, name },
+//     // (en algunos contextos también: executionData con runData crudo)
+//   }
+//
+// Para reconstruir el destinatario buscamos el body del Webhook original.
+// n8n no siempre incluye `runData` en el payload del Error Trigger (depende
+// de la versión). Por eso intentamos varias rutas y, si no encontramos
+// teléfono, marcamos `canReply=false` y dejamos que el flujo solo logee.
+addNode('Extract Error Context', 'n8n-nodes-base.code', {
+    jsCode: `const item = $input.first().json || {};
+const exec = item.execution || {};
+const wf = item.workflow || {};
+const errObj = exec.error || {};
+
+// Intentamos sacar el body original del webhook desde varias rutas posibles.
+// Distintas versiones de n8n exponen runData de forma distinta en el error
+// trigger. Si ninguna funciona, fallback a vacío y no respondemos.
+function findWebhookBody(root) {
+  const candidates = [
+    root?.executionData?.resultData?.runData,
+    root?.execution?.executionData?.resultData?.runData,
+    root?.runData,
+  ];
+  for (const rd of candidates) {
+    if (!rd) continue;
+    const webhookKey = Object.keys(rd).find(k => /webhook/i.test(k));
+    if (!webhookKey) continue;
+    const body = rd[webhookKey]?.[0]?.data?.main?.[0]?.[0]?.json?.body;
+    if (body) return body;
+  }
+  return null;
+}
+
+const body = findWebhookBody(item);
+const remoteJid = body?.data?.key?.remoteJid || '';
+const phone = remoteJid ? remoteJid.split('@')[0] : '';
+const instance = body?.instance || '';
+const messageId = body?.data?.key?.id || '';
+const userText =
+  body?.data?.message?.conversation ||
+  body?.data?.message?.extendedTextMessage?.text ||
+  body?.data?.message?.imageMessage?.caption ||
+  '';
+
+const canReply = Boolean(phone && instance);
+
+// Mensaje amable (rioplatense) — no exponemos detalle técnico al usuario.
+// Variamos un poco según el tipo de error: timeout/red vs. cualquier otra cosa.
+const errMsg = String(errObj.message || '');
+let userReply = '😅 Uh, en este momento no pude resolver tu pedido. Estoy mirando qué pasó. Probá de nuevo en un ratito y, si sigue, escribime de otra forma.';
+if (/timeout|ETIMEDOUT|ECONN|fetch failed|network/i.test(errMsg)) {
+  userReply = '😅 Tuve un problema de conexión y no pude completar lo que pediste. Probá de nuevo en un minuto.';
+} else if (/postgres|database|relation|column/i.test(errMsg)) {
+  userReply = '😅 No pude guardar/leer tu info en este momento. Estoy revisando. Probá de nuevo enseguida.';
+}
+
+// Payload del log — JSON Line, una entrada por error. Mantenemos el stack
+// completo para poder debuggear; el resto va resumido.
+const logEntry = {
+  timestamp: new Date().toISOString(),
+  workflow: { id: wf.id || '', name: wf.name || '' },
+  execution: {
+    id: exec.id || '',
+    url: exec.url || '',
+    mode: exec.mode || '',
+    lastNodeExecuted: exec.lastNodeExecuted || ''
+  },
+  error: {
+    name: errObj.name || '',
+    message: errMsg,
+    description: errObj.description || '',
+    stack: String(errObj.stack || '').split('\\n').slice(0, 30).join('\\n')
+  },
+  user: { phone, instance, messageId, remoteJid, userText: userText.slice(0, 300) },
+  replied: canReply
+};
+
+return [{ json: { canReply, phone, instance, messageId, remoteJid, userReply, logEntry } }];`
+}, 220, 0);
+connect('Error Trigger', 'Extract Error Context');
+
+// =========================================================================
+// 3. WRITE LOG FILE — siempre se ejecuta (aunque no podamos responder)
+// =========================================================================
+// Path: /data/logs/errors-YYYY-MM-DD.jsonl
+// Esta carpeta está bind-mounted en docker-compose.yml a ./logs en el host,
+// así que los logs persisten y son inspeccionables sin entrar al contenedor.
+//
+// Usamos `fs.promises.appendFile` con `mkdir -p` defensivo. Si la escritura
+// falla por permisos / volumen no montado, NO queremos romper el handler:
+// dejamos un console.error y seguimos, así el usuario igual recibe el reply.
+addNode('Write Error Log', 'n8n-nodes-base.code', {
+    jsCode: `const fs = require('fs');
+const path = require('path');
+const item = $input.first().json;
+const entry = item.logEntry || {};
+
+const LOG_DIR = '/data/logs';
+const day = (entry.timestamp || new Date().toISOString()).slice(0, 10);
+const file = path.join(LOG_DIR, 'errors-' + day + '.jsonl');
+
+try {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  fs.appendFileSync(file, JSON.stringify(entry) + '\\n', 'utf8');
+} catch (e) {
+  // No reventamos el flujo: el reply al usuario es prioritario al log.
+  console.error('[chefin-error] failed to write log:', e.message);
+}
+
+return [{ json: { ...item, logFile: file } }];`
+}, 440, 0, { cof: true, always: true });
+connect('Extract Error Context', 'Write Error Log');
+
+// =========================================================================
+// 4. IF CAN REPLY — solo intentamos enviar si tenemos phone+instance
+// =========================================================================
+addNode('IF Can Reply', 'n8n-nodes-base.if', {
+    conditions: {
+        options: { caseSensitive: true, typeValidation: 'strict', version: 1 },
+        combinator: 'and',
+        conditions: [{
+            id: 'c1',
+            operator: { type: 'boolean', operation: 'true' },
+            leftValue: '={{ $json.canReply }}',
+            rightValue: true
+        }]
+    },
+    options: {}
+}, 660, 0);
+connect('Write Error Log', 'IF Can Reply');
+
+// =========================================================================
+// 5. SEND ERROR REPLY — Evolution API send-text
+// =========================================================================
+// `cof: true` para que un fallo de Evolution (API caída, instancia muerta) no
+// haga fallar el workflow de error en cascada. Si esto explota, el log ya
+// quedó escrito en el paso anterior.
+addNode('Send Error Reply', 'n8n-nodes-evolution-api.evolutionApi', {
+    resource: 'messages-api',
+    instanceName: '={{ $json.instance }}',
+    remoteJid: '={{ $json.phone }}',
+    messageText: '={{ $json.userReply }}',
+    options_message: {}
+}, 880, -100, { tv: 1, creds: { evolutionApi: EVO }, cof: true });
+connect('IF Can Reply', 'Send Error Reply', 0);
+
+// Rama "no podemos responder" → no hacemos nada extra (el log ya quedó).
+addNode('Skip Reply', 'n8n-nodes-base.noOp', {}, 880, 100, { tv: 1 });
+connect('IF Can Reply', 'Skip Reply', 1);
+
+// =========================================================================
+// EMIT JSON
+// =========================================================================
+const wf = {
+    id: 'chefin_error_v3',
+    name: 'Chefin Error Handler v3',
+    nodes,
+    connections,
+    pinData: {},
+    active: true, // se activa solo, no necesita trigger manual
+    settings: {
+        executionOrder: 'v1',
+        timezone: 'America/Argentina/Buenos_Aires',
+        saveExecutionProgress: true,
+        saveManualExecutions: true,
+        saveDataErrorExecution: 'all',
+        saveDataSuccessExecution: 'all'
+    },
+    meta: { templateCredsSetupCompleted: true },
+    tags: []
+};
+process.stdout.write(JSON.stringify(wf, null, 2));

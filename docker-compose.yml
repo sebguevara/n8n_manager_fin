@@ -131,6 +131,10 @@ services:
       EXECUTIONS_DATA_MAX_AGE: 720
     volumes:
       - n8n_data:/home/node/.n8n
+      # Bind-mount para los logs de error generados por el workflow
+      # "Chefin Error Handler v3". Se escribe a /data/logs/errors-YYYY-MM-DD.jsonl
+      # dentro del contenedor; queda accesible en ./logs/ del host.
+      - ./logs:/data/logs
     networks:
       - expense-net
     depends_on:

@@ -1133,7 +1133,8 @@
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "timezone": "America/Argentina/Buenos_Aires"
+    "timezone": "America/Argentina/Buenos_Aires",
+    "errorWorkflow": "__ERROR_WF_ID__"
   },
   "meta": {
     "templateCredsSetupCompleted": true

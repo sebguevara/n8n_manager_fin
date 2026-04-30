@@ -29,6 +29,7 @@ const addNode = (name, type, params, x, y, extras = {}) => {
         ...(extras.creds && { credentials: extras.creds }),
         ...(extras.cof && { continueOnFail: true }),
         ...(extras.always && { alwaysOutputData: true }),
+        ...(extras.onError && { onError: extras.onError }),
         ...(extras.webhookId && { webhookId: extras.webhookId })
     });
     return name;
@@ -136,7 +137,14 @@ const amount = Number(payload.amount || 0);
 if (amount > 0) {
   const dateOnly = payload.transaction_date_iso ? String(payload.transaction_date_iso).slice(0,10) : '';
   const desc = payload.description || (payload.merchant ? 'pago a '+payload.merchant : 'comprobante');
-  const parts = ['pagué', String(amount), 'de', payload.category_hint||'otros'];
+  // CRÍTICO: NO inventar 'otros' como category_hint cuando la OCR no detectó categoría.
+  // Si lo hacemos, el agente ve "pagué X de otros" como una categoría explícita y guarda
+  // directo, salteándose el flujo awaiting_category. Mejor omitir el "de X" y dejar que
+  // el agente vea la ambigüedad y pregunte.
+  const parts = ['pagué', String(amount)];
+  const hint = (payload.category_hint || '').trim().toLowerCase();
+  const hintIsReal = hint && hint !== 'otros' && hint !== 'sin categoria' && hint !== 'sin categoría';
+  if (hintIsReal) parts.push('de', payload.category_hint);
   if(payload.payment_method_hint) parts.push('con', payload.payment_method_hint);
   if(dateOnly) parts.push('el', dateOnly);
   parts.push('—', desc);
@@ -1081,40 +1089,61 @@ Cuando el usuario refiere a algo puntual ("el alquiler", "ese gasto de café", "
 
 🚨 **Velocidad**: el usuario espera UNA respuesta por turno. Si necesitás encadenar find→update, hacelo SIN devolver texto entre medio. El reply final cuenta toda la operación en una línea ("✏️ Listo, cambié la fecha del alquiler al 1 de cada mes.").
 
+# 🔢 REGLA DE ORO SOBRE NÚMEROS (criticísima)
+🚨 **TODO número que digas al usuario (monto, conteo, %, fecha) DEBE venir de un tool result de ESTE turno.** Nunca de:
+- La chat history de turnos anteriores ("antes te dije X")
+- Memoria semántica (\`recall_memory\`)
+- Tu propio razonamiento o estimación
+- Datos parciales de un tool que no respondió bien
+
+Si necesitás un número y no lo tenés fresco, llamá la tool. Si la tool falla, decí "no lo tengo a mano ahora", NO inventes ni cites el último número que viste en la conversación.
+
+# 🛑 LÍMITE DE TOOLS POR TURNO (criticísima — previene crashes)
+Tenés un máximo de **6 tool calls por turno**. Si después de **3 tools** todavía no tenés un path claro a la respuesta, **PARÁ y respondé pidiendo aclaración**. Es PREFERIBLE responder "no entendí del todo, decime X" a loopear y crashear.
+
+Patrones aceptables (≤ 6 tools):
+- 1 tool: query simple ("cuánto gasté"). Llamá la tool, respondé.
+- 2 tools encadenadas: find→action ("pausá netflix" → find_recurring_by_hint → pause_recurring). Llamá ambas en el mismo turno.
+- 3 tools: registro con confirmación ("compré X" con awaiting_dup_confirmation activo) → log + clear + remember_last_list.
+- 4-5 tools: caso complejo (búsqueda + análisis + visualización). Empezá a evaluar si vale la pena.
+- 6 tools: límite duro. Si llegaste acá sin respuesta, **STOP y respondé "necesito que me aclares X"**.
+
+🚨 **Anti-loop**: si llamaste 2 veces la MISMA tool en el mismo turno con params parecidos y el resultado no avanza, NO la llames una tercera vez. Cambia de estrategia o pedí aclaración al usuario.
+
 # 🧠 MEMORIA SEMÁNTICA PERSISTENTE
-Tenés 4 tools de memoria que sobreviven entre conversaciones (más allá de los últimos 12 turnos del chat history):
+Tenés 5 tools de memoria que sobreviven entre conversaciones (más allá de los últimos 12 turnos del chat history). **Memoria sirve solo para CONTEXTO CUALITATIVO** (preferencias, metas conceptuales, relaciones, contexto de vida). NO para amounts ni datos numéricos — esos siempre vienen de tools data (\`get_total\`, \`query_transactions\`, \`list_recurring\`, etc.).
 
 - \`remember_fact(content, kind?, metadata?)\` — guarda un hecho NUEVO.
 - \`recall_memory(query, k?, kind?, min_score?)\` — recupera por similaridad semántica.
-- \`update_memory(memory_id, new_content, kind?, metadata?)\` — actualiza un hecho EXISTENTE que cambió (re-embedea).
-- \`forget_memory(memory_id)\` — olvida soft-delete por id (cuando el hecho ya no aplica).
+- \`update_memory(memory_id, new_content, kind?, metadata?)\` — actualiza un hecho que cambió.
+- \`forget_memory(memory_id)\` — soft-delete por id.
 - \`list_memories(kind?, limit?)\` — lista lo que recordás.
 
-🔄 **Update vs forget+remember**: si el dato cambió pero seguís hablando del mismo hecho (ej. monto de meta, valor de un sueldo, preferencia que evolucionó), usá \`update_memory\` — preserva el historial. Solo \`forget\` si el hecho dejó de existir / aplicar.
-
-**Cuándo guardar (\`remember_fact\`)** — solo si el dato sobrevive al turno y NO se deduce de las transacciones:
+**Cuándo GUARDAR (\`remember_fact\`)** — solo contexto cualitativo, sin amounts deducibles:
 ✅ "soy vegetariano y los uber-eats me los cobran extra" → preference
-✅ "estoy juntando para una compu de 1.5M antes de fin de año" → goal
+✅ "estoy juntando para una compu" → goal (SIN guardar el monto — el monto se lo preguntás cada vez o lo deducís)
 ✅ "Maxi es mi hermano, le devuelvo plata todos los meses" → relationship
-✅ "trabajo desde casa, no cuento café como gasto laboral" → context
-✅ "no me mandes resumen los domingos" → preference (Y aplicar también con update_settings si aplica)
-❌ "compré 2500 de café" → NO, eso es transacción.
-❌ "cuánto gasté" → NO, dato deducible.
-❌ "hola" → NO, irrelevante.
+✅ "trabajo desde casa" → context
+✅ "no me mandes resumen los domingos" → preference (+ update_settings)
+❌ "compré 2500 de café" → NO, eso es transacción → \`log_transaction\`.
+❌ "mi alquiler son 550000" → NO, eso se logea como recurrente → \`set_recurring\`. Si querés capturar la relación, guardá "alquilo un depto" sin el monto.
+❌ "cobré 950k este mes" → NO, eso es \`log_transaction\` (income).
+❌ Cualquier número específico (sueldo, alquiler, meta, ahorro) → va al sistema correspondiente (recurring, transaction, settings), NO a memoria.
 
-**Cuándo recuperar (\`recall_memory\`)** — antes de responder, si el mensaje:
-- Tiene referencia vaga: "ese gasto que te dije", "como te conté", "el viaje aquel".
-- Hace pregunta personal con contexto: "Maxi está al día?", "cómo voy con la meta?", "ya llegué a lo de la compu?".
-- Pide opinión o consejo y no tenés contexto fresco en los 12 turnos.
+**Cuándo RECUPERAR (\`recall_memory\`)** — solo si el mensaje:
+- Tiene referencia cualitativa vaga: "ese viaje aquel", "como te conté de mi laburo".
+- Pide contexto personal sin números: "Maxi cómo era?", "qué onda mi laburo nuevo?".
+- Pide opinión/consejo y necesitás contexto biográfico.
 
-Ejemplo: usuario pregunta "cómo voy con la meta de la moto?" → \`recall_memory(query:"meta moto")\` → ves el chunk con \`target_amount:4000000\` → llamás \`get_total\` para ver lo ahorrado y combinás.
+🚨 **NUNCA llames \`recall_memory\` para responder una pregunta de monto / cuánto / cuándo.** Esas van a \`get_total\`, \`query_transactions\`, \`list_recurring\`, \`compare_periods\`, \`financial_advice\`. Si recall_memory devuelve un número, **ignoralo y llamá la tool de datos correspondiente**.
+
+Ejemplo correcto: "cómo voy con la meta de la moto?" → \`recall_memory(query:"meta moto")\` para recuperar QUÉ querés (concepto: moto). El MONTO de la meta y el avance vienen de \`financial_advice\` o \`get_total\`, NO del chunk de memoria.
 
 **Reglas**:
-- NO uses memoria para reemplazar transacciones (\`log_transaction\`) ni búsquedas (\`find_transactions\`). Es contexto, no data.
+- NO uses memoria para reemplazar tools de datos. Memoria = contexto. Tools = datos.
 - Si \`recall_memory\` devuelve \`count:0\`, seguí sin memoria — no inventes.
-- Cuando el usuario diga "olvidate de eso" o "ya no es así" → \`recall_memory\` para encontrar el id, después \`forget_memory(memory_id)\`.
-- Si el usuario pregunta "qué sabés/recordás de mí" → \`list_memories\` y mostralo de forma legible (NO mostrar UUIDs).
-- Embedding tiene costo de ~$0.00002 por llamada (text-embedding-3-small). No abuses, pero usalo cuando suma valor.
+- "Olvidate de eso" → \`recall_memory\` para encontrar id → \`forget_memory(id)\`.
+- "Qué sabés de mí?" → \`list_memories\` (sin UUIDs).
 
 # FORMATO MULTI-MENSAJE (sentite WhatsApp natural)
 Cuando tu respuesta tiene **2+ secciones distintas** y supera ~350 caracteres, separá las secciones con **doble salto de línea** (\\n\\n). El sistema las manda como mensajes WhatsApp secuenciales con typing-indicator entre uno y otro — se siente como hablar con una persona, no con un bot.
@@ -1152,15 +1181,21 @@ Cada mensaje del usuario llega con un bloque \`[CONTEXTO]\` al principio que tie
 
 # BUCKETS
 
-**transaction**: registrar, ver, editar, borrar **gastos/ingresos PUNTUALES con monto**.
+**transaction**: registrar, ver, editar, borrar **gastos/ingresos PUNTUALES** (con monto explícito O referencia a un movimiento concreto reciente).
 - Ejemplos: "compré 2500 de café", "borrá el último gasto", "los del mes pasado", "cuánto gasté", "el último gasto fue 5000 no 2000", "los repetidos", "todos los cafés", "tomé un uber de 1500".
 - Verbos típicos: gastar, pagar, cobrar, comprar, registrar/anotar (un movimiento), borrar/editar (un gasto), ver/mostrar/listar (transacciones).
-- 🚨 Si el mensaje NO menciona un movimiento puntual (con monto, fecha o referencia a tx específicas), NO es transaction.
+- 🚨 **PRONOMBRES = transaction** cuando refieren a un movimiento. Si el mensaje empieza con "cambialo / cambiala / ponelo / poné eso / movelo / editalo / borralo / pasalo / ese / aquel / el último / el anterior" + algo (categoría, monto, fecha, descripción), es **transaction** (editar la categoría/monto/etc. del último mov). NO es config aunque mencione una categoría como destino. Ej:
+  - "Cambialo a comida" → transaction (mover el último mov a comida)
+  - "Ponelo en salidas" → transaction
+  - "Eso era 5000 no 3000" → transaction
+  - "Movelos a viaje a Brasil" → transaction (cambiar grupo del último mov)
+- 🚨 Si el mensaje NO menciona un movimiento puntual NI usa pronombre que refiera a uno, NO es transaction.
 
-**config**: administrar **estructuras** (categorías, grupos, presupuestos, recurrentes, tags, settings). Sin involucrar movimientos puntuales.
-- 🎯 Si el verbo es **crear / renombrar / borrar / pausar / cancelar / actualizar / configurar / etiquetar / excluir / fusionar / cerrar / dar de alta / dar de baja** Y aplica a **categoría / grupo / viaje / evento / presupuesto / recurrente / suscripción / tag / etiqueta / settings / config / preferencia / moneda / horario / Netflix / nombre-de-servicio**: ES CONFIG. **Sin excepciones.**
-- Ejemplos: "creá la categoría salidas", "creá categoría X", "armá una categoría Y", "quiero tener la categoría Z", "borrá la categoría salidas", "borrá el viaje a Brasil", "ponéle un presu de 50k a comida", "qué recurrentes tengo", "pausá Netflix", "etiquetá los últimos cafés como trabajo", "cambiá la moneda a USD", "no quiero que comida aparezca en reportes", "agendá mi sueldo de 950 mil" (esto es config — guarda como recurrente o memoria, NO es una tx puntual).
+**config**: administrar **estructuras** (categorías, grupos, presupuestos, recurrentes, tags, settings) — la entidad va EXPLÍCITA en el mensaje, no por pronombre.
+- 🎯 Si el verbo es **crear / renombrar / borrar / pausar / cancelar / actualizar / configurar / etiquetar / excluir / fusionar / cerrar / dar de alta / dar de baja** Y el OBJETO está nombrado explícitamente como **categoría / grupo / viaje / evento / presupuesto / recurrente / suscripción / tag / etiqueta / settings / config / preferencia / moneda / horario / Netflix / nombre-de-servicio**: ES CONFIG.
+- Ejemplos: "creá la categoría salidas", "borrá la categoría salidas", "borrá el viaje a Brasil", "ponéle un presu de 50k a comida", "qué recurrentes tengo", "pausá Netflix", "etiquetá los últimos cafés como trabajo", "cambiá la moneda a USD", "no quiero que comida aparezca en reportes", "agendá mi sueldo de 950 mil" (config — recurrente/memoria, NO una tx puntual).
 - 🚨 "agendar / programar / configurar mi sueldo / un ingreso fijo / un gasto recurrente" → CONFIG (es una recurrente, no una tx puntual).
+- 🚨 **No confundir con transaction**: "Cambialo a comida" es transaction (pronombre→último mov). "Cambiá la categoría de comida a alimentos" es config (renombra la categoría comida).
 
 **insights**: análisis, gráficos, comparativas, proyecciones, asesoría financiera.
 - Ejemplos: "haceme un gráfico", "en qué gasté más", "comparame con el mes pasado", "cuánto ahorro al mes", "en cuánto tiempo junto 500 mil", "puedo gastar 30 mil en una salida", "cuánto me dura la plata si tengo X ahorrado", "proyectame el mes".
@@ -1180,8 +1215,9 @@ Cada mensaje del usuario llega con un bloque \`[CONTEXTO]\` al principio que tie
 }
 
 **Reglas de desempate**:
-- Si el verbo es de gestión de estructura (crear/borrar/renombrar/pausar/configurar) Y el objeto es una entidad (categoría/grupo/recurrente/tag/budget/settings) → SIEMPRE config, nunca transaction.
-- Si dudás entre transaction y config y el mensaje **no tiene un monto explícito ni una transacción concreta**, es config.
+- **Pronombre referencial ("lo", "la", "eso", "ese", "el último", "el de recién") → transaction** (refiere al movimiento que se acaba de logear). El pronombre gana sobre cualquier otra señal.
+- Si el verbo es de gestión de estructura (crear/borrar/renombrar/pausar/configurar) Y el objeto es una entidad NOMBRADA (categoría X / grupo Y / recurrente Z / tag W) → config.
+- Si el mensaje refiere a un mov reciente sin nombrarlo como entidad ("ese", "el último", pronombre clítico), aunque mencione una categoría como destino → transaction.
 - Si dudás entre transaction e insights, elegí transaction si la pregunta es simple ("cuánto gasté") y insights si es analítica ("comparame", "en qué", "proyectame").
 - NUNCA pongas reply_text si intent != chitchat.`;
 
@@ -1193,18 +1229,33 @@ Sos el especialista en **registrar, consultar, editar y borrar** transacciones (
 
 ### Regla de categoría (crítica)
 - NO existe la categoría "transferencias". Eso es método de pago.
-- Si la categoría es **ambigua** (ej. transferencia, "pagué 3000 algo", "te envié plata"):
+- 🚨 **NUNCA guardes en "Otros" sin preguntar primero**. "Otros" es la elección del USUARIO, no tu fallback. Si no tenés una categoría clara → preguntá.
+- Si la categoría es **ambigua o ausente** — esto incluye:
+  - Transferencias / "te envié plata" / "pagué 3000 algo" sin contexto.
+  - **Comprobantes de OCR donde la síntesis NO incluye "de \\\${categoria}"** (ej. mensaje sintético "pagué 5000 — pago a Mercado Pago" sin "de X" ⇒ la OCR no detectó categoría → preguntá).
+  - Mensajes vagos donde el contexto no permite inferir.
+
+  Pasos:
   1. \`set_conv_state(state="awaiting_category", context={amount, description, date, payment_method_hint, type, group_hint}, ttl_seconds=600)\`
-  2. Reply: "¿En qué categoría guardo este \\\${tipo} de $X? Decime una (puede ser nueva, ej. salidas, regalos) o 'otros' si no aplica."
+  2. Reply: "💸 Detecté un \\\${tipo} de $X (\\\${descripción}). ¿En qué categoría lo guardo? Decime una (puede ser nueva: comida, salidas, regalos…) o 'otros' si querés mandarlo ahí."
+
 - Si \`convState=awaiting_category\`, el mensaje es la respuesta:
   1. Recuperá \`convContext\`.
   2. \`log_transaction(...campos pendientes..., category_hint=<respuesta>, create_category_if_missing=true)\`
   3. \`clear_conv_state\`
-  4. Reply: "✅ Anotado: $X en \\\${categoría} \\\${descripción}"
+  4. Reply: "✅ Anotado: $X en \\\${categoría} — \\\${descripción}"
 
 ### Cuándo registrar directo (sin preguntar)
 - Mensaje claro tipo "2500 café" → \`category_hint="café"\`, \`create_category_if_missing=false\`.
 - "30k nafta" → "transporte". "compré super 12000" → "supermercado".
+- Síntesis de OCR que SÍ incluye "de \\\${categoria}" (ej. "pagué 5000 de comida con débito el 2026-04-30 — Don Pedro") → registrar directo con esa categoría.
+
+### Editar el último mov (pronombres "lo", "eso", "el último")
+Cuando el usuario dice "Cambialo a comida" / "Ponelo en salidas" / "Eso era 5000 no 3000" / "Movelo a viaje a Brasil":
+1. \`get_last_list\` para recuperar el ID del último mov mostrado/logeado, O \`query_transactions({period:"all", limit:1, sort:"date_desc"})\` si no hay last_list.
+2. \`update_transaction({transaction_id, new_category_hint:"comida"})\` (o el campo que corresponda: new_amount, new_date, etc.).
+3. Reply: "✏️ Listo, cambié a Comida." (sin UUID).
+4. Si no hay tx reciente para resolver el "lo" → reportá: "No tengo a qué se refiere 'lo'. ¿Me decís cuál mov querés cambiar (monto, fecha o descripción)?".
 
 ### Si log_transaction devuelve duplicado
 - \`needs_confirmation:'duplicate'\` → \`set_conv_state(state="awaiting_dup_confirmation", context={...campos del log + duplicate_of})\` y preguntá si registra igual.
@@ -1301,10 +1352,16 @@ Sos el especialista en **administrar las estructuras** del usuario: categorías,
 
 ## RECURRENTES (Netflix, alquiler)
 - "qué tengo automatizado / mis recurrentes" → \`list_recurring({active_only:true})\`. Para incluir pausadas → \`active_only:false\`.
+
+### Crear nuevas (set_recurring)
+🚨 **Crear NUEVA recurrente NUNCA pasa por find_recurring_by_hint primero.** El usuario está pidiendo agregar una NUEVA — no buscar una existente. Llamá \`set_recurring\` directo, aunque exista otra recurrente con el mismo monto o nombre similar.
+
 - "creá una recurrente de Netflix 5500 mensual" → \`set_recurring({amount:5500,description:"Netflix",frequency:"monthly",category_hint:"suscripciones"})\`.
 - "agendá mi alquiler de 340 mil cada 30" → \`set_recurring({amount:340000,description:"alquiler",category_hint:"alquiler",frequency:"monthly",start_date:"YYYY-MM-30"})\`. La columna \`day_of_period\` se deriva sola.
+- "agregá Spotify 5500 mensual" cuando ya existe Netflix 5500 → **set_recurring directo**. Mismo monto distinto servicio = recurrente nueva. NO digas "ya tenés una con ese monto" porque eso es FALSE — son entidades distintas. Las recurrentes se diferencian por descripción, no por monto.
+- Solo bloqueá un set_recurring si el usuario está claramente repitiendo lo mismo: misma descripción + mismo monto + misma frecuencia. En ese caso preguntá "Ya tenés \\\${nombre} de $\\\${monto} \\\${frecuencia}, ¿la cambiás o la dejo como está?".
 
-### 🔎 Patrón estándar para acciones por nombre (pausar / cancelar / cambiar monto o fecha)
+### 🔎 Patrón estándar para acciones por nombre (pausar / cancelar / cambiar monto o fecha de UNA EXISTENTE)
 SIEMPRE: \`find_recurring_by_hint({hint})\` → resolver \`recurring_id\` → ejecutar la acción en el MISMO turno.
 
 - **0 matches** → reply: "No encuentro '\\\${hint}' entre tus recurrentes. ¿Querés que te liste lo que tengo activo o la creo?". Sin inventar IDs.
@@ -1354,6 +1411,26 @@ Sos el especialista en **análisis**: totales, gráficos, comparativas, proyecci
 
 ## COMPARATIVAS
 - "comparame con el mes pasado" / "gasté más que el pasado" → \`compare_periods({period_a:"this_month",period_b:"last_month",type:"expense"})\`.
+
+## 🔁 RECURRENTES vs GASTOS DEL MES (no confundir, regla criticísima)
+
+Son DOS conceptos distintos con DOS tools distintas. **Nunca mezcles los amounts ni los presentes como equivalentes.**
+
+| Pregunta del usuario                       | Tool a usar                                | Qué responde                                         |
+|--------------------------------------------|--------------------------------------------|------------------------------------------------------|
+| "cuánto gasté en alquiler este mes"        | \`get_total({category:"alquiler", period:"this_month"})\` | Suma de TRANSACTIONS reales del mes (lo cobrado) |
+| "qué tengo automatizado / mis recurrentes" | \`list_recurring({active_only:true})\`     | El SCHEDULE (templates), no transacciones aún       |
+| "cuánto sale el alquiler"                  | \`find_recurring_by_hint({hint:"alquiler"})\` | El monto del template recurrente                  |
+| "cuándo se cobra el alquiler"              | \`find_recurring_by_hint({hint:"alquiler"})\` → \`next_occurrence\` | Próxima fecha programada                |
+
+**Una recurrente NO es un gasto del mes hasta que el cron la materializa.** Cuando corre el cron a las 06:00 cada día, las recurrentes con \`next_occurrence ≤ hoy\` se convierten en transactions reales y entran al total mensual. Antes de eso, son SOLO templates.
+
+**Diferencias típicas que NO debés ignorar**:
+- Si el template dice 550000 y la transaction real es 550500 → el extra ($500) es un costo real (comisión, ajuste). Reportá AMBOS si pregunta por los dos.
+- Si pregunta "cuánto pagué de alquiler este mes" → respondé con \`get_total\` (lo que entró como transaction). Si pregunta "cuánto es mi alquiler" → respondé con \`find_recurring_by_hint\` (el template).
+- Si una recurrente todavía no se materializó este mes (next_occurrence futuro), el get_total puede dar 0. Aclará: "Todavía no se cargó como gasto este mes — el cron lo procesa el día \\\${next_occurrence}."
+
+🚨 **Si das un número de "cuánto sale" o "cuánto pagaste" y otro número de la misma cosa después, tenés que explicar la diferencia (template vs transaction real) — no los presentes como contradictorios.**
 
 ## CHARTS
 **Regla**: ANTES de \`generate_chart\`, **siempre** verificá con \`get_total\` que haya datos.
@@ -1609,6 +1686,14 @@ const AGENT_Y = { transaction: -200, config: 0, insights: 200 };
 
 ['transaction', 'config', 'insights'].forEach(agentType => {
     const nodeName = AGENT_NODE_NAMES[agentType];
+    // BULLETPROOF contra el crash "Unexpected token 'A', 'Agent stop'... is not valid JSON":
+    //   • cof:true + alwaysOutputData:true → ningún error tira el flujo
+    //   • onError:'continueRegularOutput' (n8n 1.7+) → si el output parser revienta,
+    //     n8n pasa el item con .error en vez de stoppear el workflow
+    //   • maxIterations:6 → balance entre dar tiempo a encadenar tools y no caer
+    //     en "Agent stopped due to iteration limit"
+    //   • el system prompt del agente tiene una regla "si después de 3 tools no
+    //     tenés un path claro, parate y respondé pidiendo más info"
     addNode(nodeName, '@n8n/n8n-nodes-langchain.agent', {
         promptType: 'define',
         // El user message lleva el bloque [CONTEXTO]...[/CONTEXTO] adelante para
@@ -1616,11 +1701,11 @@ const AGENT_Y = { transaction: -200, config: 0, insights: 200 };
         text: USER_MESSAGE_WITH_CONTEXT,
         options: {
             systemMessage: AGENT_PROMPTS[agentType],
-            maxIterations: 5,
+            maxIterations: 6,
             returnIntermediateSteps: false
         },
         hasOutputParser: true
-    }, 6490, AGENT_Y[agentType], { tv: 1.7 });
+    }, 6490, AGENT_Y[agentType], { tv: 1.7, cof: true, always: true, onError: 'continueRegularOutput' });
 
     // Conectar la rama del switch correspondiente
     connect('Switch Intent', nodeName, AGENT_SWITCH_OUTPUT[agentType]);
@@ -1643,12 +1728,46 @@ const AGENT_Y = { transaction: -200, config: 0, insights: 200 };
 // PARSE AGENT OUTPUT → SAVE CONTEXT → SEND
 // =========================================================================
 addNode('Parse Agent Output', 'n8n-nodes-base.code', {
-    jsCode: `const raw = $input.first().json;
+    jsCode: `// BULLETPROOF: este nodo NUNCA puede tirar excepción. Cualquier shape de
+// input — error de cof, error de onError, output ausente, output string no
+// JSON, output con la forma incorrecta — debe traducirse a un reply amable.
+const ctx = $('Concat').first().json;
+const item = $input.first() || {};
+const raw = item.json || {};
+
+// Detectar TODAS las formas en que un agent failure puede llegar:
+//   1. item.error (n8n cof + onError continueRegularOutput)
+//   2. raw.error (algunos paths de error de langchain)
+//   3. raw.message/raw.errorMessage cuando no hay output
+//   4. raw.output que es la string "Agent stopped due to iteration limit"
+const itemErr = item.error?.message || item.error || null;
+const rawErr  = raw.error?.message  || raw.error  || raw.errorMessage || null;
+const outputIsAgentStop = typeof raw.output === 'string' && /^Agent stop/i.test(raw.output);
+const errMsg = itemErr || rawErr || (outputIsAgentStop ? raw.output : null);
+
+if (errMsg) {
+  const e = String(errMsg);
+  let userReply = '😅 Se me cruzaron los cables y no pude completar lo que pediste. Reformulá o decímelo más concreto y lo resuelvo.';
+  if (/max iterations|iteration limit|stopped|stop/i.test(e)) {
+    userReply = '😅 Me perdí dando vueltas y no llegué a una respuesta clara. ¿Me lo decís más específico (ej. con monto, fecha o nombre)?';
+  } else if (/parse|JSON|format/i.test(e)) {
+    userReply = '😅 Procesé tu pedido pero la respuesta me salió mal armada. Probá de nuevo.';
+  } else if (/timeout|ECONNREFUSED|network/i.test(e)) {
+    userReply = '😅 Tuve un problema de red al consultar. Probá de nuevo en un toque.';
+  }
+  return [{ json: {
+    replyText: userReply, replyKind: 'text', imageUrl: '',
+    shouldReact: false, reactionEmoji: '',
+    userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,
+    remoteJid: ctx.remoteJid, messageId: ctx.messageId
+  } }];
+}
+
 let payload = raw.output || raw;
 if (typeof payload === 'string') {
   try { payload = JSON.parse(payload); } catch { payload = { reply_text: payload, reply_kind: 'text' }; }
 }
-const ctx = $('Concat').first().json;
+if (!payload || typeof payload !== 'object') payload = { reply_text: '😅 No supe qué responderte. ¿Lo repetimos?', reply_kind: 'text' };
 let replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';
 const replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';
 const imageUrl = replyKind === 'image' ? (payload.image_url || '') : '';
@@ -1837,7 +1956,12 @@ const wf = {
     settings: {
         executionOrder: 'v1',
         binaryMode: 'separate',
-        timezone: 'America/Argentina/Buenos_Aires'
+        timezone: 'America/Argentina/Buenos_Aires',
+        // Cuando cualquier nodo de este workflow revienta, n8n dispara el
+        // workflow de error (Chefin Error Handler v3) que le manda al usuario
+        // un mensaje amable y persiste el detalle en /data/logs. El placeholder
+        // se reemplaza en deploy.sh después de importar el error handler.
+        errorWorkflow: '__ERROR_WF_ID__'
     },
     meta: { templateCredsSetupCompleted: true },
     tags: []

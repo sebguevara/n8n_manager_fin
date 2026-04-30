@@ -460,7 +460,12 @@ const wf = {
     active: false,
     settings: {
         executionOrder: 'v1',
-        timezone: 'America/Argentina/Buenos_Aires'
+        timezone: 'America/Argentina/Buenos_Aires',
+        // Mismo error handler que el agente principal — un cron que falla
+        // (p. ej. resúmenes diarios) queda logeado pero no podemos avisarle al
+        // usuario porque no hay payload de webhook (canReply=false). Igual
+        // queremos el log persistido.
+        errorWorkflow: '__ERROR_WF_ID__'
     },
     meta: { templateCredsSetupCompleted: true },
     tags: []

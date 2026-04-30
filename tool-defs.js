@@ -104,14 +104,16 @@ module.exports = [
     },
     {
         name: 'bulk_update',
-        description: 'Actualiza múltiples transacciones por UUIDs. Para cambiar la categoría usá new_category_hint con el nombre (no UUID).',
+        description: 'Actualiza múltiples transacciones por UUIDs. Para cambiar la categoría usá new_category_hint con el nombre (no UUID). Para SET (pisar) un monto absoluto usá new_amount; para sumar/restar relativo usá amount_delta.',
         fields: [
             { name: 'ids', desc: 'Array JSON de UUIDs', type: 'json', default: [] },
             { name: 'new_category_hint', desc: 'Nombre de categoría destino (ej. "comida"). La función la resuelve por nombre.', type: 'string', default: '' },
             { name: 'create_category_if_missing', desc: 'true si querés crear la categoría si no existe. false para fuzzy match contra existentes.', type: 'boolean', default: false },
             { name: 'new_date', desc: 'Nueva fecha YYYY-MM-DD', type: 'string', default: '' },
             { name: 'new_group_id', desc: 'Nuevo grupo UUID', type: 'string', default: '' },
-            { name: 'amount_delta', desc: 'Suma/resta al monto', type: 'number', default: 0 },
+            { name: 'new_amount', desc: 'SET nuevo monto absoluto (pisa el actual). Ej: cambiá los 3 cafés a $5000 cada uno.', type: 'number', default: 0 },
+            { name: 'amount_delta', desc: 'SUMA/RESTA al monto actual. Ej: ajustá +$200 por propina a estos 3.', type: 'number', default: 0 },
+            { name: 'new_description', desc: 'SET nueva descripción para todos', type: 'string', default: '' },
             { name: 'set_excluded', desc: 'Marcar excluidas', type: 'boolean', default: false }
         ]
     },

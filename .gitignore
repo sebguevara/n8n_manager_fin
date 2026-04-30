@@ -1,6 +1,9 @@
 .env
 .env.local
 .env.development.local
+# Logs generados en runtime por el error handler (./logs:/data/logs)
+logs/*.jsonl
+logs/*.log
 .env.test.local
 .env.production.local
 .env.development

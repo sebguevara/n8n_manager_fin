@@ -368,7 +368,9 @@ formatNames.push(addPgTool(8, 'bulk_update',
         NULLIF($2::jsonb->>'amount_delta','')::numeric,
         NULLIF($2::jsonb->>'set_excluded','')::boolean,
         NULLIF($2::jsonb->>'new_category_hint',''),
-        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)
+        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false),
+        NULLIF($2::jsonb->>'new_amount','')::numeric,
+        NULLIF($2::jsonb->>'new_description','')
     );`,
     "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
