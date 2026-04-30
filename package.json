@@ -1,0 +1,19 @@
+{
+  "name": "chefin",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Chefin v3 — WhatsApp finance assistant on n8n + Postgres + Evolution API",
+  "scripts": {
+    "build": "node build-tools-subworkflow.js > workflows/chefin-tools-v3.json && node build-agent-workflow.js > workflows/chefin-agent-v3.json && node build-cron-workflow.js > workflows/chefin-cron-v3.json",
+    "test:sql": "bash tests/run.sh",
+    "test:chunker": "node tests/agent/test-chunker.mjs",
+    "test:tools": "node tests/sql/test-tool-integration.mjs",
+    "test": "npm run test:sql && npm run test:chunker && npm run test:tools",
+    "up": "docker compose up -d",
+    "down": "docker compose down",
+    "db:init": "docker compose run --rm db-init",
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:fast": "bash scripts/deploy.sh --skip-tests",
+    "deploy:build-only": "bash scripts/deploy.sh --build-only"
+  }
+}
