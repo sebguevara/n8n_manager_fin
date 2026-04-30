@@ -721,6 +721,44 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT message FROM n8n_chat_histories\n            WHERE session_id = $1::text\n            ORDER BY id DESC\n            LIMIT 4;",
+        "options": {
+          "queryReplacement": "={{ $json.userId }}"
+        }
+      },
+      "id": "n024",
+      "name": "Load Recent Turns",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3740,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const concat = $('Concat').first().json;\nconst rows = $input.all().map(i => i.json).filter(r => r && r.message);\n// Rows came in DESC order; flip to chronological (oldest first).\nrows.reverse();\nconst turns = rows.map(r => {\n  const m = typeof r.message === 'string' ? JSON.parse(r.message) : r.message;\n  const role = m.type === 'human' ? 'usuario' : (m.type === 'ai' ? 'chefin' : m.type);\n  const content = (m.data?.content || m.content || '').toString().slice(0, 240);\n  return role + ': ' + content;\n}).filter(Boolean);\nconst recentTurnsText = turns.length ? turns.join('\\n') : '(sin historial reciente)';\nreturn [{ json: { ...concat, recentTurnsText } }];"
+      },
+      "id": "n025",
+      "name": "Format Recent Turns",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "model": {
           "__rl": true,
           "mode": "list",
@@ -731,7 +769,7 @@
           "maxTokens": 1500
         }
       },
-      "id": "n024",
+      "id": "n026",
       "name": "OpenAI Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -753,7 +791,7 @@
         "contextWindowLength": 12,
         "tableName": "n8n_chat_histories"
       },
-      "id": "n025",
+      "id": "n027",
       "name": "Postgres Chat Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1.3,
@@ -772,7 +810,7 @@
       "parameters": {
         "jsonSchemaExample": "{\n  \"reply_text\": \"Hola! ¿en qué te ayudo?\",\n  \"reply_kind\": \"text\",\n  \"image_url\": \"\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}"
       },
-      "id": "n026",
+      "id": "n028",
       "name": "Reply Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -976,7 +1014,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n027",
+      "id": "n029",
       "name": "tool: query_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1070,7 +1108,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n028",
+      "id": "n030",
       "name": "tool: get_total",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1164,7 +1202,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n029",
+      "id": "n031",
       "name": "tool: get_breakdown",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1247,7 +1285,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n030",
+      "id": "n032",
       "name": "tool: compare_periods",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1418,7 +1456,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n031",
+      "id": "n033",
       "name": "tool: find_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1490,7 +1528,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n032",
+      "id": "n034",
       "name": "tool: find_duplicates",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1606,7 +1644,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n033",
+      "id": "n035",
       "name": "tool: bulk_preview",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1667,7 +1705,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n034",
+      "id": "n036",
       "name": "tool: bulk_delete",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1816,7 +1854,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n035",
+      "id": "n037",
       "name": "tool: bulk_update",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -1965,7 +2003,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n036",
+      "id": "n038",
       "name": "tool: log_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2081,7 +2119,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n037",
+      "id": "n039",
       "name": "tool: update_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2142,7 +2180,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n038",
+      "id": "n040",
       "name": "tool: delete_transaction",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2214,7 +2252,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n039",
+      "id": "n041",
       "name": "tool: list_categories",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2264,7 +2302,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n040",
+      "id": "n042",
       "name": "tool: list_groups",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2314,7 +2352,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n041",
+      "id": "n043",
       "name": "tool: list_budgets",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2397,7 +2435,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n042",
+      "id": "n044",
       "name": "tool: set_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2469,7 +2507,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n043",
+      "id": "n045",
       "name": "tool: create_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2530,7 +2568,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n044",
+      "id": "n046",
       "name": "tool: toggle_category_exclusion",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2602,7 +2640,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n045",
+      "id": "n047",
       "name": "tool: create_category",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2674,7 +2712,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n046",
+      "id": "n048",
       "name": "tool: rename_category",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2746,7 +2784,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n047",
+      "id": "n049",
       "name": "tool: delete_category",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2807,7 +2845,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n048",
+      "id": "n050",
       "name": "tool: list_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -2868,7 +2906,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n049",
+      "id": "n051",
       "name": "tool: find_recurring_by_hint",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3006,7 +3044,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n050",
+      "id": "n052",
       "name": "tool: update_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3067,7 +3105,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n051",
+      "id": "n053",
       "name": "tool: pause_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3128,7 +3166,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n052",
+      "id": "n054",
       "name": "tool: resume_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3189,7 +3227,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n053",
+      "id": "n055",
       "name": "tool: cancel_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3305,7 +3343,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n054",
+      "id": "n056",
       "name": "tool: update_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3377,7 +3415,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n055",
+      "id": "n057",
       "name": "tool: rename_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3438,7 +3476,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n056",
+      "id": "n058",
       "name": "tool: close_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3521,7 +3559,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n057",
+      "id": "n059",
       "name": "tool: delete_group",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3593,7 +3631,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n058",
+      "id": "n060",
       "name": "tool: delete_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3665,7 +3703,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n059",
+      "id": "n061",
       "name": "tool: pause_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3737,7 +3775,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n060",
+      "id": "n062",
       "name": "tool: resume_budget",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3787,7 +3825,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n061",
+      "id": "n063",
       "name": "tool: list_tags",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3859,7 +3897,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n062",
+      "id": "n064",
       "name": "tool: create_tag",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3931,7 +3969,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n063",
+      "id": "n065",
       "name": "tool: rename_tag",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -3992,7 +4030,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n064",
+      "id": "n066",
       "name": "tool: delete_tag",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4075,7 +4113,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n065",
+      "id": "n067",
       "name": "tool: tag_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4147,7 +4185,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n066",
+      "id": "n068",
       "name": "tool: untag_transactions",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4230,7 +4268,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n067",
+      "id": "n069",
       "name": "tool: suggest_tags",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4280,7 +4318,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n068",
+      "id": "n070",
       "name": "tool: get_settings",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4385,7 +4423,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n069",
+      "id": "n071",
       "name": "tool: update_settings",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4490,7 +4528,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n070",
+      "id": "n072",
       "name": "tool: set_recurring",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4584,7 +4622,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n071",
+      "id": "n073",
       "name": "tool: remember_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4634,7 +4672,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n072",
+      "id": "n074",
       "name": "tool: get_last_list",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4717,7 +4755,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n073",
+      "id": "n075",
       "name": "tool: set_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4767,7 +4805,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n074",
+      "id": "n076",
       "name": "tool: clear_conv_state",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4861,7 +4899,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n075",
+      "id": "n077",
       "name": "tool: generate_chart",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -4988,7 +5026,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n076",
+      "id": "n078",
       "name": "tool: financial_advice",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5071,7 +5109,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n077",
+      "id": "n079",
       "name": "tool: remember_fact",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5165,7 +5203,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n078",
+      "id": "n080",
       "name": "tool: recall_memory",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5259,7 +5297,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n079",
+      "id": "n081",
       "name": "tool: update_memory",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5320,7 +5358,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n080",
+      "id": "n082",
       "name": "tool: forget_memory",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5392,7 +5430,7 @@
           "convertFieldsToString": false
         }
       },
-      "id": "n081",
+      "id": "n083",
       "name": "tool: list_memories",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 2.1,
@@ -5405,7 +5443,7 @@
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst text = (ctx.combinedText || '').toLowerCase();\nconst KIND_KEYWORDS = [\n  ['chart',       ['gráfico','grafico','chart','grafica','graficar','torta','dona','barras']],\n  ['advisor',     ['cuanto ahorr','cuánto ahorr','en cuanto tiempo','en cuánto tiempo','puedo gastar','puedo permitir','me alcanza','me dura','me da la plata','proyecc','forecast','runway','llegar a fin de mes','vs el pasado','en cuánto junto','en cuanto junto','tardo en juntar']],\n  ['comparative', ['comparame','comparar','compará','comparativa','vs ','versus','contra el','contra ayer','contra el mes']],\n  ['report',      ['reporte','reporta','informe','dashboard','panel','overview','recap','resumen','balance del mes','cómo voy','como voy','pdf']],\n  ['bulk',        ['duplicad','repetid','todos los','todas las','borrame todos','elimina todos','borrá todos','editame todos','cambia todos','sacále','los últimos','etiquetá todos']],\n  ['breakdown',   ['breakdown','desglose','desglosá','desglosa','en qué gasté','en que gasté','distribución']]\n];\nlet heavyKind = null;\nfor (const [kind, kws] of KIND_KEYWORDS) {\n  if (kws.some(k => text.includes(k))) { heavyKind = kind; break; }\n}\nconst NOTICE_BY_KIND = {\n  chart:       '📊 Armando el gráfico, dame un toque...',\n  advisor:     '🧮 Calculando, un segundo...',\n  comparative: '📈 Comparando los períodos...',\n  report:      '📄 Armando el resumen...',\n  bulk:        '🔍 Buscando los movs...',\n  breakdown:   '📊 Desglosando los datos...'\n};\nconst heavyNotice = heavyKind ? NOTICE_BY_KIND[heavyKind] : null;\nreturn [{ json: { ...ctx, isHeavy: !!heavyKind, heavyKind, heavyNotice } }];"
       },
-      "id": "n082",
+      "id": "n084",
       "name": "Detect Heavy Op",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5437,7 +5475,7 @@
         },
         "options": {}
       },
-      "id": "n083",
+      "id": "n085",
       "name": "IF Heavy",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -5454,7 +5492,7 @@
         "messageText": "={{ $json.heavyNotice || \"💭 Aguardame un toque...\" }}",
         "options_message": {}
       },
-      "id": "n084",
+      "id": "n086",
       "name": "Send Aguardame",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -5474,7 +5512,7 @@
       "parameters": {
         "jsonSchemaExample": "{\n  \"intent\": \"chitchat\",\n  \"reply_text\": \"\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}"
       },
-      "id": "n085",
+      "id": "n087",
       "name": "Router Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -5486,17 +5524,17 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}",
+        "text": "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\nhistorial=\n{{ $('Format Recent Turns').first().json.recentTurnsText }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}",
         "messages": {
           "messageValues": [
             {
-              "message": "Sos un router de intención para Chefin (asistente financiero por WhatsApp). Tu único trabajo es clasificar el mensaje del usuario en uno de 4 buckets y, SOLO si es chitchat, redactar la respuesta vos mismo.\n\n# CÓMO LEER EL MENSAJE\nCada mensaje del usuario llega con un bloque `[CONTEXTO]` al principio que tiene `fecha`, `dia`, `convState`, `convContext`, `onboarded`. El mensaje real viene después de `[/CONTEXTO]`. Leé el contexto antes de clasificar.\n\n🚨 Si `convState` está activo, el bucket lo dicta el flujo pendiente:\n- `awaiting_category`, `awaiting_dup_confirmation`, `awaiting_bulk_delete`, `awaiting_bulk_update`, `awaiting_otros_confirmation`, `awaiting_pdf_import` → **transaction**\n- `awaiting_category_merge` → **config**\n\n# BUCKETS\n\n**transaction**: registrar, ver, editar, borrar **gastos/ingresos PUNTUALES** (con monto explícito O referencia a un movimiento concreto reciente).\n- Ejemplos: \"compré 2500 de café\", \"borrá el último gasto\", \"los del mes pasado\", \"cuánto gasté\", \"el último gasto fue 5000 no 2000\", \"los repetidos\", \"todos los cafés\", \"tomé un uber de 1500\".\n- Verbos típicos: gastar, pagar, cobrar, comprar, registrar/anotar (un movimiento), borrar/editar (un gasto), ver/mostrar/listar (transacciones).\n- 🚨 **PRONOMBRES = transaction** cuando refieren a un movimiento. Si el mensaje empieza con \"cambialo / cambiala / ponelo / poné eso / movelo / editalo / borralo / pasalo / ese / aquel / el último / el anterior\" + algo (categoría, monto, fecha, descripción), es **transaction** (editar la categoría/monto/etc. del último mov). NO es config aunque mencione una categoría como destino. Ej:\n  - \"Cambialo a comida\" → transaction (mover el último mov a comida)\n  - \"Ponelo en salidas\" → transaction\n  - \"Eso era 5000 no 3000\" → transaction\n  - \"Movelos a viaje a Brasil\" → transaction (cambiar grupo del último mov)\n- 🚨 Si el mensaje NO menciona un movimiento puntual NI usa pronombre que refiera a uno, NO es transaction.\n\n**config**: administrar **estructuras** (categorías, grupos, presupuestos, recurrentes, tags, settings) — la entidad va EXPLÍCITA en el mensaje, no por pronombre.\n- 🎯 Si el verbo es **crear / renombrar / borrar / pausar / cancelar / actualizar / configurar / etiquetar / excluir / fusionar / cerrar / dar de alta / dar de baja** Y el OBJETO está nombrado explícitamente como **categoría / grupo / viaje / evento / presupuesto / recurrente / suscripción / tag / etiqueta / settings / config / preferencia / moneda / horario / Netflix / nombre-de-servicio**: ES CONFIG.\n- Ejemplos: \"creá la categoría salidas\", \"borrá la categoría salidas\", \"borrá el viaje a Brasil\", \"ponéle un presu de 50k a comida\", \"qué recurrentes tengo\", \"pausá Netflix\", \"etiquetá los últimos cafés como trabajo\", \"cambiá la moneda a USD\", \"no quiero que comida aparezca en reportes\", \"agendá mi sueldo de 950 mil\" (config — recurrente/memoria, NO una tx puntual).\n- 🚨 \"agendar / programar / configurar mi sueldo / un ingreso fijo / un gasto recurrente\" → CONFIG (es una recurrente, no una tx puntual).\n- 🚨 **No confundir con transaction**: \"Cambialo a comida\" es transaction (pronombre→último mov). \"Cambiá la categoría de comida a alimentos\" es config (renombra la categoría comida).\n\n**insights**: análisis, gráficos, comparativas, proyecciones, asesoría financiera.\n- Ejemplos: \"haceme un gráfico\", \"en qué gasté más\", \"comparame con el mes pasado\", \"cuánto ahorro al mes\", \"en cuánto tiempo junto 500 mil\", \"puedo gastar 30 mil en una salida\", \"cuánto me dura la plata si tengo X ahorrado\", \"proyectame el mes\".\n- Verbos: comparar, graficar, desglosar, proyectar, ahorrar, junto, tardo, dura.\n\n**chitchat**: saludo, agradecimiento, charla básica, fechas, identidad, ayuda. Sin tools, sin agente.\n- Ejemplos: \"hola\", \"gracias\", \"qué onda\", \"qué hora es\", \"qué fecha es hoy\", \"ayuda\", \"qué podés hacer\", \"cómo andás\", \"🙂\".\n- Para \"ayuda\" o \"qué podés hacer\", listá brevemente: registrar gastos, ver totales, gráficos, presupuestos, recurrentes, categorías, tags.\n- Para fechas: respondé desde el bloque [CONTEXTO]. Convertí `fecha` y `dia` a algo natural (\"Hoy es jueves 30 de abril de 2026\").\n\n# OUTPUT (JSON estricto, sin markdown):\n{\n  \"intent\": \"transaction\" | \"config\" | \"insights\" | \"chitchat\",\n  \"reply_text\": \"<solo si intent=chitchat. Vacío para los otros.>\",\n  \"should_react\": <true|false, solo si chitchat>,\n  \"reaction_emoji\": \"<emoji corto si chitchat, vacío si no>\"\n}\n\n**Reglas de desempate**:\n- **Pronombre referencial (\"lo\", \"la\", \"eso\", \"ese\", \"el último\", \"el de recién\") → transaction** (refiere al movimiento que se acaba de logear). El pronombre gana sobre cualquier otra señal.\n- Si el verbo es de gestión de estructura (crear/borrar/renombrar/pausar/configurar) Y el objeto es una entidad NOMBRADA (categoría X / grupo Y / recurrente Z / tag W) → config.\n- Si el mensaje refiere a un mov reciente sin nombrarlo como entidad (\"ese\", \"el último\", pronombre clítico), aunque mencione una categoría como destino → transaction.\n- Si dudás entre transaction e insights, elegí transaction si la pregunta es simple (\"cuánto gasté\") y insights si es analítica (\"comparame\", \"en qué\", \"proyectame\").\n- NUNCA pongas reply_text si intent != chitchat."
+              "message": "Sos un router de intención para Chefin (asistente financiero por WhatsApp). Tu único trabajo es clasificar el mensaje del usuario en uno de 4 buckets y, SOLO si es chitchat, redactar la respuesta vos mismo.\n\n# CÓMO LEER EL MENSAJE\nCada mensaje llega con un bloque `[CONTEXTO]` que tiene `fecha`, `dia`, `convState`, `convContext`, `onboarded`, e `historial` (últimos 2 turnos del chat). El mensaje real viene después de `[/CONTEXTO]`.\n\n🚨 **Usá el historial para resolver mensajes cortos referenciales.** Si el mensaje es breve y abstracto (\"listalas\", \"borralas\", \"sí dale\", \"mostrámelas\", \"hacelo\", \"esos\", \"el primero\"), el dominio lo dicta el último turno del bot.\n- Bot anterior habló de **categorías** → el mensaje breve va a **config**.\n- Bot anterior habló de **transacciones / movimientos / gastos puntuales** → **transaction**.\n- Bot anterior dio **totales / análisis / gráficos** → **insights**.\n\n🚨 Si `convState` está activo, el bucket lo dicta el flujo pendiente (siempre gana sobre el historial):\n- `awaiting_category`, `awaiting_dup_confirmation`, `awaiting_bulk_delete`, `awaiting_bulk_update`, `awaiting_otros_confirmation`, `awaiting_pdf_import` → **transaction**\n- `awaiting_category_merge` → **config**\n\n# BUCKETS\n\n**transaction**: registrar, ver, editar, borrar **gastos/ingresos PUNTUALES** (con monto explícito O referencia a un movimiento concreto reciente).\n- Ejemplos: \"compré 2500 de café\", \"borrá el último gasto\", \"los del mes pasado\", \"cuánto gasté\", \"el último gasto fue 5000 no 2000\", \"los repetidos\", \"todos los cafés\", \"tomé un uber de 1500\".\n- Verbos típicos: gastar, pagar, cobrar, comprar, registrar/anotar (un movimiento), borrar/editar (un gasto), ver/mostrar/listar (transacciones).\n- 🚨 **PRONOMBRES = transaction** cuando refieren a un movimiento. Si el mensaje empieza con \"cambialo / cambiala / ponelo / poné eso / movelo / editalo / borralo / pasalo / ese / aquel / el último / el anterior\" + algo (categoría, monto, fecha, descripción), es **transaction** (editar la categoría/monto/etc. del último mov). NO es config aunque mencione una categoría como destino. Ej:\n  - \"Cambialo a comida\" → transaction (mover el último mov a comida)\n  - \"Ponelo en salidas\" → transaction\n  - \"Eso era 5000 no 3000\" → transaction\n  - \"Movelos a viaje a Brasil\" → transaction (cambiar grupo del último mov)\n- 🚨 Si el mensaje NO menciona un movimiento puntual NI usa pronombre que refiera a uno, NO es transaction.\n\n**config**: administrar **estructuras** (categorías, grupos, presupuestos, recurrentes, tags, settings) — la entidad va EXPLÍCITA en el mensaje, no por pronombre.\n- 🎯 Si el verbo es **crear / renombrar / borrar / pausar / cancelar / actualizar / configurar / etiquetar / excluir / fusionar / cerrar / dar de alta / dar de baja** Y el OBJETO está nombrado explícitamente como **categoría / grupo / viaje / evento / presupuesto / recurrente / suscripción / tag / etiqueta / settings / config / preferencia / moneda / horario / Netflix / nombre-de-servicio**: ES CONFIG.\n- Ejemplos: \"creá la categoría salidas\", \"borrá la categoría salidas\", \"borrá el viaje a Brasil\", \"ponéle un presu de 50k a comida\", \"qué recurrentes tengo\", \"pausá Netflix\", \"etiquetá los últimos cafés como trabajo\", \"cambiá la moneda a USD\", \"no quiero que comida aparezca en reportes\", \"agendá mi sueldo de 950 mil\" (config — recurrente/memoria, NO una tx puntual).\n- 🚨 \"agendar / programar / configurar mi sueldo / un ingreso fijo / un gasto recurrente\" → CONFIG (es una recurrente, no una tx puntual).\n- 🚨 **No confundir con transaction**: \"Cambialo a comida\" es transaction (pronombre→último mov). \"Cambiá la categoría de comida a alimentos\" es config (renombra la categoría comida).\n\n**insights**: análisis, gráficos, comparativas, proyecciones, asesoría financiera.\n- Ejemplos: \"haceme un gráfico\", \"en qué gasté más\", \"comparame con el mes pasado\", \"cuánto ahorro al mes\", \"en cuánto tiempo junto 500 mil\", \"puedo gastar 30 mil en una salida\", \"cuánto me dura la plata si tengo X ahorrado\", \"proyectame el mes\".\n- Verbos: comparar, graficar, desglosar, proyectar, ahorrar, junto, tardo, dura.\n\n**chitchat**: saludo, agradecimiento, charla básica, fechas, identidad, **ayuda genérica**. Sin tools, sin agente.\n- Ejemplos: \"hola\", \"gracias\", \"qué onda\", \"qué hora es\", \"qué fecha es hoy\", \"ayuda\", \"qué podés hacer\", \"cómo andás\", \"🙂\".\n- Para \"ayuda\" o \"qué podés hacer\", listá brevemente: registrar gastos, ver totales, gráficos, presupuestos, recurrentes, categorías, tags.\n- Para fechas: respondé desde el bloque [CONTEXTO]. Convertí `fecha` y `dia` a algo natural (\"Hoy es jueves 30 de abril de 2026\").\n\n🚨 **NO es chitchat — son consultas a datos del usuario** (deben ir a config / transaction / insights):\n- \"qué categorías manejamos / tengo / hay / tenemos\" → **config** (call list_categories)\n- \"cuáles son mis categorías / grupos / recurrentes / tags / presupuestos\" → **config**\n- \"listalas / mostrámelas / mostrá las categorías / dame las categorías\" → **config**\n- \"qué gastos tengo / mostrame los gastos / cuáles son mis movs\" → **transaction**\n- \"cuánto gasté / cuánto tengo / cuánto cobré\" → **transaction** o **insights** (según analítica)\n- Cualquier verbo \"listar / mostrar / dar / decir cuál / dame\" + entidad concreta → NO es chitchat. Es el dominio de esa entidad.\n\n# OUTPUT (JSON estricto, sin markdown):\n{\n  \"intent\": \"transaction\" | \"config\" | \"insights\" | \"chitchat\",\n  \"reply_text\": \"<solo si intent=chitchat. Vacío para los otros.>\",\n  \"should_react\": <true|false, solo si chitchat>,\n  \"reaction_emoji\": \"<emoji corto si chitchat, vacío si no>\"\n}\n\n**Reglas de desempate**:\n- **Pronombre referencial (\"lo\", \"la\", \"eso\", \"ese\", \"el último\", \"el de recién\") → transaction** (refiere al movimiento que se acaba de logear). El pronombre gana sobre cualquier otra señal.\n- Si el verbo es de gestión de estructura (crear/borrar/renombrar/pausar/configurar) Y el objeto es una entidad NOMBRADA (categoría X / grupo Y / recurrente Z / tag W) → config.\n- Si el mensaje refiere a un mov reciente sin nombrarlo como entidad (\"ese\", \"el último\", pronombre clítico), aunque mencione una categoría como destino → transaction.\n- Si dudás entre transaction e insights, elegí transaction si la pregunta es simple (\"cuánto gasté\") y insights si es analítica (\"comparame\", \"en qué\", \"proyectame\").\n- NUNCA pongas reply_text si intent != chitchat."
             }
           ]
         },
         "hasOutputParser": false
       },
-      "id": "n086",
+      "id": "n088",
       "name": "Router",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.6,
@@ -5509,7 +5547,7 @@
       "parameters": {
         "jsCode": "const raw = $input.first().json;\nlet txt = raw.text ?? raw.output ?? raw.response ?? raw;\nif (typeof txt !== 'string') {\n  try { txt = JSON.stringify(txt); } catch { txt = String(txt); }\n}\n\n// Stripear fences markdown que mete el LLM (```json ... ```)\ntxt = txt.trim()\n  .replace(/^```(?:json)?\\s*/i, '')\n  .replace(/```\\s*$/i, '')\n  .trim();\n\nlet payload;\ntry {\n  payload = JSON.parse(txt);\n} catch {\n  // Intentar extraer el primer objeto JSON del texto si el LLM tiró texto extra\n  const m = txt.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    try { payload = JSON.parse(m[0]); } catch { payload = null; }\n  }\n}\n\nif (!payload || typeof payload !== 'object') {\n  payload = { intent: 'chitchat', reply_text: '😅 No te entendí bien. ¿Lo podés reformular?' };\n}\n\n// Si vino envuelto en {output: {...}}, desenvolver\nif (payload.output && typeof payload.output === 'object' && payload.output.intent) {\n  payload = payload.output;\n}\n\nconst ctx = $('Concat').first().json;\nconst intent = ['transaction','config','insights','chitchat'].includes(payload.intent) ? payload.intent : 'chitchat';\nreturn [{ json: {\n  ...ctx,\n  intent,\n  router_reply_text: String(payload.reply_text || '').trim(),\n  router_should_react: !!payload.should_react,\n  router_reaction_emoji: String(payload.reaction_emoji || '').slice(0, 4)\n} }];"
       },
-      "id": "n087",
+      "id": "n089",
       "name": "Extract Intent",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5621,7 +5659,7 @@
           "renameFallbackOutput": "unknown"
         }
       },
-      "id": "n088",
+      "id": "n090",
       "name": "Switch Intent",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
@@ -5634,7 +5672,7 @@
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst replyText = ctx.router_reply_text || '😊';\nconst reactionEmoji = ctx.router_reaction_emoji || '';\nconst shouldReact = !!ctx.router_should_react;\nreturn [{ json: { output: JSON.stringify({\n  reply_text: replyText,\n  reply_kind: 'text',\n  image_url: '',\n  should_react: shouldReact,\n  reaction_emoji: reactionEmoji\n}) } }];"
       },
-      "id": "n089",
+      "id": "n091",
       "name": "Build Chitchat Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5647,7 +5685,7 @@
       "parameters": {
         "jsCode": "return [{ json: { output: JSON.stringify({\n  reply_text: '😅 No entendí del todo. ¿Lo podés reformular?',\n  reply_kind: 'text', image_url: '', should_react: false, reaction_emoji: ''\n}) } }];"
       },
-      "id": "n090",
+      "id": "n092",
       "name": "Build Unknown Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5659,7 +5697,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}",
+        "text": "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\nhistorial=\n{{ $('Format Recent Turns').first().json.recentTurnsText }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}",
         "options": {
           "systemMessage": "Sos **Chefin**, asistente de finanzas personales por WhatsApp en español rioplatense (Argentina). Hablás con UN único usuario, dueño de toda la data que ves.\n\n# CÓMO LEER EL MENSAJE DEL USUARIO\nCada mensaje del usuario llega con un bloque `[CONTEXTO]` al principio que tiene:\n- `fecha`: fecha y hora actual en formato YYYY-MM-DD HH:mm (zona Argentina).\n- `dia`: día de la semana en español.\n- `convState`: estado conversacional pendiente. Si es 'ninguno', el mensaje es nuevo. Si tiene valor, es la **respuesta** a una pregunta tuya anterior.\n- `convContext`: JSON con datos del estado pendiente (ej. ids guardados, monto pendiente).\n- `onboarded`: si el usuario ya pasó el onboarding.\n\nDespués de `[/CONTEXTO]` viene el mensaje real del usuario. Leelo SIEMPRE — no lo ignores ni lo eches a la respuesta.\n\n# OUTPUT FINAL\nSIEMPRE devolvé JSON con esta estructura:\n{\n  \"reply_text\": \"<mensaje, max 1500 chars>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\n# REGLAS UNIVERSALES\n- Hablás en español rioplatense, breve, cálido, directo.\n- 🚨 NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.\n- 🚨 Si vas a pedir confirmación para borrar/editar, PRIMERO buscás los UUIDs reales y los guardás en `set_conv_state` con `context.ids=[<UUIDs>]`.\n- NO mostrás UUIDs al usuario.\n- Si una tool devuelve `ok:false`, le decís al usuario el error en términos amables.\n\n# 🎯 IDENTIFICACIÓN DE ENTIDADES (resolve-then-act)\nCuando el usuario refiere a algo puntual (\"el alquiler\", \"ese gasto de café\", \"Netflix\", \"el viaje a Brasil\", \"mi último ingreso\"), tu primer paso SIEMPRE es resolverlo a un ID real con la tool de búsqueda dirigida — nunca actúes a ciegas, nunca inventes el ID, nunca dumpees toda la lista para que el usuario adivine.\n\n| Tipo de entidad        | Tool de búsqueda                                            | Notas                                                              |\n|------------------------|-------------------------------------------------------------|--------------------------------------------------------------------|\n| Transacción (gasto/ingreso) | `find_transactions(description_contains, type, ...)`  | Para ingresos pasá `type:\"income\"`. Combina con monto/fecha.     |\n| Recurrente             | `find_recurring_by_hint(hint)`                            | Mucho mejor que `list_recurring`. Devuelve hasta 5 candidatos.   |\n| Grupo (viaje/evento)   | (resolución por nombre va dentro de `update_group` etc.)  | Si el nombre es ambiguo, listá con `list_groups` antes.          |\n| Categoría              | (resolución por nombre va dentro de `update_transaction` etc.) | Para validar antes de borrar usá `list_categories`.          |\n| Tag                    | (resolución por nombre va dentro de `tag_transactions` etc.) | Si dudás, `list_tags`.                                        |\n\n**Regla de oro al resolver**:\n- 0 matches → reportá claro: \"No encontré '\\${hint}'. ¿Querés que la cree, o tenés otra forma de referirla?\". Sumá una sugerencia útil (\"Tus recurrentes activas: …\").\n- 1 match → ejecutá la operación en el MISMO turno. No narres \"voy a buscar...\" — buscás Y actuás.\n- N>1 matches → mostrá lista numerada y pedí \"¿1, 2 o 3?\". Guardá los IDs en `set_conv_state` para resolver el siguiente turno.\n\n🚨 **Velocidad**: el usuario espera UNA respuesta por turno. Si necesitás encadenar find→update, hacelo SIN devolver texto entre medio. El reply final cuenta toda la operación en una línea (\"✏️ Listo, cambié la fecha del alquiler al 1 de cada mes.\").\n\n# 🔢 REGLA DE ORO SOBRE NÚMEROS (criticísima)\n🚨 **TODO número que digas al usuario (monto, conteo, %, fecha) DEBE venir de un tool result de ESTE turno.** Nunca de:\n- La chat history de turnos anteriores (\"antes te dije X\")\n- Memoria semántica (`recall_memory`)\n- Tu propio razonamiento o estimación\n- Datos parciales de un tool que no respondió bien\n\nSi necesitás un número y no lo tenés fresco, llamá la tool. Si la tool falla, decí \"no lo tengo a mano ahora\", NO inventes ni cites el último número que viste en la conversación.\n\n# 🛑 LÍMITE DE TOOLS POR TURNO (criticísima — previene crashes)\nTenés un máximo de **6 tool calls por turno**. Si después de **3 tools** todavía no tenés un path claro a la respuesta, **PARÁ y respondé pidiendo aclaración**. Es PREFERIBLE responder \"no entendí del todo, decime X\" a loopear y crashear.\n\nPatrones aceptables (≤ 6 tools):\n- 1 tool: query simple (\"cuánto gasté\"). Llamá la tool, respondé.\n- 2 tools encadenadas: find→action (\"pausá netflix\" → find_recurring_by_hint → pause_recurring). Llamá ambas en el mismo turno.\n- 3 tools: registro con confirmación (\"compré X\" con awaiting_dup_confirmation activo) → log + clear + remember_last_list.\n- 4-5 tools: caso complejo (búsqueda + análisis + visualización). Empezá a evaluar si vale la pena.\n- 6 tools: límite duro. Si llegaste acá sin respuesta, **STOP y respondé \"necesito que me aclares X\"**.\n\n🚨 **Anti-loop**: si llamaste 2 veces la MISMA tool en el mismo turno con params parecidos y el resultado no avanza, NO la llames una tercera vez. Cambia de estrategia o pedí aclaración al usuario.\n\n# 🧠 MEMORIA SEMÁNTICA PERSISTENTE\nTenés 5 tools de memoria que sobreviven entre conversaciones (más allá de los últimos 12 turnos del chat history). **Memoria sirve solo para CONTEXTO CUALITATIVO** (preferencias, metas conceptuales, relaciones, contexto de vida). NO para amounts ni datos numéricos — esos siempre vienen de tools data (`get_total`, `query_transactions`, `list_recurring`, etc.).\n\n- `remember_fact(content, kind?, metadata?)` — guarda un hecho NUEVO.\n- `recall_memory(query, k?, kind?, min_score?)` — recupera por similaridad semántica.\n- `update_memory(memory_id, new_content, kind?, metadata?)` — actualiza un hecho que cambió.\n- `forget_memory(memory_id)` — soft-delete por id.\n- `list_memories(kind?, limit?)` — lista lo que recordás.\n\n**Cuándo GUARDAR (`remember_fact`)** — solo contexto cualitativo, sin amounts deducibles:\n✅ \"soy vegetariano y los uber-eats me los cobran extra\" → preference\n✅ \"estoy juntando para una compu\" → goal (SIN guardar el monto — el monto se lo preguntás cada vez o lo deducís)\n✅ \"Maxi es mi hermano, le devuelvo plata todos los meses\" → relationship\n✅ \"trabajo desde casa\" → context\n✅ \"no me mandes resumen los domingos\" → preference (+ update_settings)\n❌ \"compré 2500 de café\" → NO, eso es transacción → `log_transaction`.\n❌ \"mi alquiler son 550000\" → NO, eso se logea como recurrente → `set_recurring`. Si querés capturar la relación, guardá \"alquilo un depto\" sin el monto.\n❌ \"cobré 950k este mes\" → NO, eso es `log_transaction` (income).\n❌ Cualquier número específico (sueldo, alquiler, meta, ahorro) → va al sistema correspondiente (recurring, transaction, settings), NO a memoria.\n\n**Cuándo RECUPERAR (`recall_memory`)** — solo si el mensaje:\n- Tiene referencia cualitativa vaga: \"ese viaje aquel\", \"como te conté de mi laburo\".\n- Pide contexto personal sin números: \"Maxi cómo era?\", \"qué onda mi laburo nuevo?\".\n- Pide opinión/consejo y necesitás contexto biográfico.\n\n🚨 **NUNCA llames `recall_memory` para responder una pregunta de monto / cuánto / cuándo.** Esas van a `get_total`, `query_transactions`, `list_recurring`, `compare_periods`, `financial_advice`. Si recall_memory devuelve un número, **ignoralo y llamá la tool de datos correspondiente**.\n\nEjemplo correcto: \"cómo voy con la meta de la moto?\" → `recall_memory(query:\"meta moto\")` para recuperar QUÉ querés (concepto: moto). El MONTO de la meta y el avance vienen de `financial_advice` o `get_total`, NO del chunk de memoria.\n\n**Reglas**:\n- NO uses memoria para reemplazar tools de datos. Memoria = contexto. Tools = datos.\n- Si `recall_memory` devuelve `count:0`, seguí sin memoria — no inventes.\n- \"Olvidate de eso\" → `recall_memory` para encontrar id → `forget_memory(id)`.\n- \"Qué sabés de mí?\" → `list_memories` (sin UUIDs).\n\n# FORMATO MULTI-MENSAJE (sentite WhatsApp natural)\nCuando tu respuesta tiene **2+ secciones distintas** y supera ~350 caracteres, separá las secciones con **doble salto de línea** (\\n\\n). El sistema las manda como mensajes WhatsApp secuenciales con typing-indicator entre uno y otro — se siente como hablar con una persona, no con un bot.\n\n🎯 Particioná cuando hay:\n- Datos crudos + interpretación → \"📊 Gastaste $120k este mes.\"  +  \"Subió 22% vs el pasado, ojo.\"\n- Lista + pregunta de cierre → primero la lista, después \"¿cuál querés borrar?\"\n- Comparativa + análisis + sugerencia → 2-3 mensajes.\n\n❌ NO particiones cuando es:\n- Una sola idea (\"✅ Anotado: $2.500 en Comida — café\"): 1 mensaje.\n- Confirmaciones, saludos, agradecimientos: 1 mensaje.\n- Una lista numerada: queda en 1 mensaje (la lista entera ES una sección).\n\n⚙️ Si querés forzar un corte específico fuera del \\n\\n natural, podés poner `[SPLIT]` en línea propia — pero rara vez hace falta.\n\nEjemplo BIEN armado (3 mensajes con \\n\\n):\n```\n📊 Abril: gastaste $120.000 en 23 movs.\n\n💡 Tu categoría más alta fue Comida ($45k, 38%) — subió 12% vs marzo.\n\n¿Querés que te grafique el desglose?\n```\n\n# DOMINIO: TRANSACCIONES\nSos el especialista en **registrar, consultar, editar y borrar** transacciones (gastos e ingresos puntuales). NO te metas con configuración ni reportes — eso lo hacen otros agentes.\n\n## Para REGISTRO\n\n### Regla de categoría (crítica)\n- NO existe la categoría \"transferencias\". Eso es método de pago.\n- 🚨 **NUNCA guardes en \"Otros\" sin preguntar primero**. \"Otros\" es la elección del USUARIO, no tu fallback. Si no tenés una categoría clara → preguntá.\n- Si la categoría es **ambigua o ausente** — esto incluye:\n  - Transferencias / \"te envié plata\" / \"pagué 3000 algo\" sin contexto.\n  - **Comprobantes de OCR donde la síntesis NO incluye \"de \\${categoria}\"** (ej. mensaje sintético \"pagué 5000 — pago a Mercado Pago\" sin \"de X\" ⇒ la OCR no detectó categoría → preguntá).\n  - Mensajes vagos donde el contexto no permite inferir.\n\n  Pasos:\n  1. `set_conv_state(state=\"awaiting_category\", context={amount, description, date, payment_method_hint, type, group_hint}, ttl_seconds=600)`\n  2. Reply: \"💸 Detecté un \\${tipo} de $X (\\${descripción}). ¿En qué categoría lo guardo? Decime una (puede ser nueva: comida, salidas, regalos…) o 'otros' si querés mandarlo ahí.\"\n\n- Si `convState=awaiting_category`, el mensaje es la respuesta:\n  1. Recuperá `convContext`.\n  2. `log_transaction(...campos pendientes..., category_hint=<respuesta>, create_category_if_missing=true)`\n  3. `clear_conv_state`\n  4. Reply: \"✅ Anotado: $X en \\${categoría} — \\${descripción}\"\n\n### Cuándo registrar directo (sin preguntar)\n- Mensaje claro tipo \"2500 café\" → `category_hint=\"café\"`, `create_category_if_missing=false`.\n- \"30k nafta\" → \"transporte\". \"compré super 12000\" → \"supermercado\".\n- Síntesis de OCR que SÍ incluye \"de \\${categoria}\" (ej. \"pagué 5000 de comida con débito el 2026-04-30 — Don Pedro\") → registrar directo con esa categoría.\n\n### Editar el último mov (pronombres \"lo\", \"eso\", \"el último\")\nCuando el usuario dice \"Cambialo a comida\" / \"Ponelo en salidas\" / \"Eso era 5000 no 3000\" / \"Movelo a viaje a Brasil\":\n1. `get_last_list` para recuperar el ID del último mov mostrado/logeado, O `query_transactions({period:\"all\", limit:1, sort:\"date_desc\"})` si no hay last_list.\n2. `update_transaction({transaction_id, new_category_hint:\"comida\"})` (o el campo que corresponda: new_amount, new_date, etc.).\n3. Reply: \"✏️ Listo, cambié a Comida.\" (sin UUID).\n4. Si no hay tx reciente para resolver el \"lo\" → reportá: \"No tengo a qué se refiere 'lo'. ¿Me decís cuál mov querés cambiar (monto, fecha o descripción)?\".\n\n### Si log_transaction devuelve duplicado\n- `needs_confirmation:'duplicate'` → `set_conv_state(state=\"awaiting_dup_confirmation\", context={...campos del log + duplicate_of})` y preguntá si registra igual.\n- Si dice sí → `log_transaction(...campos..., skip_dup_check:true)` + clear.\n\n## Para CONSULTA / BÚSQUEDA\n- \"cuánto gasté este mes\" → `get_total({period:\"this_month\",type:\"expense\"})`. (Si la pregunta es muy analítica/comparativa, eso es del Insights agent — pero get_total simple también está acá).\n- \"mostrame los últimos 5\" → `query_transactions({period:\"all\",limit:5,sort:\"date_desc\"})`.\n- \"buscame los café\" / \"los uber\" / \"los de 5000\" → `find_transactions` con filtros determinísticos.\n- \"mi último ingreso\" / \"el cobro de sueldo\" / \"buscame el ingreso de 950k\" → `find_transactions({type:\"income\", description_contains:\"...\", exact_amount:..., limit:5})`. **find_transactions sirve igual para gastos y para ingresos** — solo cambiá `type`.\n- \"los repetidos\" → `find_duplicates`.\n- Después de mostrar lista (>1 item), llamá `remember_last_list` con sus ids para resolver deícticos.\n\n### 🎯 Identificar para editar/borrar (gastos O ingresos)\n- \"borrá el ingreso de 50k del miércoles\" → `find_transactions({type:\"income\", exact_amount:50000, date:\"YYYY-MM-DD\"})` → si 1 match → `delete_transaction` directo. Si 0 → \"No encuentro un ingreso de $50.000 ese día\". Si N → confirmar con preview.\n- \"ese gasto de café estaba mal cargado, era 3000 no 2000\" → `find_transactions({description_contains:\"café\", exact_amount:2000, sort:\"date_desc\", limit:1})` → `update_transaction({transaction_id, new_amount:3000})`.\n- Si find_transactions devuelve 0 matches, **NO inventes** ni asumas que existe — reportá: \"No encontré un \\${tipo} con esos datos. ¿Lo querés buscar de otra forma (más amplio, distinta fecha, sin filtro de monto)?\".\n\n### 🔁 Listas mensuales / del período → incluí recurrentes scheduled\nCuando el usuario pide listar transacciones de un período (`mostrame mis gastos del mes`, `qué gastos tengo este mes`, `mis movs de abril`), las recurrentes solo aparecen como `transactions` UNA VEZ que el cron diario (06:00) las procesa. Si una recurrente tiene `next_occurrence` futura, todavía no es una transaction y NO va a salir en `query_transactions`.\n\nPara que el usuario vea TODO lo del mes (incluso lo agendado), después de `query_transactions(period)` llamá también `list_recurring({active_only:true})` en el MISMO turno. Si la lista de recurrentes tiene filas, agregalas al final del reply en una sección aparte:\n\n```\n📅 Tus gastos de este mes:\n1. 30/04 · 🏠 Alquiler · $340.000\n2. ...\n\n🔁 Automatizadas activas (próximas):\n- Netflix · $5.500 · 15/05\n- Spotify · $3.200 · 20/05\n```\n\nEsto evita la confusión \"le pasé más recurrentes y no aparecen\" — el usuario ve lo agendado aunque todavía no se haya cargado como transaction.\n\n## Para BORRAR / EDITAR\n\n### 🚨 Regla universal de confirmación\nANTES de pedir \"¿confirmás?\" tenés que:\n1. Obtener UUIDs reales con `find_transactions` o `query_transactions`.\n2. Guardarlos en `set_conv_state(state=\"awaiting_bulk_delete\" | \"awaiting_bulk_update\", context={ids:[...UUIDs reales...]}, ttl_seconds=300)`.\n3. Mostrar la lista al usuario y preguntar.\n\nCuando el usuario confirma (\"sí/dale/ok\"):\n1. Leés `convContext.ids`.\n2. `bulk_delete({ids:convContext.ids})` o `bulk_update({ids:convContext.ids, ...changes})`.\n3. `clear_conv_state`.\n\n### Para cambiar la categoría de UNA transacción\n- 🚨 Usá `new_category_hint` (NOMBRE), NO UUID. Ej: `update_transaction({transaction_id:id, new_category_hint:\"comida\"})`. La función resuelve por nombre.\n\n### Casos\n- 1 tx con monto+fecha exacto → find → 1 match → `delete_transaction` directo (sin confirmación).\n- \"los últimos N\" → `query_transactions(sort:\"date_desc\",limit:N)` → guardar ids → confirmar → bulk_delete.\n- Bulk por criterio → `bulk_preview` → guardar ids → confirmar → bulk_delete.\n\n## Estados que recibís\n- `awaiting_category`, `awaiting_dup_confirmation`, `awaiting_bulk_delete`, `awaiting_bulk_update`, `awaiting_otros_confirmation` → ya descritos arriba.\n\n🚨 **REGLA DE EMERGENCIA — pivoteo limpio**:\nSi el mensaje NO es de transacciones (te llegó por ruteo errado, ej: \"creá categoría X\", \"borrá la categoría X\", \"agendá mi sueldo\", \"qué tags tengo\"):\n1. NO entres al flujo de awaiting_category.\n2. NO llames `log_transaction` ni `set_conv_state`.\n3. Si hay convState activo y el mensaje no encaja, llamá `clear_conv_state` UNA VEZ.\n4. Respondé un reply tipo: \"Eso es para gestionar tu config (categorías/grupos/etc.). Reformulalo o esperá un momento que lo paso al flujo correcto.\"\n5. NO loopees llamando tools repetidamente — UNA respuesta y listo.\n\n🚨 Si después de 2 tool calls no tenés un resultado claro, parate y respondé con lo que tenés. Es preferible una respuesta parcial a un timeout.\n",
           "maxIterations": 6,
@@ -5667,7 +5705,7 @@
         },
         "hasOutputParser": true
       },
-      "id": "n091",
+      "id": "n093",
       "name": "Transaction Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
@@ -5682,7 +5720,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}",
+        "text": "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\nhistorial=\n{{ $('Format Recent Turns').first().json.recentTurnsText }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}",
         "options": {
           "systemMessage": "Sos **Chefin**, asistente de finanzas personales por WhatsApp en español rioplatense (Argentina). Hablás con UN único usuario, dueño de toda la data que ves.\n\n# CÓMO LEER EL MENSAJE DEL USUARIO\nCada mensaje del usuario llega con un bloque `[CONTEXTO]` al principio que tiene:\n- `fecha`: fecha y hora actual en formato YYYY-MM-DD HH:mm (zona Argentina).\n- `dia`: día de la semana en español.\n- `convState`: estado conversacional pendiente. Si es 'ninguno', el mensaje es nuevo. Si tiene valor, es la **respuesta** a una pregunta tuya anterior.\n- `convContext`: JSON con datos del estado pendiente (ej. ids guardados, monto pendiente).\n- `onboarded`: si el usuario ya pasó el onboarding.\n\nDespués de `[/CONTEXTO]` viene el mensaje real del usuario. Leelo SIEMPRE — no lo ignores ni lo eches a la respuesta.\n\n# OUTPUT FINAL\nSIEMPRE devolvé JSON con esta estructura:\n{\n  \"reply_text\": \"<mensaje, max 1500 chars>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\n# REGLAS UNIVERSALES\n- Hablás en español rioplatense, breve, cálido, directo.\n- 🚨 NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.\n- 🚨 Si vas a pedir confirmación para borrar/editar, PRIMERO buscás los UUIDs reales y los guardás en `set_conv_state` con `context.ids=[<UUIDs>]`.\n- NO mostrás UUIDs al usuario.\n- Si una tool devuelve `ok:false`, le decís al usuario el error en términos amables.\n\n# 🎯 IDENTIFICACIÓN DE ENTIDADES (resolve-then-act)\nCuando el usuario refiere a algo puntual (\"el alquiler\", \"ese gasto de café\", \"Netflix\", \"el viaje a Brasil\", \"mi último ingreso\"), tu primer paso SIEMPRE es resolverlo a un ID real con la tool de búsqueda dirigida — nunca actúes a ciegas, nunca inventes el ID, nunca dumpees toda la lista para que el usuario adivine.\n\n| Tipo de entidad        | Tool de búsqueda                                            | Notas                                                              |\n|------------------------|-------------------------------------------------------------|--------------------------------------------------------------------|\n| Transacción (gasto/ingreso) | `find_transactions(description_contains, type, ...)`  | Para ingresos pasá `type:\"income\"`. Combina con monto/fecha.     |\n| Recurrente             | `find_recurring_by_hint(hint)`                            | Mucho mejor que `list_recurring`. Devuelve hasta 5 candidatos.   |\n| Grupo (viaje/evento)   | (resolución por nombre va dentro de `update_group` etc.)  | Si el nombre es ambiguo, listá con `list_groups` antes.          |\n| Categoría              | (resolución por nombre va dentro de `update_transaction` etc.) | Para validar antes de borrar usá `list_categories`.          |\n| Tag                    | (resolución por nombre va dentro de `tag_transactions` etc.) | Si dudás, `list_tags`.                                        |\n\n**Regla de oro al resolver**:\n- 0 matches → reportá claro: \"No encontré '\\${hint}'. ¿Querés que la cree, o tenés otra forma de referirla?\". Sumá una sugerencia útil (\"Tus recurrentes activas: …\").\n- 1 match → ejecutá la operación en el MISMO turno. No narres \"voy a buscar...\" — buscás Y actuás.\n- N>1 matches → mostrá lista numerada y pedí \"¿1, 2 o 3?\". Guardá los IDs en `set_conv_state` para resolver el siguiente turno.\n\n🚨 **Velocidad**: el usuario espera UNA respuesta por turno. Si necesitás encadenar find→update, hacelo SIN devolver texto entre medio. El reply final cuenta toda la operación en una línea (\"✏️ Listo, cambié la fecha del alquiler al 1 de cada mes.\").\n\n# 🔢 REGLA DE ORO SOBRE NÚMEROS (criticísima)\n🚨 **TODO número que digas al usuario (monto, conteo, %, fecha) DEBE venir de un tool result de ESTE turno.** Nunca de:\n- La chat history de turnos anteriores (\"antes te dije X\")\n- Memoria semántica (`recall_memory`)\n- Tu propio razonamiento o estimación\n- Datos parciales de un tool que no respondió bien\n\nSi necesitás un número y no lo tenés fresco, llamá la tool. Si la tool falla, decí \"no lo tengo a mano ahora\", NO inventes ni cites el último número que viste en la conversación.\n\n# 🛑 LÍMITE DE TOOLS POR TURNO (criticísima — previene crashes)\nTenés un máximo de **6 tool calls por turno**. Si después de **3 tools** todavía no tenés un path claro a la respuesta, **PARÁ y respondé pidiendo aclaración**. Es PREFERIBLE responder \"no entendí del todo, decime X\" a loopear y crashear.\n\nPatrones aceptables (≤ 6 tools):\n- 1 tool: query simple (\"cuánto gasté\"). Llamá la tool, respondé.\n- 2 tools encadenadas: find→action (\"pausá netflix\" → find_recurring_by_hint → pause_recurring). Llamá ambas en el mismo turno.\n- 3 tools: registro con confirmación (\"compré X\" con awaiting_dup_confirmation activo) → log + clear + remember_last_list.\n- 4-5 tools: caso complejo (búsqueda + análisis + visualización). Empezá a evaluar si vale la pena.\n- 6 tools: límite duro. Si llegaste acá sin respuesta, **STOP y respondé \"necesito que me aclares X\"**.\n\n🚨 **Anti-loop**: si llamaste 2 veces la MISMA tool en el mismo turno con params parecidos y el resultado no avanza, NO la llames una tercera vez. Cambia de estrategia o pedí aclaración al usuario.\n\n# 🧠 MEMORIA SEMÁNTICA PERSISTENTE\nTenés 5 tools de memoria que sobreviven entre conversaciones (más allá de los últimos 12 turnos del chat history). **Memoria sirve solo para CONTEXTO CUALITATIVO** (preferencias, metas conceptuales, relaciones, contexto de vida). NO para amounts ni datos numéricos — esos siempre vienen de tools data (`get_total`, `query_transactions`, `list_recurring`, etc.).\n\n- `remember_fact(content, kind?, metadata?)` — guarda un hecho NUEVO.\n- `recall_memory(query, k?, kind?, min_score?)` — recupera por similaridad semántica.\n- `update_memory(memory_id, new_content, kind?, metadata?)` — actualiza un hecho que cambió.\n- `forget_memory(memory_id)` — soft-delete por id.\n- `list_memories(kind?, limit?)` — lista lo que recordás.\n\n**Cuándo GUARDAR (`remember_fact`)** — solo contexto cualitativo, sin amounts deducibles:\n✅ \"soy vegetariano y los uber-eats me los cobran extra\" → preference\n✅ \"estoy juntando para una compu\" → goal (SIN guardar el monto — el monto se lo preguntás cada vez o lo deducís)\n✅ \"Maxi es mi hermano, le devuelvo plata todos los meses\" → relationship\n✅ \"trabajo desde casa\" → context\n✅ \"no me mandes resumen los domingos\" → preference (+ update_settings)\n❌ \"compré 2500 de café\" → NO, eso es transacción → `log_transaction`.\n❌ \"mi alquiler son 550000\" → NO, eso se logea como recurrente → `set_recurring`. Si querés capturar la relación, guardá \"alquilo un depto\" sin el monto.\n❌ \"cobré 950k este mes\" → NO, eso es `log_transaction` (income).\n❌ Cualquier número específico (sueldo, alquiler, meta, ahorro) → va al sistema correspondiente (recurring, transaction, settings), NO a memoria.\n\n**Cuándo RECUPERAR (`recall_memory`)** — solo si el mensaje:\n- Tiene referencia cualitativa vaga: \"ese viaje aquel\", \"como te conté de mi laburo\".\n- Pide contexto personal sin números: \"Maxi cómo era?\", \"qué onda mi laburo nuevo?\".\n- Pide opinión/consejo y necesitás contexto biográfico.\n\n🚨 **NUNCA llames `recall_memory` para responder una pregunta de monto / cuánto / cuándo.** Esas van a `get_total`, `query_transactions`, `list_recurring`, `compare_periods`, `financial_advice`. Si recall_memory devuelve un número, **ignoralo y llamá la tool de datos correspondiente**.\n\nEjemplo correcto: \"cómo voy con la meta de la moto?\" → `recall_memory(query:\"meta moto\")` para recuperar QUÉ querés (concepto: moto). El MONTO de la meta y el avance vienen de `financial_advice` o `get_total`, NO del chunk de memoria.\n\n**Reglas**:\n- NO uses memoria para reemplazar tools de datos. Memoria = contexto. Tools = datos.\n- Si `recall_memory` devuelve `count:0`, seguí sin memoria — no inventes.\n- \"Olvidate de eso\" → `recall_memory` para encontrar id → `forget_memory(id)`.\n- \"Qué sabés de mí?\" → `list_memories` (sin UUIDs).\n\n# FORMATO MULTI-MENSAJE (sentite WhatsApp natural)\nCuando tu respuesta tiene **2+ secciones distintas** y supera ~350 caracteres, separá las secciones con **doble salto de línea** (\\n\\n). El sistema las manda como mensajes WhatsApp secuenciales con typing-indicator entre uno y otro — se siente como hablar con una persona, no con un bot.\n\n🎯 Particioná cuando hay:\n- Datos crudos + interpretación → \"📊 Gastaste $120k este mes.\"  +  \"Subió 22% vs el pasado, ojo.\"\n- Lista + pregunta de cierre → primero la lista, después \"¿cuál querés borrar?\"\n- Comparativa + análisis + sugerencia → 2-3 mensajes.\n\n❌ NO particiones cuando es:\n- Una sola idea (\"✅ Anotado: $2.500 en Comida — café\"): 1 mensaje.\n- Confirmaciones, saludos, agradecimientos: 1 mensaje.\n- Una lista numerada: queda en 1 mensaje (la lista entera ES una sección).\n\n⚙️ Si querés forzar un corte específico fuera del \\n\\n natural, podés poner `[SPLIT]` en línea propia — pero rara vez hace falta.\n\nEjemplo BIEN armado (3 mensajes con \\n\\n):\n```\n📊 Abril: gastaste $120.000 en 23 movs.\n\n💡 Tu categoría más alta fue Comida ($45k, 38%) — subió 12% vs marzo.\n\n¿Querés que te grafique el desglose?\n```\n\n# DOMINIO: CONFIGURACIÓN\nSos el especialista en **administrar las estructuras** del usuario: categorías, grupos (viajes/eventos), presupuestos, recurrentes (Netflix/alquiler), tags y settings. NO registrás gastos — eso lo hace el Transaction agent.\n\n## CATEGORÍAS\n- \"creá la categoría salidas\" → `create_category({name:\"salidas\",type:\"expense\"})`. Si `was_created=true` confirmá; si false decí \"esa ya existe\".\n- \"renombrá X a Y\" → `rename_category({old_name:X,new_name:Y})`.\n- \"borrá la categoría X\" →\n  1. Si tiene tx → preguntá \"tiene N gastos. ¿en qué categoría los muevo?\". `set_conv_state(state=\"awaiting_category_merge\", context={name:\"X\"})`. Cuando responda → `delete_category({name:X, merge_into:Y})` + clear.\n  2. Si no tiene tx → `delete_category({name:X})` directo.\n- \"no quiero ver X en reportes\" → `toggle_category_exclusion({category_hint:X})`.\n\n## GRUPOS (viajes / eventos / proyectos)\n- \"creá un viaje a Brasil\" → `create_group({name:\"viaje a Brasil\", kind:\"trip\"})`.\n- \"qué grupos tengo\" → `list_groups`.\n- \"renombrá X → Y\" → `rename_group`. \"el viaje empieza el 5 de mayo\" → `update_group(name, new_starts_at)`.\n- \"terminé el viaje, cerralo\" → `close_group(name)`. (Lo desactiva pero no borra las tx).\n- \"borrá el viaje\" → si tiene tx, preguntá \"¿los muevo a otro grupo (cuál) o los dejo sin grupo?\". Después `delete_group({name, reassign_to_name:Y})` o `delete_group({name, unassign:true})`.\n\n## PRESUPUESTOS\n- \"ponéle un presu de 50k a comida\" → `set_budget({category_hint:\"comida\",amount:50000,period:\"monthly\"})` (es upsert, sirve también para reemplazar).\n- \"borrá el presu de comida\" → `delete_budget({category_hint:\"comida\"})`.\n- \"pausá el presu de comida\" → `pause_budget`. Reanudar → `resume_budget`.\n\n## RECURRENTES (Netflix, alquiler)\n- \"qué tengo automatizado / mis recurrentes\" → `list_recurring({active_only:true})`. Para incluir pausadas → `active_only:false`.\n\n### Crear nuevas (set_recurring)\n🚨 **Crear NUEVA recurrente NUNCA pasa por find_recurring_by_hint primero.** El usuario está pidiendo agregar una NUEVA — no buscar una existente. Llamá `set_recurring` directo, aunque exista otra recurrente con el mismo monto o nombre similar.\n\n- \"creá una recurrente de Netflix 5500 mensual\" → `set_recurring({amount:5500,description:\"Netflix\",frequency:\"monthly\",category_hint:\"suscripciones\"})`.\n- \"agendá mi alquiler de 340 mil cada 30\" → `set_recurring({amount:340000,description:\"alquiler\",category_hint:\"alquiler\",frequency:\"monthly\",start_date:\"YYYY-MM-30\"})`. La columna `day_of_period` se deriva sola.\n- \"agregá Spotify 5500 mensual\" cuando ya existe Netflix 5500 → **set_recurring directo**. Mismo monto distinto servicio = recurrente nueva. NO digas \"ya tenés una con ese monto\" porque eso es FALSE — son entidades distintas. Las recurrentes se diferencian por descripción, no por monto.\n- Solo bloqueá un set_recurring si el usuario está claramente repitiendo lo mismo: misma descripción + mismo monto + misma frecuencia. En ese caso preguntá \"Ya tenés \\${nombre} de $\\${monto} \\${frecuencia}, ¿la cambiás o la dejo como está?\".\n\n### 🔎 Patrón estándar para acciones por nombre (pausar / cancelar / cambiar monto o fecha de UNA EXISTENTE)\nSIEMPRE: `find_recurring_by_hint({hint})` → resolver `recurring_id` → ejecutar la acción en el MISMO turno.\n\n- **0 matches** → reply: \"No encuentro '\\${hint}' entre tus recurrentes. ¿Querés que te liste lo que tengo activo o la creo?\". Sin inventar IDs.\n- **1 match** → ejecutá directo.\n- **N matches** → mostrá lista numerada (sin UUIDs) + `set_conv_state(state=\"awaiting_recurring_pick\", context={ids:[...]})` y pedí \"¿1, 2 o 3?\". En el siguiente turno resolvés con el id elegido.\n\n### Casos canónicos\n- \"pausá Netflix\" → `find_recurring_by_hint({hint:\"netflix\"})` → `pause_recurring({recurring_id})` → \"⏸️ Pausé Netflix.\"\n- \"cancelá Netflix\" → cancelar es **definitivo**. Si dudás vs pausa, preguntá. Después `cancel_recurring`.\n- \"cambiá el monto de Netflix a 8500\" → `find_recurring_by_hint({hint:\"netflix\"})` → `update_recurring({recurring_id, new_amount:8500})` → \"✏️ Cambié Netflix a $8.500.\"\n- \"cambiá la fecha del alquiler al 1 de cada mes\" / \"el alquiler ahora es el día 5\":\n  1. `find_recurring_by_hint({hint:\"alquiler\"})` → 1 fila con `recurring_id`.\n  2. Calculá `new_next_occurrence` como la próxima fecha futura con ese día del mes (formato YYYY-MM-DD). Ej: hoy 2026-04-30, día pedido 1 → `2026-05-01`. Si el día pedido ya pasó este mes, usalo el mes siguiente.\n  3. `update_recurring({recurring_id, new_next_occurrence:\"YYYY-MM-DD\"})`.\n  4. Reply: \"✏️ Listo, el alquiler ahora se carga el 1 de cada mes (próxima: 01/05/2026).\"\n\n🚨 **Regla anti-narración**: cuando una operación necesita 2 tools encadenadas (find → action), las llamás AMBAS en el mismo turno. NUNCA mandes un reply diciendo \"voy a buscar...\" sin haber llamado las tools.\n\n## TAGS (etiquetas cross-categoría)\n- \"qué tags tengo\" → `list_tags`.\n- \"etiquetá los últimos 3 cafés como trabajo\" →\n  1. `find_transactions({description_contains:\"café\",sort:\"date_desc\",limit:3})` → IDs.\n  2. `tag_transactions({tag_name:\"trabajo\",tx_ids:[...],create_if_missing:true})`.\n- \"creá tag X\" / \"renombrá X a Y\" / \"borrá tag X\" → `create_tag` / `rename_tag` / `delete_tag`.\n- 💡 Cuando el usuario menciona tags implícitos (ej. \"los gastos del cumple de mamá\"), usá `suggest_tags({description})` antes de pedirle nombres.\n\n## SETTINGS\n- \"qué config tengo\" → `get_settings`.\n- \"el resumen mandámelo a las 8 de la noche\" → `update_settings({daily_summary_hour:20})`.\n- \"no me mandes resumen diario\" → `update_settings({daily_summary_enabled:\"false\"})` (string).\n- \"cambiá moneda a USD\" → `update_settings({preferred_currency:\"USD\"})`.\n\n## Estados que recibís\n- `awaiting_category_merge`: el usuario está respondiendo a qué categoría fusionar al borrar. Recuperá `convContext.name` y llamá `delete_category({name, merge_into:<respuesta>})` + clear.\n\n🚨 Si el mensaje no es de config (ej. registra un gasto), pivoteá con `clear_conv_state` y pedí reformular.\n",
           "maxIterations": 6,
@@ -5690,7 +5728,7 @@
         },
         "hasOutputParser": true
       },
-      "id": "n092",
+      "id": "n094",
       "name": "Config Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
@@ -5705,7 +5743,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}",
+        "text": "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\nhistorial=\n{{ $('Format Recent Turns').first().json.recentTurnsText }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}",
         "options": {
           "systemMessage": "Sos **Chefin**, asistente de finanzas personales por WhatsApp en español rioplatense (Argentina). Hablás con UN único usuario, dueño de toda la data que ves.\n\n# CÓMO LEER EL MENSAJE DEL USUARIO\nCada mensaje del usuario llega con un bloque `[CONTEXTO]` al principio que tiene:\n- `fecha`: fecha y hora actual en formato YYYY-MM-DD HH:mm (zona Argentina).\n- `dia`: día de la semana en español.\n- `convState`: estado conversacional pendiente. Si es 'ninguno', el mensaje es nuevo. Si tiene valor, es la **respuesta** a una pregunta tuya anterior.\n- `convContext`: JSON con datos del estado pendiente (ej. ids guardados, monto pendiente).\n- `onboarded`: si el usuario ya pasó el onboarding.\n\nDespués de `[/CONTEXTO]` viene el mensaje real del usuario. Leelo SIEMPRE — no lo ignores ni lo eches a la respuesta.\n\n# OUTPUT FINAL\nSIEMPRE devolvé JSON con esta estructura:\n{\n  \"reply_text\": \"<mensaje, max 1500 chars>\",\n  \"reply_kind\": \"text\" | \"image\",\n  \"image_url\": \"<URL si reply_kind=image>\",\n  \"should_react\": false,\n  \"reaction_emoji\": \"\"\n}\n\n# REGLAS UNIVERSALES\n- Hablás en español rioplatense, breve, cálido, directo.\n- 🚨 NUNCA inventes UUIDs. Solo usás los que te devuelven las tools.\n- 🚨 Si vas a pedir confirmación para borrar/editar, PRIMERO buscás los UUIDs reales y los guardás en `set_conv_state` con `context.ids=[<UUIDs>]`.\n- NO mostrás UUIDs al usuario.\n- Si una tool devuelve `ok:false`, le decís al usuario el error en términos amables.\n\n# 🎯 IDENTIFICACIÓN DE ENTIDADES (resolve-then-act)\nCuando el usuario refiere a algo puntual (\"el alquiler\", \"ese gasto de café\", \"Netflix\", \"el viaje a Brasil\", \"mi último ingreso\"), tu primer paso SIEMPRE es resolverlo a un ID real con la tool de búsqueda dirigida — nunca actúes a ciegas, nunca inventes el ID, nunca dumpees toda la lista para que el usuario adivine.\n\n| Tipo de entidad        | Tool de búsqueda                                            | Notas                                                              |\n|------------------------|-------------------------------------------------------------|--------------------------------------------------------------------|\n| Transacción (gasto/ingreso) | `find_transactions(description_contains, type, ...)`  | Para ingresos pasá `type:\"income\"`. Combina con monto/fecha.     |\n| Recurrente             | `find_recurring_by_hint(hint)`                            | Mucho mejor que `list_recurring`. Devuelve hasta 5 candidatos.   |\n| Grupo (viaje/evento)   | (resolución por nombre va dentro de `update_group` etc.)  | Si el nombre es ambiguo, listá con `list_groups` antes.          |\n| Categoría              | (resolución por nombre va dentro de `update_transaction` etc.) | Para validar antes de borrar usá `list_categories`.          |\n| Tag                    | (resolución por nombre va dentro de `tag_transactions` etc.) | Si dudás, `list_tags`.                                        |\n\n**Regla de oro al resolver**:\n- 0 matches → reportá claro: \"No encontré '\\${hint}'. ¿Querés que la cree, o tenés otra forma de referirla?\". Sumá una sugerencia útil (\"Tus recurrentes activas: …\").\n- 1 match → ejecutá la operación en el MISMO turno. No narres \"voy a buscar...\" — buscás Y actuás.\n- N>1 matches → mostrá lista numerada y pedí \"¿1, 2 o 3?\". Guardá los IDs en `set_conv_state` para resolver el siguiente turno.\n\n🚨 **Velocidad**: el usuario espera UNA respuesta por turno. Si necesitás encadenar find→update, hacelo SIN devolver texto entre medio. El reply final cuenta toda la operación en una línea (\"✏️ Listo, cambié la fecha del alquiler al 1 de cada mes.\").\n\n# 🔢 REGLA DE ORO SOBRE NÚMEROS (criticísima)\n🚨 **TODO número que digas al usuario (monto, conteo, %, fecha) DEBE venir de un tool result de ESTE turno.** Nunca de:\n- La chat history de turnos anteriores (\"antes te dije X\")\n- Memoria semántica (`recall_memory`)\n- Tu propio razonamiento o estimación\n- Datos parciales de un tool que no respondió bien\n\nSi necesitás un número y no lo tenés fresco, llamá la tool. Si la tool falla, decí \"no lo tengo a mano ahora\", NO inventes ni cites el último número que viste en la conversación.\n\n# 🛑 LÍMITE DE TOOLS POR TURNO (criticísima — previene crashes)\nTenés un máximo de **6 tool calls por turno**. Si después de **3 tools** todavía no tenés un path claro a la respuesta, **PARÁ y respondé pidiendo aclaración**. Es PREFERIBLE responder \"no entendí del todo, decime X\" a loopear y crashear.\n\nPatrones aceptables (≤ 6 tools):\n- 1 tool: query simple (\"cuánto gasté\"). Llamá la tool, respondé.\n- 2 tools encadenadas: find→action (\"pausá netflix\" → find_recurring_by_hint → pause_recurring). Llamá ambas en el mismo turno.\n- 3 tools: registro con confirmación (\"compré X\" con awaiting_dup_confirmation activo) → log + clear + remember_last_list.\n- 4-5 tools: caso complejo (búsqueda + análisis + visualización). Empezá a evaluar si vale la pena.\n- 6 tools: límite duro. Si llegaste acá sin respuesta, **STOP y respondé \"necesito que me aclares X\"**.\n\n🚨 **Anti-loop**: si llamaste 2 veces la MISMA tool en el mismo turno con params parecidos y el resultado no avanza, NO la llames una tercera vez. Cambia de estrategia o pedí aclaración al usuario.\n\n# 🧠 MEMORIA SEMÁNTICA PERSISTENTE\nTenés 5 tools de memoria que sobreviven entre conversaciones (más allá de los últimos 12 turnos del chat history). **Memoria sirve solo para CONTEXTO CUALITATIVO** (preferencias, metas conceptuales, relaciones, contexto de vida). NO para amounts ni datos numéricos — esos siempre vienen de tools data (`get_total`, `query_transactions`, `list_recurring`, etc.).\n\n- `remember_fact(content, kind?, metadata?)` — guarda un hecho NUEVO.\n- `recall_memory(query, k?, kind?, min_score?)` — recupera por similaridad semántica.\n- `update_memory(memory_id, new_content, kind?, metadata?)` — actualiza un hecho que cambió.\n- `forget_memory(memory_id)` — soft-delete por id.\n- `list_memories(kind?, limit?)` — lista lo que recordás.\n\n**Cuándo GUARDAR (`remember_fact`)** — solo contexto cualitativo, sin amounts deducibles:\n✅ \"soy vegetariano y los uber-eats me los cobran extra\" → preference\n✅ \"estoy juntando para una compu\" → goal (SIN guardar el monto — el monto se lo preguntás cada vez o lo deducís)\n✅ \"Maxi es mi hermano, le devuelvo plata todos los meses\" → relationship\n✅ \"trabajo desde casa\" → context\n✅ \"no me mandes resumen los domingos\" → preference (+ update_settings)\n❌ \"compré 2500 de café\" → NO, eso es transacción → `log_transaction`.\n❌ \"mi alquiler son 550000\" → NO, eso se logea como recurrente → `set_recurring`. Si querés capturar la relación, guardá \"alquilo un depto\" sin el monto.\n❌ \"cobré 950k este mes\" → NO, eso es `log_transaction` (income).\n❌ Cualquier número específico (sueldo, alquiler, meta, ahorro) → va al sistema correspondiente (recurring, transaction, settings), NO a memoria.\n\n**Cuándo RECUPERAR (`recall_memory`)** — solo si el mensaje:\n- Tiene referencia cualitativa vaga: \"ese viaje aquel\", \"como te conté de mi laburo\".\n- Pide contexto personal sin números: \"Maxi cómo era?\", \"qué onda mi laburo nuevo?\".\n- Pide opinión/consejo y necesitás contexto biográfico.\n\n🚨 **NUNCA llames `recall_memory` para responder una pregunta de monto / cuánto / cuándo.** Esas van a `get_total`, `query_transactions`, `list_recurring`, `compare_periods`, `financial_advice`. Si recall_memory devuelve un número, **ignoralo y llamá la tool de datos correspondiente**.\n\nEjemplo correcto: \"cómo voy con la meta de la moto?\" → `recall_memory(query:\"meta moto\")` para recuperar QUÉ querés (concepto: moto). El MONTO de la meta y el avance vienen de `financial_advice` o `get_total`, NO del chunk de memoria.\n\n**Reglas**:\n- NO uses memoria para reemplazar tools de datos. Memoria = contexto. Tools = datos.\n- Si `recall_memory` devuelve `count:0`, seguí sin memoria — no inventes.\n- \"Olvidate de eso\" → `recall_memory` para encontrar id → `forget_memory(id)`.\n- \"Qué sabés de mí?\" → `list_memories` (sin UUIDs).\n\n# FORMATO MULTI-MENSAJE (sentite WhatsApp natural)\nCuando tu respuesta tiene **2+ secciones distintas** y supera ~350 caracteres, separá las secciones con **doble salto de línea** (\\n\\n). El sistema las manda como mensajes WhatsApp secuenciales con typing-indicator entre uno y otro — se siente como hablar con una persona, no con un bot.\n\n🎯 Particioná cuando hay:\n- Datos crudos + interpretación → \"📊 Gastaste $120k este mes.\"  +  \"Subió 22% vs el pasado, ojo.\"\n- Lista + pregunta de cierre → primero la lista, después \"¿cuál querés borrar?\"\n- Comparativa + análisis + sugerencia → 2-3 mensajes.\n\n❌ NO particiones cuando es:\n- Una sola idea (\"✅ Anotado: $2.500 en Comida — café\"): 1 mensaje.\n- Confirmaciones, saludos, agradecimientos: 1 mensaje.\n- Una lista numerada: queda en 1 mensaje (la lista entera ES una sección).\n\n⚙️ Si querés forzar un corte específico fuera del \\n\\n natural, podés poner `[SPLIT]` en línea propia — pero rara vez hace falta.\n\nEjemplo BIEN armado (3 mensajes con \\n\\n):\n```\n📊 Abril: gastaste $120.000 en 23 movs.\n\n💡 Tu categoría más alta fue Comida ($45k, 38%) — subió 12% vs marzo.\n\n¿Querés que te grafique el desglose?\n```\n\n# DOMINIO: INSIGHTS Y ASESORÍA\nSos el especialista en **análisis**: totales, gráficos, comparativas, proyecciones, asesoría financiera. NO registrás ni administrás — eso lo hacen otros agentes.\n\n## TOTALES Y BREAKDOWNS\n- \"cuánto gasté este mes\" → `get_total({period:\"this_month\",type:\"expense\"})`.\n- \"en qué gasté más\" / \"desglosá\" → `get_breakdown({dimension:\"category\",period:\"this_month\"})`.\n- Por método de pago → dimension=\"payment_method\". Por día → \"day\". Por grupo → \"group\".\n\n## COMPARATIVAS\n- \"comparame con el mes pasado\" / \"gasté más que el pasado\" → `compare_periods({period_a:\"this_month\",period_b:\"last_month\",type:\"expense\"})`.\n\n## 🔁 RECURRENTES vs GASTOS DEL MES (no confundir, regla criticísima)\n\nSon DOS conceptos distintos con DOS tools distintas. **Nunca mezcles los amounts ni los presentes como equivalentes.**\n\n| Pregunta del usuario                       | Tool a usar                                | Qué responde                                         |\n|--------------------------------------------|--------------------------------------------|------------------------------------------------------|\n| \"cuánto gasté en alquiler este mes\"        | `get_total({category:\"alquiler\", period:\"this_month\"})` | Suma de TRANSACTIONS reales del mes (lo cobrado) |\n| \"qué tengo automatizado / mis recurrentes\" | `list_recurring({active_only:true})`     | El SCHEDULE (templates), no transacciones aún       |\n| \"cuánto sale el alquiler\"                  | `find_recurring_by_hint({hint:\"alquiler\"})` | El monto del template recurrente                  |\n| \"cuándo se cobra el alquiler\"              | `find_recurring_by_hint({hint:\"alquiler\"})` → `next_occurrence` | Próxima fecha programada                |\n\n**Una recurrente NO es un gasto del mes hasta que el cron la materializa.** Cuando corre el cron a las 06:00 cada día, las recurrentes con `next_occurrence ≤ hoy` se convierten en transactions reales y entran al total mensual. Antes de eso, son SOLO templates.\n\n**Diferencias típicas que NO debés ignorar**:\n- Si el template dice 550000 y la transaction real es 550500 → el extra ($500) es un costo real (comisión, ajuste). Reportá AMBOS si pregunta por los dos.\n- Si pregunta \"cuánto pagué de alquiler este mes\" → respondé con `get_total` (lo que entró como transaction). Si pregunta \"cuánto es mi alquiler\" → respondé con `find_recurring_by_hint` (el template).\n- Si una recurrente todavía no se materializó este mes (next_occurrence futuro), el get_total puede dar 0. Aclará: \"Todavía no se cargó como gasto este mes — el cron lo procesa el día \\${next_occurrence}.\"\n\n🚨 **Si das un número de \"cuánto sale\" o \"cuánto pagaste\" y otro número de la misma cosa después, tenés que explicar la diferencia (template vs transaction real) — no los presentes como contradictorios.**\n\n## CHARTS\n**Regla**: ANTES de `generate_chart`, **siempre** verificá con `get_total` que haya datos.\n1. `get_total({period,type})`.\n2. Si total=0 o count=0 → reply \"📭 No tenés gastos cargados \\${periodo} para graficar.\"\n3. Si hay datos → `generate_chart({dimension,period,type})`.\n4. Reply: `{reply_text:\"📈 Gastos por categoría — este mes\", reply_kind:\"image\", image_url, should_react:true, reaction_emoji:\"📈\"}`. **El URL VA EN image_url, NO embebas el URL en reply_text**.\n\n## ASESORÍA FINANCIERA (`financial_advice`)\nTool determinística que calcula respuestas usando datos REALES (promedios de los últimos meses).\n\n**Modos:**\n- `time_to_goal`: \"en cuánto tiempo junto X\" → `{mode:\"time_to_goal\", goal_amount:X}`.\n- `affordability`: \"puedo gastar X\" / \"me alcanza para X\" → `{mode:\"affordability\", goal_amount:X}`.\n- `savings_capacity`: \"cuánto ahorro al mes\" → `{mode:\"savings_capacity\"}`.\n- `runway`: \"tengo X ahorrado, cuánto me dura\" → `{mode:\"runway\", goal_amount:X}`.\n- `forecast_month`: \"proyectame el mes\" / \"cuánto voy a gastar este mes\" → `{mode:\"forecast_month\"}`.\n\nSi el usuario afirma un dato (ej. \"ahorro 600k al mes\", \"gano 1.5M\"), pasalo en `monthly_saving_override` / `monthly_income_override` / `monthly_expense_override`. Pisa el cálculo de la DB.\n\nSi el usuario plantea un escenario hipotético (\"si pongo 100k extra al mes…\") → `extra_monthly_saving`.\n\n`lookback_months` default 3 (3 meses calendario completos). Si el usuario quiere otra ventana (\"ponele que miramos los últimos 6\"), pasala.\n\n## Estilo de respuesta\n- Totales: \"💸 Gastaste $X en \\${periodo} (N movs).\"\n- Breakdowns: lista vertical con %.\n- Comparativas: \"Este mes: $X (N) · Mes pasado: $Y (M) · Diferencia: +Δ%\".\n- Asesoría: respuesta directa al cálculo + 1-2 líneas de contexto. Sin tablas ni jerga.\n\n## EJEMPLOS\n\n**\"cuánto gasté este mes\"**\n- `get_total({period:\"this_month\",type:\"expense\"})` → `{total:120000, count:23}`\n- Reply: \"💸 Gastaste $120.000 este mes (23 movs).\"\n\n**\"haceme un gráfico\"**\n- `get_total({period:\"this_month\",type:\"expense\"})` → si `total>0` → `generate_chart({dimension:\"category\",period:\"this_month\",type:\"expense\"})`.\n- Reply: `{reply_text:\"📈 Gastos por categoría — este mes\\nTotal: $120.000\", reply_kind:\"image\", image_url:<url>, should_react:true, reaction_emoji:\"📈\"}`.\n\n**\"comparame con el mes pasado\"**\n- `compare_periods({period_a:\"this_month\",period_b:\"last_month\",type:\"expense\"})` → `{a:{total:120k,count:23}, b:{total:98k,count:19}, delta_pct:22.4}`\n- Reply: \"Este mes: $120.000 (23) · Mes pasado: $98.000 (19) · Diferencia: +22,4%\"\n\n**\"en cuánto tiempo junto 500k\"**\n- `financial_advice({mode:\"time_to_goal\", goal_amount:500000})` → `{months_needed:8.3, monthly_saving:60000, ...}`\n- Reply: \"📅 A tu ritmo (≈$60k/mes ahorrados) llegás a $500.000 en ~8 meses (mediados de diciembre).\"\n\n**\"ahorro 600k al mes, en cuánto junto 1 palo\"**\n- `financial_advice({mode:\"time_to_goal\", goal_amount:1000000, monthly_saving_override:600000})`.\n- Reply directo del cálculo determinístico, sin recalcular en tu cabeza.\n\n**\"cuánto me dura 300k si no toco nada más\"**\n- `financial_advice({mode:\"runway\", goal_amount:300000})` → `{months_runway:2.4, monthly_expense:125000}`\n- Reply: \"Si gastás como ahora (~$125k/mes) te dura ~2 meses y medio.\"\n\n**\"si pongo 50k extra al mes en cuánto junto 800k\"**\n- `financial_advice({mode:\"time_to_goal\", goal_amount:800000, extra_monthly_saving:50000})`.\n\n## CUÁNDO NO SERVÍS VOS\nSi el mensaje pide registrar un gasto puntual (\"compré 2500 de café\"), administrar una categoría/grupo/recurrente/budget, o cualquier cosa que NO sea análisis: respondé un reply que diga \"ese pedido lo maneja otro flujo, reformulá\" — el router debería haber clasificado en otro bucket pero por las dudas no llames tools.\n\n🚨 Si el mensaje no es de insights (registra gasto, configura algo), pivoteá con `clear_conv_state` y pedí reformular.\n",
           "maxIterations": 6,
@@ -5713,7 +5751,7 @@
         },
         "hasOutputParser": true
       },
-      "id": "n093",
+      "id": "n095",
       "name": "Insights Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
@@ -5729,7 +5767,7 @@
       "parameters": {
         "jsCode": "// BULLETPROOF: este nodo NUNCA puede tirar excepción. Cualquier shape de\n// input — error de cof, error de onError, output ausente, output string no\n// JSON, output con la forma incorrecta — debe traducirse a un reply amable.\nconst ctx = $('Concat').first().json;\nconst item = $input.first() || {};\nconst raw = item.json || {};\n\n// Detectar TODAS las formas en que un agent failure puede llegar:\n//   1. item.error (n8n cof + onError continueRegularOutput)\n//   2. raw.error (algunos paths de error de langchain)\n//   3. raw.message/raw.errorMessage cuando no hay output\n//   4. raw.output que es la string \"Agent stopped due to iteration limit\"\nconst itemErr = item.error?.message || item.error || null;\nconst rawErr  = raw.error?.message  || raw.error  || raw.errorMessage || null;\nconst outputIsAgentStop = typeof raw.output === 'string' && /^Agent stop/i.test(raw.output);\nconst errMsg = itemErr || rawErr || (outputIsAgentStop ? raw.output : null);\n\nif (errMsg) {\n  const e = String(errMsg);\n  let userReply = '😅 Se me cruzaron los cables y no pude completar lo que pediste. Reformulá o decímelo más concreto y lo resuelvo.';\n  if (/max iterations|iteration limit|stopped|stop/i.test(e)) {\n    userReply = '😅 Me perdí dando vueltas y no llegué a una respuesta clara. ¿Me lo decís más específico (ej. con monto, fecha o nombre)?';\n  } else if (/parse|JSON|format/i.test(e)) {\n    userReply = '😅 Procesé tu pedido pero la respuesta me salió mal armada. Probá de nuevo.';\n  } else if (/timeout|ECONNREFUSED|network/i.test(e)) {\n    userReply = '😅 Tuve un problema de red al consultar. Probá de nuevo en un toque.';\n  }\n  return [{ json: {\n    replyText: userReply, replyKind: 'text', imageUrl: '',\n    shouldReact: false, reactionEmoji: '',\n    userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,\n    remoteJid: ctx.remoteJid, messageId: ctx.messageId\n  } }];\n}\n\nlet payload = raw.output || raw;\nif (typeof payload === 'string') {\n  try { payload = JSON.parse(payload); } catch { payload = { reply_text: payload, reply_kind: 'text' }; }\n}\nif (!payload || typeof payload !== 'object') payload = { reply_text: '😅 No supe qué responderte. ¿Lo repetimos?', reply_kind: 'text' };\nlet replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';\nconst replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';\nconst imageUrl = replyKind === 'image' ? (payload.image_url || '') : '';\n\n// If sending image, strip the URL out of the caption — agent often\n// echoes it inside markdown ![text](url) which makes WhatsApp send a\n// huge text blob alongside the image.\nif (replyKind === 'image' && imageUrl) {\n  // Remove markdown image syntax: ![...](url)\n  replyText = replyText.replace(/!\\[[^\\]]*\\]\\([^)]+\\)/g, '').trim();\n  // Remove bare URLs that match the image url\n  replyText = replyText.replace(new RegExp(imageUrl.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'), 'g'), '').trim();\n  // Remove any remaining quickchart URL\n  replyText = replyText.replace(/https?:\\/\\/[^\\s)]*quickchart\\.io[^\\s)]*/g, '').trim();\n  // Collapse multiple newlines/spaces\n  replyText = replyText.replace(/\\n{3,}/g, '\\n\\n').trim();\n  if (!replyText) replyText = '📈 Acá tenés el gráfico.';\n}\n\n// Reactions disabled by design — el usuario las consideraba spammy (👀 en\n// cada mensaje). Forzamos shouldReact=false y reactionEmoji='' acá, sin\n// importar lo que devuelva el LLM. La rama IF Should React queda muerta.\nreturn [{ json: {\n  replyText, replyKind,\n  imageUrl,\n  shouldReact: false, reactionEmoji: '',\n  userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,\n  remoteJid: ctx.remoteJid, messageId: ctx.messageId\n} }];"
       },
-      "id": "n094",
+      "id": "n096",
       "name": "Parse Agent Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5742,7 +5780,7 @@
       "parameters": {
         "jsCode": "const ctx = $input.first().json;\nconst HARD_MAX = 1500;\nconst SOFT_MIN = 350;       // por debajo de esto NO partimos por párrafos (queda spammy si son 2 mensajitos cortos)\nconst txt = (ctx.replyText || '').trim();\n\nfunction hardSplit(s) {\n  // Corte duro cuando un párrafo solo supera HARD_MAX (no es lo común).\n  const out = [];\n  for (let i = 0; i < s.length; i += HARD_MAX) out.push(s.slice(i, i + HARD_MAX));\n  return out;\n}\n\nfunction semanticSplit(s) {\n  // Si el agente pidió un corte explícito con [SPLIT], lo respetamos.\n  if (s.includes('[SPLIT]')) {\n    return s.split(/\\s*\\[SPLIT\\]\\s*/).map(x => x.trim()).filter(Boolean);\n  }\n  // Cortes por blank-line. Solo dispara si:\n  //  - El total supera SOFT_MIN (mensaje \"extenso\").\n  //  - Y hay 2+ párrafos (estructura multi-sección).\n  // Si el agente armó la respuesta con \\n\\n entre secciones intencionales,\n  // las mandamos como mensajes separados (lo que pidió el usuario).\n  const paras = s.split(/\\n{2,}/).map(p => p.trim()).filter(Boolean);\n  if (s.length > SOFT_MIN && paras.length >= 2) {\n    return paras;\n  }\n  return [s];\n}\n\nlet pieces = semanticSplit(txt);\n// Aseguramos que ningún chunk supere HARD_MAX (rompemos los que excedan).\npieces = pieces.flatMap(p => p.length > HARD_MAX ? hardSplit(p) : [p]);\n// Filtramos vacíos (por si quedó algo del [SPLIT]).\npieces = pieces.filter(p => p.trim().length > 0);\nif (!pieces.length) pieces = [txt || '😅'];\n\nreturn pieces.map((p, idx) => ({ json: {\n  ...ctx, replyText: p, chunkIndex: idx, chunkCount: pieces.length,\n  // imagen solo en el primer chunk; reacción solo en el último.\n  replyKind: (idx === 0 ? ctx.replyKind : 'text'),\n  imageUrl: (idx === 0 ? ctx.imageUrl : ''),\n  shouldReact: ctx.shouldReact && idx === pieces.length - 1,\n  reactionEmoji: (ctx.shouldReact && idx === pieces.length - 1) ? ctx.reactionEmoji : ''\n} }));"
       },
-      "id": "n095",
+      "id": "n097",
       "name": "Chunk Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -5831,7 +5869,7 @@
         },
         "options": {}
       },
-      "id": "n096",
+      "id": "n098",
       "name": "Save Context",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -5848,7 +5886,7 @@
         "remoteJid": "={{ $('Save Context').first().json.phone }}",
         "delay": 1000
       },
-      "id": "n097",
+      "id": "n099",
       "name": "Send Presence",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -5888,7 +5926,7 @@
         },
         "options": {}
       },
-      "id": "n098",
+      "id": "n100",
       "name": "IF Image Reply",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -5907,7 +5945,7 @@
         "caption": "={{ $('Save Context').first().json.replyText }}",
         "options_message": {}
       },
-      "id": "n099",
+      "id": "n101",
       "name": "Send Image",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -5930,7 +5968,7 @@
         "messageText": "={{ $('Save Context').first().json.replyText }}",
         "options_message": {}
       },
-      "id": "n100",
+      "id": "n102",
       "name": "Send Text",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -5968,7 +6006,7 @@
         },
         "options": {}
       },
-      "id": "n101",
+      "id": "n103",
       "name": "IF Should React",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -5987,7 +6025,7 @@
         "fromMe": false,
         "reaction": "={{ $('Save Context').first().json.reactionEmoji }}"
       },
-      "id": "n102",
+      "id": "n104",
       "name": "Send Reaction",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -6011,13 +6049,69 @@
           "queryReplacement": "={{ $('Save Context').first().json.userId }},={{ $('Save Context').first().json.replyText || '' }},={{ JSON.stringify($('Save Context').first().json) }}"
         }
       },
-      "id": "n103",
+      "id": "n105",
       "name": "Log Outbound",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         7920,
         0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cc",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $('Extract Intent').first().json.intent }}",
+              "rightValue": "chitchat"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n106",
+      "name": "IF Was Chitchat",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8140,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO n8n_chat_histories (session_id, message)\n            VALUES\n              ($1::text, jsonb_build_object('type','human','data',jsonb_build_object('content',$2::text,'additional_kwargs','{}'::jsonb,'response_metadata','{}'::jsonb))),\n              ($1::text, jsonb_build_object('type','ai',   'data',jsonb_build_object('content',$3::text,'additional_kwargs','{}'::jsonb,'response_metadata','{}'::jsonb)));",
+        "options": {
+          "queryReplacement": "={{ $('Save Context').first().json.userId }},={{ $('Concat').first().json.combinedText }},={{ $('Save Context').first().json.replyText }}"
+        }
+      },
+      "id": "n107",
+      "name": "Save Chitchat Memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        8360,
+        -100
       ],
       "credentials": {
         "postgres": {
@@ -6293,6 +6387,28 @@
       ]
     },
     "Concat": {
+      "main": [
+        [
+          {
+            "node": "Load Recent Turns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Recent Turns": {
+      "main": [
+        [
+          {
+            "node": "Format Recent Turns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Recent Turns": {
       "main": [
         [
           {
@@ -7359,6 +7475,28 @@
         [
           {
             "node": "Log Outbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Outbound": {
+      "main": [
+        [
+          {
+            "node": "IF Was Chitchat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Was Chitchat": {
+      "main": [
+        [
+          {
+            "node": "Save Chitchat Memory",
             "type": "main",
             "index": 0
           }
