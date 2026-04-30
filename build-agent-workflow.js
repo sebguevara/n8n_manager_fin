@@ -2011,47 +2011,45 @@ addNode('Save Context', 'n8n-nodes-base.set', {
 }, 6600, 0, { tv: 3.4 });
 connect('Chunk Reply', 'Save Context');
 
-// CRÍTICO: Cuando Chunk Reply produce N items (mensajes split por \\n\\n),
-// los Send nodes corren una vez por item. Dos trampas a evitar:
-//   1) $('Save Context').first().json.X → SIEMPRE el chunk 0 → todos los
-//      chunks mandan el texto del primero. (Bug original: el usuario veía
-//      "Aquí están tus categorías:" pero la lista se perdía.)
-//   2) $json.X dentro de cualquier nodo posterior a Send Presence (u otro
-//      Evolution API node) → undefined, porque la API node reemplaza $json
-//      con la respuesta HTTP, no pasa el contexto por default.
-// Solución: usar $('Save Context').item.json.X (paired-item) en los Send y
-// los IF que vienen después de Send Presence. Eso resuelve al chunk
-// correspondiente vía pairedItem tracking de n8n. Send Presence sí puede
-// usar $json porque su parent directo es Save Context.
+// Send Presence (typing indicator) corre como sink paralelo desde Save
+// Context — NO en el medio del data path. Antes lo teníamos
+// Save Context → Send Presence → IF Image Reply, pero los nodos de
+// Evolution API reemplazan $json con la respuesta HTTP y además pueden
+// alterar el conteo de items / pairedItem. Resultado: Send Text recibía
+// $json.X = undefined o sólo el chunk 0, y la lista de categorías nunca
+// salía. Ahora Save Context sale a DOS hijos en paralelo (IF Image Reply
+// para data, Send Presence como side-effect sin continuación), así $json
+// dentro de Send Text/Image es el item del chunk correspondiente y los N
+// chunks se mandan correctamente.
 addNode('Send Presence', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'chat-api', operation: 'send-presence',
     instanceName: "={{ $json.instance }}",
     remoteJid: "={{ $json.phone }}",
     delay: 1000
-}, 6820, 0, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
+}, 6820, 200, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
 connect('Save Context', 'Send Presence');
 
 addNode('IF Image Reply', 'n8n-nodes-base.if', {
-    conditions: cond('and', [eqStr('c1', "={{ $('Save Context').item.json.replyKind }}", 'image')]),
+    conditions: cond('and', [eqStr('c1', "={{ $json.replyKind }}", 'image')]),
     options: {}
 }, 7040, 0);
-connect('Send Presence', 'IF Image Reply');
+connect('Save Context', 'IF Image Reply');
 
 addNode('Send Image', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'messages-api', operation: 'send-image',
-    instanceName: "={{ $('Save Context').item.json.instance }}",
-    remoteJid: "={{ $('Save Context').item.json.phone }}",
-    media: "={{ $('Save Context').item.json.imageUrl }}",
-    caption: "={{ $('Save Context').item.json.replyText }}",
+    instanceName: "={{ $json.instance }}",
+    remoteJid: "={{ $json.phone }}",
+    media: "={{ $json.imageUrl }}",
+    caption: "={{ $json.replyText }}",
     options_message: {}
 }, 7260, -100, { tv: 1, creds: { evolutionApi: EVO } });
 connect('IF Image Reply', 'Send Image', 0);
 
 addNode('Send Text', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'messages-api',
-    instanceName: "={{ $('Save Context').item.json.instance }}",
-    remoteJid: "={{ $('Save Context').item.json.phone }}",
-    messageText: "={{ $('Save Context').item.json.replyText }}",
+    instanceName: "={{ $json.instance }}",
+    remoteJid: "={{ $json.phone }}",
+    messageText: "={{ $json.replyText }}",
     options_message: {}
 }, 7260, 100, { tv: 1, creds: { evolutionApi: EVO } });
 connect('IF Image Reply', 'Send Text', 1);
@@ -2059,7 +2057,7 @@ connect('IF Image Reply', 'Send Text', 1);
 addNode('IF Should React', 'n8n-nodes-base.if', {
     conditions: cond('and', [{
         id: 'c1', operator: { type: 'string', operation: 'notEmpty' },
-        leftValue: "={{ $('Save Context').item.json.reactionEmoji }}", rightValue: ''
+        leftValue: "={{ $json.reactionEmoji }}", rightValue: ''
     }]), options: {}
 }, 7480, 0);
 connect('Send Image', 'IF Should React');
@@ -2067,11 +2065,11 @@ connect('Send Text', 'IF Should React');
 
 addNode('Send Reaction', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'messages-api', operation: 'send-reaction',
-    instanceName: "={{ $('Save Context').item.json.instance }}",
-    remoteJid: "={{ $('Save Context').item.json.remoteJid }}",
-    messageId: "={{ $('Save Context').item.json.messageId }}",
+    instanceName: "={{ $json.instance }}",
+    remoteJid: "={{ $json.remoteJid }}",
+    messageId: "={{ $json.messageId }}",
     fromMe: false,
-    reaction: "={{ $('Save Context').item.json.reactionEmoji }}"
+    reaction: "={{ $json.reactionEmoji }}"
 }, 7700, -100, { tv: 1, creds: { evolutionApi: EVO }, cof: true });
 connect('IF Should React', 'Send Reaction', 0);
 

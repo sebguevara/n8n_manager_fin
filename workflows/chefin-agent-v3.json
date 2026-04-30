@@ -5892,7 +5892,7 @@
       "typeVersion": 1,
       "position": [
         6820,
-        0
+        200
       ],
       "credentials": {
         "evolutionApi": {
@@ -5919,7 +5919,7 @@
                 "type": "string",
                 "operation": "equals"
               },
-              "leftValue": "={{ $('Save Context').item.json.replyKind }}",
+              "leftValue": "={{ $json.replyKind }}",
               "rightValue": "image"
             }
           ]
@@ -5939,10 +5939,10 @@
       "parameters": {
         "resource": "messages-api",
         "operation": "send-image",
-        "instanceName": "={{ $('Save Context').item.json.instance }}",
-        "remoteJid": "={{ $('Save Context').item.json.phone }}",
-        "media": "={{ $('Save Context').item.json.imageUrl }}",
-        "caption": "={{ $('Save Context').item.json.replyText }}",
+        "instanceName": "={{ $json.instance }}",
+        "remoteJid": "={{ $json.phone }}",
+        "media": "={{ $json.imageUrl }}",
+        "caption": "={{ $json.replyText }}",
         "options_message": {}
       },
       "id": "n101",
@@ -5963,9 +5963,9 @@
     {
       "parameters": {
         "resource": "messages-api",
-        "instanceName": "={{ $('Save Context').item.json.instance }}",
-        "remoteJid": "={{ $('Save Context').item.json.phone }}",
-        "messageText": "={{ $('Save Context').item.json.replyText }}",
+        "instanceName": "={{ $json.instance }}",
+        "remoteJid": "={{ $json.phone }}",
+        "messageText": "={{ $json.replyText }}",
         "options_message": {}
       },
       "id": "n102",
@@ -5999,7 +5999,7 @@
                 "type": "string",
                 "operation": "notEmpty"
               },
-              "leftValue": "={{ $('Save Context').item.json.reactionEmoji }}",
+              "leftValue": "={{ $json.reactionEmoji }}",
               "rightValue": ""
             }
           ]
@@ -6019,11 +6019,11 @@
       "parameters": {
         "resource": "messages-api",
         "operation": "send-reaction",
-        "instanceName": "={{ $('Save Context').item.json.instance }}",
-        "remoteJid": "={{ $('Save Context').item.json.remoteJid }}",
-        "messageId": "={{ $('Save Context').item.json.messageId }}",
+        "instanceName": "={{ $json.instance }}",
+        "remoteJid": "={{ $json.remoteJid }}",
+        "messageId": "={{ $json.messageId }}",
         "fromMe": false,
-        "reaction": "={{ $('Save Context').item.json.reactionEmoji }}"
+        "reaction": "={{ $json.reactionEmoji }}"
       },
       "id": "n104",
       "name": "Send Reaction",
@@ -7397,13 +7397,7 @@
             "node": "Send Presence",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Send Presence": {
-      "main": [
-        [
+          },
           {
             "node": "IF Image Reply",
             "type": "main",
