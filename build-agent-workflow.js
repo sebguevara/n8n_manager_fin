@@ -1944,25 +1944,58 @@ addNode('Router Schema', '@n8n/n8n-nodes-langchain.outputParserStructured', {
 // El bloque dinámico va acá (no en el system prompt) para no invalidar el cache de OpenAI.
 const USER_MESSAGE_WITH_CONTEXT = "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}";
 
-// Router como Basic LLM Chain — un solo round-trip a OpenAI, output JSON estricto.
+// Router como Basic LLM Chain — un solo round-trip a OpenAI.
+// hasOutputParser=false a propósito: parseamos manual en Extract Intent para tolerar
+// ```json fences``` y respuestas con shape envuelto que el output parser estructurado
+// rechaza con "Model output doesn't fit required format".
 addNode('Router', '@n8n/n8n-nodes-langchain.chainLlm', {
     promptType: 'define',
     text: USER_MESSAGE_WITH_CONTEXT,
     messages: { messageValues: [{ message: ROUTER_PROMPT }] },
-    hasOutputParser: true
+    hasOutputParser: false
 }, 5830, 0, { tv: 1.6 });
 connect('IF Heavy', 'Router', 1);            // skip path (no aguardame)
 connect('Send Aguardame', 'Router');         // heavy path
 connect('OpenAI Chat Model', 'Router', 0, 0, 'ai_languageModel');
-connect('Router Schema', 'Router', 0, 0, 'ai_outputParser');
 
 // Después del router: extraemos intent + agregamos contexto al output.
+// Parser tolerante: chainLlm sin output parser devuelve { text: "..." }. El LLM a veces
+// envuelve la respuesta con ```json``` o con un wrapper {"output": ...}. Limpiamos
+// ambos casos antes de validar el intent. Si nada parsea, fallback a chitchat con
+// un reply genérico para no romper el flujo.
 addNode('Extract Intent', 'n8n-nodes-base.code', {
     jsCode: `const raw = $input.first().json;
-let payload = raw.output || raw;
-if (typeof payload === 'string') {
-  try { payload = JSON.parse(payload); } catch { payload = { intent: 'chitchat', reply_text: payload }; }
+let txt = raw.text ?? raw.output ?? raw.response ?? raw;
+if (typeof txt !== 'string') {
+  try { txt = JSON.stringify(txt); } catch { txt = String(txt); }
 }
+
+// Stripear fences markdown que mete el LLM (\`\`\`json ... \`\`\`)
+txt = txt.trim()
+  .replace(/^\`\`\`(?:json)?\\s*/i, '')
+  .replace(/\`\`\`\\s*$/i, '')
+  .trim();
+
+let payload;
+try {
+  payload = JSON.parse(txt);
+} catch {
+  // Intentar extraer el primer objeto JSON del texto si el LLM tiró texto extra
+  const m = txt.match(/\\{[\\s\\S]*\\}/);
+  if (m) {
+    try { payload = JSON.parse(m[0]); } catch { payload = null; }
+  }
+}
+
+if (!payload || typeof payload !== 'object') {
+  payload = { intent: 'chitchat', reply_text: '😅 No te entendí bien. ¿Lo podés reformular?' };
+}
+
+// Si vino envuelto en {output: {...}}, desenvolver
+if (payload.output && typeof payload.output === 'object' && payload.output.intent) {
+  payload = payload.output;
+}
+
 const ctx = $('Concat').first().json;
 const intent = ['transaction','config','insights','chitchat'].includes(payload.intent) ? payload.intent : 'chitchat';
 return [{ json: {

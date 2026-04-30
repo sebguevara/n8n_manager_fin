@@ -5513,7 +5513,7 @@
             }
           ]
         },
-        "hasOutputParser": true
+        "hasOutputParser": false
       },
       "id": "n089",
       "name": "Router",
@@ -5526,7 +5526,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nlet payload = raw.output || raw;\nif (typeof payload === 'string') {\n  try { payload = JSON.parse(payload); } catch { payload = { intent: 'chitchat', reply_text: payload }; }\n}\nconst ctx = $('Concat').first().json;\nconst intent = ['transaction','config','insights','chitchat'].includes(payload.intent) ? payload.intent : 'chitchat';\nreturn [{ json: {\n  ...ctx,\n  intent,\n  router_reply_text: String(payload.reply_text || '').trim(),\n  router_should_react: !!payload.should_react,\n  router_reaction_emoji: String(payload.reaction_emoji || '').slice(0, 4)\n} }];"
+        "jsCode": "const raw = $input.first().json;\nlet txt = raw.text ?? raw.output ?? raw.response ?? raw;\nif (typeof txt !== 'string') {\n  try { txt = JSON.stringify(txt); } catch { txt = String(txt); }\n}\n\n// Stripear fences markdown que mete el LLM (```json ... ```)\ntxt = txt.trim()\n  .replace(/^```(?:json)?\\s*/i, '')\n  .replace(/```\\s*$/i, '')\n  .trim();\n\nlet payload;\ntry {\n  payload = JSON.parse(txt);\n} catch {\n  // Intentar extraer el primer objeto JSON del texto si el LLM tiró texto extra\n  const m = txt.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    try { payload = JSON.parse(m[0]); } catch { payload = null; }\n  }\n}\n\nif (!payload || typeof payload !== 'object') {\n  payload = { intent: 'chitchat', reply_text: '😅 No te entendí bien. ¿Lo podés reformular?' };\n}\n\n// Si vino envuelto en {output: {...}}, desenvolver\nif (payload.output && typeof payload.output === 'object' && payload.output.intent) {\n  payload = payload.output;\n}\n\nconst ctx = $('Concat').first().json;\nconst intent = ['transaction','config','insights','chitchat'].includes(payload.intent) ? payload.intent : 'chitchat';\nreturn [{ json: {\n  ...ctx,\n  intent,\n  router_reply_text: String(payload.reply_text || '').trim(),\n  router_should_react: !!payload.should_react,\n  router_reaction_emoji: String(payload.reaction_emoji || '').slice(0, 4)\n} }];"
       },
       "id": "n090",
       "name": "Extract Intent",
@@ -6394,17 +6394,6 @@
           {
             "node": "Insights Agent",
             "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Router Schema": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Router",
-            "type": "ai_outputParser",
             "index": 0
           }
         ]
