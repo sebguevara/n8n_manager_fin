@@ -16,9 +16,6 @@ services:
   # No hay tag alpine oficial de pgvector/pgvector, así que compilamos in-place.
   # -------------------------------------------------------------------
   n8n_postgres:
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
     image: pgvector/pgvector:0.8.2-pg18-trixie
     container_name: n8n_postgres
     restart: unless-stopped
@@ -47,7 +44,6 @@ services:
   # -------------------------------------------------------------------
   db-init:
     image: pgvector/pgvector:0.8.2-pg18-trixie
-
     container_name: db-init
     restart: "no"
     environment:
