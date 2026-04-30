@@ -297,6 +297,40 @@ return [{ json:{ userId:ctx.userId, phone:ctx.phone, remoteJid:ctx.remoteJid, in
 }, 3520, 0);
 connect('Mark Processed', 'Concat');
 
+// ---------------------------------------------------------------------------
+// Load Recent Turns — fetches the last 4 entries (2 user/bot pairs) from
+// n8n_chat_histories for the current session_id. Critical for the router:
+// without this, short referential messages like "listalas", "borralas",
+// "mostrámelas" get classified as chitchat because the router has no context.
+// With this, the router sees the previous turn and can resolve the reference.
+// Also surfaced to sub-agents in [CONTEXTO] for consistency.
+// ---------------------------------------------------------------------------
+addNode('Load Recent Turns', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: `SELECT message FROM n8n_chat_histories
+            WHERE session_id = $1::text
+            ORDER BY id DESC
+            LIMIT 4;`,
+    options: { queryReplacement: '={{ $json.userId }}' }
+}, 3740, 0, { tv: 2.5, creds: { postgres: PG }, cof: true, always: true });
+connect('Concat', 'Load Recent Turns');
+
+addNode('Format Recent Turns', 'n8n-nodes-base.code', {
+    jsCode: `const concat = $('Concat').first().json;
+const rows = $input.all().map(i => i.json).filter(r => r && r.message);
+// Rows came in DESC order; flip to chronological (oldest first).
+rows.reverse();
+const turns = rows.map(r => {
+  const m = typeof r.message === 'string' ? JSON.parse(r.message) : r.message;
+  const role = m.type === 'human' ? 'usuario' : (m.type === 'ai' ? 'chefin' : m.type);
+  const content = (m.data?.content || m.content || '').toString().slice(0, 240);
+  return role + ': ' + content;
+}).filter(Boolean);
+const recentTurnsText = turns.length ? turns.join('\\n') : '(sin historial reciente)';
+return [{ json: { ...concat, recentTurnsText } }];`
+}, 3960, 0);
+connect('Load Recent Turns', 'Format Recent Turns');
+
 // =========================================================================
 // AGENT BLOCK (replaces AI Classify + Switch + handlers)
 // =========================================================================
@@ -1173,9 +1207,14 @@ Ejemplo BIEN armado (3 mensajes con \\n\\n):
 const ROUTER_PROMPT = `Sos un router de intención para Chefin (asistente financiero por WhatsApp). Tu único trabajo es clasificar el mensaje del usuario en uno de 4 buckets y, SOLO si es chitchat, redactar la respuesta vos mismo.
 
 # CÓMO LEER EL MENSAJE
-Cada mensaje del usuario llega con un bloque \`[CONTEXTO]\` al principio que tiene \`fecha\`, \`dia\`, \`convState\`, \`convContext\`, \`onboarded\`. El mensaje real viene después de \`[/CONTEXTO]\`. Leé el contexto antes de clasificar.
+Cada mensaje llega con un bloque \`[CONTEXTO]\` que tiene \`fecha\`, \`dia\`, \`convState\`, \`convContext\`, \`onboarded\`, e \`historial\` (últimos 2 turnos del chat). El mensaje real viene después de \`[/CONTEXTO]\`.
 
-🚨 Si \`convState\` está activo, el bucket lo dicta el flujo pendiente:
+🚨 **Usá el historial para resolver mensajes cortos referenciales.** Si el mensaje es breve y abstracto ("listalas", "borralas", "sí dale", "mostrámelas", "hacelo", "esos", "el primero"), el dominio lo dicta el último turno del bot.
+- Bot anterior habló de **categorías** → el mensaje breve va a **config**.
+- Bot anterior habló de **transacciones / movimientos / gastos puntuales** → **transaction**.
+- Bot anterior dio **totales / análisis / gráficos** → **insights**.
+
+🚨 Si \`convState\` está activo, el bucket lo dicta el flujo pendiente (siempre gana sobre el historial):
 - \`awaiting_category\`, \`awaiting_dup_confirmation\`, \`awaiting_bulk_delete\`, \`awaiting_bulk_update\`, \`awaiting_otros_confirmation\`, \`awaiting_pdf_import\` → **transaction**
 - \`awaiting_category_merge\` → **config**
 
@@ -1201,10 +1240,18 @@ Cada mensaje del usuario llega con un bloque \`[CONTEXTO]\` al principio que tie
 - Ejemplos: "haceme un gráfico", "en qué gasté más", "comparame con el mes pasado", "cuánto ahorro al mes", "en cuánto tiempo junto 500 mil", "puedo gastar 30 mil en una salida", "cuánto me dura la plata si tengo X ahorrado", "proyectame el mes".
 - Verbos: comparar, graficar, desglosar, proyectar, ahorrar, junto, tardo, dura.
 
-**chitchat**: saludo, agradecimiento, charla básica, fechas, identidad, ayuda. Sin tools, sin agente.
+**chitchat**: saludo, agradecimiento, charla básica, fechas, identidad, **ayuda genérica**. Sin tools, sin agente.
 - Ejemplos: "hola", "gracias", "qué onda", "qué hora es", "qué fecha es hoy", "ayuda", "qué podés hacer", "cómo andás", "🙂".
 - Para "ayuda" o "qué podés hacer", listá brevemente: registrar gastos, ver totales, gráficos, presupuestos, recurrentes, categorías, tags.
 - Para fechas: respondé desde el bloque [CONTEXTO]. Convertí \`fecha\` y \`dia\` a algo natural ("Hoy es jueves 30 de abril de 2026").
+
+🚨 **NO es chitchat — son consultas a datos del usuario** (deben ir a config / transaction / insights):
+- "qué categorías manejamos / tengo / hay / tenemos" → **config** (call list_categories)
+- "cuáles son mis categorías / grupos / recurrentes / tags / presupuestos" → **config**
+- "listalas / mostrámelas / mostrá las categorías / dame las categorías" → **config**
+- "qué gastos tengo / mostrame los gastos / cuáles son mis movs" → **transaction**
+- "cuánto gasté / cuánto tengo / cuánto cobré" → **transaction** o **insights** (según analítica)
+- Cualquier verbo "listar / mostrar / dar / decir cuál / dame" + entidad concreta → NO es chitchat. Es el dominio de esa entidad.
 
 # OUTPUT (JSON estricto, sin markdown):
 {
@@ -1527,7 +1574,7 @@ const NOTICE_BY_KIND = {
 const heavyNotice = heavyKind ? NOTICE_BY_KIND[heavyKind] : null;
 return [{ json: { ...ctx, isHeavy: !!heavyKind, heavyKind, heavyNotice } }];`
 }, 5170, 0);
-connect('Concat', 'Detect Heavy Op');
+connect('Format Recent Turns', 'Detect Heavy Op');
 
 addNode('IF Heavy', 'n8n-nodes-base.if', {
     conditions: cond('and', [{
@@ -1559,7 +1606,12 @@ addNode('Router Schema', '@n8n/n8n-nodes-langchain.outputParserStructured', {
 
 // User message con [CONTEXTO]...[/CONTEXTO] al principio.
 // El bloque dinámico va acá (no en el system prompt) para no invalidar el cache de OpenAI.
-const USER_MESSAGE_WITH_CONTEXT = "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}";
+// IMPORTANTE: incluimos `historial` (últimos 2 turnos del chat) en el [CONTEXTO]
+// para que el router pueda resolver referenciales tipo "listalas / borralas /
+// mostrámelas / hacelo" que sin contexto irían mal a chitchat. Sub-agents igual
+// tienen Postgres Chat Memory, pero esto les sirve también para el primer turno
+// del agente cuando antes hubo chitchat (que también persiste).
+const USER_MESSAGE_WITH_CONTEXT = "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\nhistorial=\n{{ $('Format Recent Turns').first().json.recentTurnsText }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}";
 
 // Router como Basic LLM Chain — un solo round-trip a OpenAI.
 // hasOutputParser=false a propósito: parseamos manual en Extract Intent para tolerar
@@ -1942,6 +1994,39 @@ addNode('Log Outbound', 'n8n-nodes-base.postgres', {
 }, 7920, 0, { tv: 2.5, creds: { postgres: PG }, cof: true });
 connect('Send Reaction', 'Log Outbound');
 connect('IF Should React', 'Log Outbound', 1);
+
+// ---------------------------------------------------------------------------
+// Save Chitchat to Chat Memory — solo en path chitchat.
+// Por qué: en agent path, el nodo "Postgres Chat Memory" ya persiste el turno
+// (human + ai) en n8n_chat_histories automáticamente. En chitchat NO se invoca
+// agente, así que el turno se perdía y el router del próximo mensaje no veía
+// historia. Sin esto, "listalas" después de "qué categorías hay" no se podía
+// resolver porque la tabla quedaba vacía.
+//
+// Solo escribimos si Extract Intent dijo que era chitchat (gate evita duplicar
+// rows cuando el agente ya escribió).
+// ---------------------------------------------------------------------------
+addNode('IF Was Chitchat', 'n8n-nodes-base.if', {
+    conditions: cond('and', [eqStr('cc', "={{ $('Extract Intent').first().json.intent }}", 'chitchat')]),
+    options: {}
+}, 8140, 0);
+connect('Log Outbound', 'IF Was Chitchat');
+
+addNode('Save Chitchat Memory', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    // El formato JSONB lo dicta @n8n/n8n-nodes-langchain.memoryPostgresChat —
+    // type=human|ai, data.content=texto. Replicamos exactamente para que cuando
+    // el agente lea por session_id en el próximo turno, los mensajes de
+    // chitchat se vean indistinguibles de los del agente.
+    query: `INSERT INTO n8n_chat_histories (session_id, message)
+            VALUES
+              ($1::text, jsonb_build_object('type','human','data',jsonb_build_object('content',$2::text,'additional_kwargs','{}'::jsonb,'response_metadata','{}'::jsonb))),
+              ($1::text, jsonb_build_object('type','ai',   'data',jsonb_build_object('content',$3::text,'additional_kwargs','{}'::jsonb,'response_metadata','{}'::jsonb)));`,
+    options: {
+        queryReplacement: "={{ $('Save Context').first().json.userId }},={{ $('Concat').first().json.combinedText }},={{ $('Save Context').first().json.replyText }}"
+    }
+}, 8360, -100, { tv: 2.5, creds: { postgres: PG }, cof: true });
+connect('IF Was Chitchat', 'Save Chitchat Memory', 0);
 
 // =========================================================================
 // EMIT JSON
