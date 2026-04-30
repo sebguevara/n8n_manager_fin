@@ -3566,7 +3566,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM add_memory_chunk(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),\n        $2::jsonb->>'content',\n        $3::vector(1536),\n        COALESCE(\n            CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL\n                 AND length(trim($2::jsonb->>'metadata')) > 0\n                 AND ($2::jsonb->>'metadata') <> '{}'\n            THEN ($2::jsonb->>'metadata')::jsonb\n            ELSE '{}'::jsonb END,\n            '{}'::jsonb\n        )\n    );",
+        "query": "SELECT * FROM add_memory_chunk(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),\n        $2::jsonb->>'content',\n        $3::vector(1536),\n        COALESCE(\n            CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL\n                 AND length(trim($2::jsonb->>'metadata')) > 0\n                 AND ($2::jsonb->>'metadata') <> '{}'\n            THEN ($2::jsonb->>'metadata')::jsonb\n            ELSE '{}'::jsonb END,\n            '{}'::jsonb\n        ),\n        -- source: 'user' por default — los facts que guarda el agente vienen\n        -- de algo que el usuario dijo. El cron usa 'cron:session_summary'.\n        'user',\n        'text-embedding-3-small'\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
@@ -3589,7 +3589,7 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'remember_fact', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'remember_fact', data: {\n  id: r.id, was_created: !!r.was_created, content: r.content, kind: r.kind\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'remember_fact', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'remember_fact', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nconst contradicts = Array.isArray(r.contradicts) ? r.contradicts : [];\nreturn [{ json: { ok: true, tool: 'remember_fact', data: {\n  id: r.id, was_created: !!r.was_created, content: r.content, kind: r.kind,\n  // Si had contradiction candidates (sim 0.85-0.94 con otros facts), los\n  // devolvemos para que el agente los muestre al usuario y pregunte.\n  contradicts_ids: contradicts,\n  has_contradictions: contradicts.length > 0\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'remember_fact', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
       "id": "t107",
       "name": "Fmt remember_fact",
@@ -3651,7 +3651,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM update_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid,\n        $2::jsonb->>'new_content',\n        $3::vector(1536),\n        NULLIF($2::jsonb->>'kind',''),\n        CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL\n             AND length(trim($2::jsonb->>'metadata')) > 0\n             AND ($2::jsonb->>'metadata') <> '{}'\n        THEN ($2::jsonb->>'metadata')::jsonb\n        ELSE NULL END\n    );",
+        "query": "SELECT * FROM update_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid,\n        $2::jsonb->>'new_content',\n        $3::vector(1536),\n        NULLIF($2::jsonb->>'kind',''),\n        CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL\n             AND length(trim($2::jsonb->>'metadata')) > 0\n             AND ($2::jsonb->>'metadata') <> '{}'\n        THEN ($2::jsonb->>'metadata')::jsonb\n        ELSE NULL END,\n        'user'\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
@@ -3736,7 +3736,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM search_memory_chunks(\n        $1::uuid,\n        $3::vector(1536),\n        COALESCE(NULLIF($2::jsonb->>'k','')::int, 5),\n        NULLIF($2::jsonb->>'kind',''),\n        COALESCE(NULLIF($2::jsonb->>'min_score','')::real, 0.5)\n    );",
+        "query": "SELECT * FROM search_memory_chunks(\n        $1::uuid,\n        $3::vector(1536),\n        COALESCE(NULLIF($2::jsonb->>'k','')::int, 5),\n        NULLIF($2::jsonb->>'kind',''),\n        COALESCE(NULLIF($2::jsonb->>'min_score','')::real, 0.65)\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
@@ -3759,7 +3759,7 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'recall_memory', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'recall_memory', data: {\n  matches: rows.map(r => ({\n    id: r.id, kind: r.kind, content: r.content,\n    metadata: r.metadata, similarity: Number(r.similarity || 0),\n    created_at: r.created_at, recall_count: Number(r.recall_count || 0)\n  })),\n  count: rows.length\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'recall_memory', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'recall_memory', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'recall_memory', data: {\n  matches: rows.map(r => ({\n    id: r.id, kind: r.kind, content: r.content,\n    metadata: r.metadata,\n    similarity: Number(r.similarity || 0),\n    // final_score combina similarity + recencia + uso. Lo expongo para que el\n    // agente pueda preferir \"el más fuerte\" cuando hay empate semántico.\n    final_score: Number(r.final_score || 0),\n    created_at: r.created_at, recall_count: Number(r.recall_count || 0)\n  })),\n  count: rows.length\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'recall_memory', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
       "id": "t115",
       "name": "Fmt recall_memory",
@@ -3773,7 +3773,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM forget_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid\n    );",
+        "query": "SELECT * FROM forget_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid,\n        'user'\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }

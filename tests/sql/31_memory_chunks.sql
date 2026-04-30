@@ -64,10 +64,17 @@ BEGIN
     -- =============================================================
     -- 4. search_memory_chunks: query cerca de "apple" → recupera v_id_a
     -- =============================================================
-    SELECT id, kind, content, similarity INTO r
+    -- Wave 2: search_memory_chunks ahora devuelve (id, kind, content, metadata,
+    -- similarity, final_score, created_at, recall_count). final_score combina
+    -- similarity + recencia + recall_count.
+    SELECT id, kind, content, similarity, final_score INTO r
     FROM search_memory_chunks(v_uid, v_emb_query, 1, NULL, 0.5);
     IF r.id <> v_id_a THEN RAISE EXCEPTION '[search top] esperaba id_a, got %', r.id; END IF;
     IF r.similarity < 0.9 THEN RAISE EXCEPTION '[search similarity] esperaba >0.9 (cerca de apple), got %', r.similarity; END IF;
+    -- final_score debe estar entre 0 y 1, y >= similarity*0.7 (los otros
+    -- factores son no-negativos)
+    IF r.final_score < r.similarity * 0.7 THEN RAISE EXCEPTION '[final_score floor] %  < %', r.final_score, r.similarity*0.7; END IF;
+    IF r.final_score > 1.01 THEN RAISE EXCEPTION '[final_score ceil] % > 1', r.final_score; END IF;
 
     -- =============================================================
     -- 5. search con min_score alto: si subo a 0.99, no debería matchear el de orange

@@ -33,7 +33,7 @@ warn() { printf '\033[33m⚠\033[0m %s\n' "$*"; }
 err()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
-# 1. Build the 3 workflow JSONs
+# 1. Build the 4 workflow JSONs (tools, error, agent, cron)
 # ---------------------------------------------------------------------------
 bold "[1/6] Building workflow JSONs"
 node build-tools-subworkflow.js > workflows/chefin-tools-v3.json
@@ -45,11 +45,11 @@ ok "chefin-agent-v3.json"
 node build-cron-workflow.js     > workflows/chefin-cron-v3.json
 ok "chefin-cron-v3.json"
 
-# Aseguramos que la carpeta de logs exista en el host (bind-mounted en n8n a
-# /data/logs). Sin esto, docker la crearía como root y el contenedor no podría
-# escribir.
-mkdir -p logs
-ok "logs/ ready"
+# Aseguramos que las carpetas de logs existan en el host (bind-mounted en n8n
+# a /data/logs). Sin esto, docker las crea como root y el contenedor no puede
+# escribir. memory-snapshots la usa el cron diario para backups JSONL.
+mkdir -p logs logs/memory-snapshots
+ok "logs/ + logs/memory-snapshots/ ready"
 
 if [ "$BUILD_ONLY" -eq 1 ]; then
     bold "Build complete. Exiting (--build-only)."
@@ -92,11 +92,12 @@ if [ "$SKIP_TESTS" -eq 0 ]; then
     bold "[4/6] Running test suites"
     bash tests/run.sh > /tmp/chefin-deploy-sql.log 2>&1
     grep -E "^RESULTS:" /tmp/chefin-deploy-sql.log || (cat /tmp/chefin-deploy-sql.log; err "SQL suite failed"; exit 1)
-    ok "SQL suite (31 tests)"
+    SQL_RESULT=$(grep -E "^RESULTS:" /tmp/chefin-deploy-sql.log | head -1)
+    ok "SQL suite ($SQL_RESULT)"
 
     node tests/agent/test-chunker.mjs > /tmp/chefin-deploy-chunker.log 2>&1
     grep -E "pass · 0 fail" /tmp/chefin-deploy-chunker.log || (cat /tmp/chefin-deploy-chunker.log; err "Chunker tests failed"; exit 1)
-    ok "Chunker (10 tests)"
+    ok "Chunker tests"
 
     node tests/sql/test-tool-integration.mjs > /tmp/chefin-deploy-tools.log 2>&1
     grep -E "pass · 0 fail" /tmp/chefin-deploy-tools.log || (cat /tmp/chefin-deploy-tools.log; err "Tool integration failed"; exit 1)
@@ -109,6 +110,10 @@ if [ "$SKIP_TESTS" -eq 0 ]; then
     node tests/agent/test-error-handler.mjs > /tmp/chefin-deploy-errors.log 2>&1
     grep -E "pass · 0 fail" /tmp/chefin-deploy-errors.log || (cat /tmp/chefin-deploy-errors.log; err "Error handler tests failed"; exit 1)
     ok "Error handler (20 tests)"
+
+    node tests/sql/test-isolation.mjs > /tmp/chefin-deploy-isolation.log 2>&1
+    grep -E "pass · 0 fail" /tmp/chefin-deploy-isolation.log || (cat /tmp/chefin-deploy-isolation.log; err "Multi-user isolation tests failed"; exit 1)
+    ok "Multi-user isolation (23 tests)"
 else
     bold "[4/6] Skipping tests (--skip-tests)"
 fi

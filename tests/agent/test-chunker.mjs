@@ -74,6 +74,21 @@ const cases = [
         name: 'Vacío → 1 chunk con fallback',
         input: '',
         expectChunks: 1
+    },
+    {
+        // 🐛 REGRESSION: el agente respondía "Aquí están tus categorías:\n\n1. ...\n2. ..."
+        // y el chunker viejo partía en chunk[0]="Aquí están tus categorías:" + chunk[1]=lista.
+        // Combinado con el bug de Send Text usando $('Save Context').first(), llegaba SOLO
+        // el intro y la lista se perdía. El chunker ahora MERGEA intro+lista en un bloque
+        // (mismo chunk) cuando el primer párrafo es corto y termina en ":".
+        name: 'Lista con intro corto que termina en ":" + lista numerada → 1 chunk (no separar)',
+        input: 'Aquí están tus categorías:\n\n1. ☕ Café\n2. 🍽️ Comida\n3. 📚 Educación\n4. 🏠 Hogar\n5. 🧾 Impuestos\n6. 🐾 Mascotas\n7. 🎬 Ocio\n8. 📦 Otros\n9. 🎁 Regalos\n10. 👕 Ropa\n11. 🏥 Salud\n12. 💡 Servicios\n13. 🛒 Supermercado\n14. 📺 Suscripciones\n15. 🚗 Transporte\n16. ✈️ Viajes',
+        expectChunks: 1
+    },
+    {
+        name: 'Lista con bullets (-) e intro → 1 chunk (no separar)',
+        input: 'Tus recurrentes activas:\n\n- Netflix · $5.500 · próx 15/05\n- Spotify · $3.200 · próx 20/05\n- Alquiler · $340.000 · próx 01/05\n- Internet · $9.000 · próx 03/05\n- Gimnasio · $7.800 · próx 10/05\n- Telefonía · $4.200 · próx 12/05',
+        expectChunks: 1
     }
 ];
 

@@ -469,21 +469,21 @@ module.exports = [
     // ----- Memoria semántica (pgvector) -----
     {
         name: 'remember_fact',
-        description: '🧠 GUARDA UN HECHO en memoria persistente del usuario. Para cuando el usuario aclare una preferencia, contexto, meta, o cualquier dato que valga la pena recordar entre conversaciones (más allá de los últimos 12 turnos del chat history). Ejemplos: "soy vegetariano y me cobran extra los uber-eats", "estoy juntando para una compu de 1.5M antes de fin de año", "mi sueldo es de 950 mil", "Maxi es mi hermano y le devuelvo plata todos los meses", "trabajo desde casa, los cafés del Starbucks no son representativos". NO uses esto para registrar transacciones (eso es log_transaction).',
+        description: '🧠 GUARDA UN HECHO en memoria persistente del usuario. Para cuando el usuario aclare una preferencia, contexto, meta, o cualquier dato que valga la pena recordar entre conversaciones (más allá de los últimos 20 turnos del chat history). Ejemplos: "soy vegetariano y me cobran extra los uber-eats", "estoy juntando para una compu de 1.5M antes de fin de año", "Maxi es mi hermano y le devuelvo plata todos los meses", "trabajo desde casa, los cafés del Starbucks no son representativos". NO uses esto para registrar transacciones (eso es log_transaction). El return puede traer `has_contradictions:true` con `contradicts_ids:[...]` — facts cercanos pero no idénticos (sim 0.85-0.94) que pueden ser una versión vieja del mismo concepto. Si lo ves, decidí: usar update_memory sobre el id viejo (reemplazo), guardar igual con aviso (coexistencia), o preguntarle al usuario (confusión).',
         fields: [
-            { name: 'content', desc: 'El hecho a recordar, en español neutro y completo (no abreviaturas). Ej: "El usuario está ahorrando para una moto de $4.000.000". Será embeddado para búsqueda semántica.', type: 'string', default: '' },
-            { name: 'kind', desc: 'fact (default) | preference | context | goal | relationship', type: 'string', default: 'fact' },
-            { name: 'metadata', desc: 'Metadata opcional como JSON STRINGIFICADO (no objeto). Ej: \'{"target_amount":4000000,"deadline":"2026-12-31"}\'. Vacío = sin metadata.', type: 'string', default: '' }
+            { name: 'content', desc: 'El hecho a recordar, en español neutro y completo (no abreviaturas). Ej: "El usuario está ahorrando para una moto". Será embeddado para búsqueda semántica.', type: 'string', default: '' },
+            { name: 'kind', desc: 'fact (default) | preference | context | goal | relationship. NO uses session_summary ni __stale__ — son del sistema.', type: 'string', default: 'fact' },
+            { name: 'metadata', desc: 'Metadata opcional como JSON STRINGIFICADO (no objeto). Ej: \'{"deadline":"2026-12-31"}\'. Vacío = sin metadata.', type: 'string', default: '' }
         ]
     },
     {
         name: 'recall_memory',
-        description: '🔍 BUSCA EN LA MEMORIA SEMÁNTICA del usuario. Usá esto cuando el mensaje tiene contexto temporal/referencial vago ("la semana pasada", "ese gasto que te dije", "como te conté", "el viaje aquel") O cuando la pregunta gana valor con contexto histórico ("Maxi está al día?", "cómo voy con mi meta de la moto?"). Devuelve los chunks más relevantes con su similarity. NO sirve para buscar transacciones (eso es find_transactions).',
+        description: '🔍 BUSCA EN LA MEMORIA SEMÁNTICA del usuario con scoring híbrido (similitud + recencia + uso). Usá esto cuando el mensaje tiene contexto temporal/referencial vago ("la semana pasada", "ese gasto que te dije", "como te conté", "el viaje aquel") O cuando la pregunta gana valor con contexto histórico ("Maxi está al día?", "cómo voy con mi meta de la moto?"). Devuelve los chunks más relevantes con `similarity` (semántica pura) y `final_score` (ranking final que considera también recencia y recall_count). Excluye facts marcados como __stale__ por el cron semanal. NO sirve para buscar transacciones (eso es find_transactions).',
         fields: [
             { name: 'query', desc: 'Pregunta o concepto a buscar, en lenguaje natural. Ej: "meta moto" o "transferencias a Maxi". Cuanto más específico, mejor el match.', type: 'string', default: '' },
             { name: 'k', desc: 'Cantidad de chunks a devolver (top-K)', type: 'number', default: 5 },
-            { name: 'kind', desc: 'Filtro opcional por kind (fact|preference|context|goal|relationship). Vacío = todos.', type: 'string', default: '' },
-            { name: 'min_score', desc: 'Similarity mínima (0-1). Default 0.5. Subí a 0.7+ si querés solo matches fuertes.', type: 'number', default: 0.5 }
+            { name: 'kind', desc: 'Filtro opcional por kind (fact|preference|context|goal|relationship|session_summary). Vacío = todos.', type: 'string', default: '' },
+            { name: 'min_score', desc: 'Similaridad semántica mínima (0-1). Default 0.65. Subí a 0.8+ si querés solo matches muy fuertes; bajá a 0.5 si necesitás más contexto aunque menos preciso.', type: 'number', default: 0.65 }
         ]
     },
     {
@@ -498,16 +498,16 @@ module.exports = [
     },
     {
         name: 'forget_memory',
-        description: '🗑️ Olvida un hecho específico (soft-delete). Usá esto cuando el usuario diga "olvidate de eso", "ya no es así", "borrá lo que te dije sobre X". Pasá el `memory_id` que viene del recall_memory previo o del list_memories. ⚠️ Si el hecho solo CAMBIÓ (no se borra), usá update_memory en lugar de forget+remember.',
+        description: '🗑️ Olvida un hecho específico (soft-delete con audit log). Usá esto cuando el usuario diga "olvidate de eso", "ya no es así", "borrá lo que te dije sobre X". Pasá el `memory_id` que viene del recall_memory previo o del list_memories. El estado pre-forget queda guardado en memory_chunk_versions por si hay que rescatar después. ⚠️ Si el hecho solo CAMBIÓ (no se borra), usá update_memory en lugar de forget+remember — preserva mejor el historial. ⚠️ NO uses forget_memory sobre kind="session_summary" (los maneja el cron).',
         fields: [
             { name: 'memory_id', desc: 'UUID del chunk a olvidar (viene de recall_memory o list_memories)', type: 'string', default: '' }
         ]
     },
     {
         name: 'list_memories',
-        description: '📋 Lista los hechos que tenés guardados del usuario. Para "qué recordás de mí", "qué sabés sobre mí", "borrá todo lo que te dije". Devuelve hasta `limit` chunks ordenados por uso/recencia.',
+        description: '📋 Lista los hechos que tenés guardados del usuario. Para "qué recordás de mí", "qué sabés sobre mí", "borrá todo lo que te dije". Devuelve hasta `limit` chunks ordenados por recall_count y recencia. Excluye __forgotten__ y __stale__ automáticamente.',
         fields: [
-            { name: 'kind', desc: 'Filtro opcional (fact|preference|context|goal|relationship). Vacío = todos.', type: 'string', default: '' },
+            { name: 'kind', desc: 'Filtro opcional (fact|preference|context|goal|relationship|session_summary). Vacío = todos.', type: 'string', default: '' },
             { name: 'limit', desc: 'Cantidad max de items', type: 'number', default: 20 }
         ]
     }

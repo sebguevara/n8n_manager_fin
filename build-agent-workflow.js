@@ -79,10 +79,17 @@ addNode('Extract Fields', 'n8n-nodes-base.set', {
 }, 440, 0, { tv: 3.4 });
 connect('IF Valid Inbound', 'Extract Fields');
 
+// Lista de teléfonos autorizados — hardcodeada en el nodo, no desde env.
+// Para agregar/quitar usuarios, editá este array y rebuildeá el workflow.
+const ALLOWED_PHONES = [
+    '5493794619729',
+    '5493777223596',
+    '5493773561765'
+];
 addNode('IF Allowed Phone', 'n8n-nodes-base.if', {
     conditions: cond('and', [
         { id: 'c1', operator: { type: 'boolean', operation: 'true' },
-          leftValue: "={{ ($env.ALLOWED_PHONES || '').split(',').map(p => p.trim()).filter(p => p).includes($json.phone) }}",
+          leftValue: `={{ ${JSON.stringify(ALLOWED_PHONES)}.includes($json.phone) }}`,
           rightValue: true }
     ]), options: {}
 }, 660, 0);
@@ -889,14 +896,20 @@ Próximo turno: usuario "comida" → \`delete_category(name:"salidas", merge_int
 // Chat model
 addNode('OpenAI Chat Model', '@n8n/n8n-nodes-langchain.lmChatOpenAi', {
     model: { __rl: true, mode: 'list', value: 'gpt-4o-mini' },
-    options: { temperature: 0.2, maxTokens: 1500 }
+    // maxTokens 3000: alcanza para listas largas (16+ categorías con descripción,
+    // 20+ recurrentes, etc.) sin que el LLM corte la respuesta a la mitad.
+    options: { temperature: 0.2, maxTokens: 3000 }
 }, 5500, 200, { tv: 1.2, creds: { openAiApi: OPENAI } });
 
 // Memory (Postgres chat history per user)
+// Window subido de 12 → 20 turnos. Razón: flows multi-turno (find→confirmar→
+// editar→re-confirmar) cortaban el "qué pediste originalmente" demasiado rápido.
+// El cron diario session_summary condensa lo que sale del window en un fact
+// con kind='session_summary' para preservar contexto a más largo plazo.
 addNode('Postgres Chat Memory', '@n8n/n8n-nodes-langchain.memoryPostgresChat', {
     sessionIdType: 'customKey',
     sessionKey: "={{ $('Concat').first().json.userId }}",
-    contextWindowLength: 12,
+    contextWindowLength: 20,
     tableName: 'n8n_chat_histories'
 }, 5720, 200, { tv: 1.3, creds: { postgres: PG } });
 
@@ -1145,7 +1158,7 @@ Patrones aceptables (≤ 6 tools):
 🚨 **Anti-loop**: si llamaste 2 veces la MISMA tool en el mismo turno con params parecidos y el resultado no avanza, NO la llames una tercera vez. Cambia de estrategia o pedí aclaración al usuario.
 
 # 🧠 MEMORIA SEMÁNTICA PERSISTENTE
-Tenés 5 tools de memoria que sobreviven entre conversaciones (más allá de los últimos 12 turnos del chat history). **Memoria sirve solo para CONTEXTO CUALITATIVO** (preferencias, metas conceptuales, relaciones, contexto de vida). NO para amounts ni datos numéricos — esos siempre vienen de tools data (\`get_total\`, \`query_transactions\`, \`list_recurring\`, etc.).
+Tenés 5 tools de memoria que sobreviven entre conversaciones (más allá de los últimos 20 turnos del chat history). **Memoria sirve solo para CONTEXTO CUALITATIVO** (preferencias, metas conceptuales, relaciones, contexto de vida). NO para amounts ni datos numéricos — esos siempre vienen de tools data (\`get_total\`, \`query_transactions\`, \`list_recurring\`, etc.).
 
 - \`remember_fact(content, kind?, metadata?)\` — guarda un hecho NUEVO.
 - \`recall_memory(query, k?, kind?, min_score?)\` — recupera por similaridad semántica.
@@ -1178,9 +1191,37 @@ Ejemplo correcto: "cómo voy con la meta de la moto?" → \`recall_memory(query:
 - Si \`recall_memory\` devuelve \`count:0\`, seguí sin memoria — no inventes.
 - "Olvidate de eso" → \`recall_memory\` para encontrar id → \`forget_memory(id)\`.
 - "Qué sabés de mí?" → \`list_memories\` (sin UUIDs).
+- En cada match de \`recall_memory\` viene \`final_score\` (combina similitud + recencia + uso). Si tenés varios matches con similitud parecida, **preferí el de \`final_score\` más alto** — es el más confiable.
+
+## 🔁 CONTRADICCIONES (cuando guardás un hecho nuevo)
+Cuando \`remember_fact\` devuelve \`has_contradictions: true\` con \`contradicts_ids: [...]\`, significa que el hecho que estás por guardar es **parecido pero no idéntico** a otro fact que ya tenías (similitud 0.85-0.94). Tres caminos posibles:
+
+1. **Reemplazo** ("ya no es así, ahora es X"): mejor llamá \`update_memory\` sobre el id viejo en vez de \`remember_fact\`. Eso conserva la historia.
+2. **Coexistencia legítima** ("antes hacía yoga los lunes, ahora también pilates martes"): guardá igual y opcionalmente avisá al usuario "ya tenía algo parecido sobre yoga, te lo dejo aparte".
+3. **Confusión real** (suena contradictorio): no asumas — preguntale al usuario "antes me dijiste X, ¿cambia esto a Y o son cosas distintas?".
+
+NO ignores el flag. Si lo dejás pasar sin chequear, terminás con dos versiones del mismo hecho y el usuario pierde claridad.
+
+## 🪦 KINDS ESPECIALES (no toques manualmente)
+Hay dos kinds que el sistema maneja en background y NO debés tocar desde el agente:
+
+- \`session_summary\`: lo escribe el cron diario (23:30) condensando los turnos del día en un párrafo. Te aparece en \`recall_memory\` como contexto extra. Si el usuario te pregunta "qué hablamos ayer", podés citarlo. **NUNCA hagas \`update_memory\` ni \`forget_memory\` sobre un session_summary** — son inmutables y se generan periódicamente.
+- \`__stale__\`: facts que el cron semanal marca como obsoletos (60d+ de antigüedad sin recall en 45d). \`recall_memory\` y \`list_memories\` los excluyen automáticamente. Si el usuario menciona algo viejo y \`recall_memory\` no lo encuentra, es probable que esté \`__stale__\` — pedile que reformule.
+
+# 🎨 FORMATO WHATSAPP (criticísimo — NO uses sintaxis de markdown estándar)
+WhatsApp NO renderiza markdown como Telegram/Slack. Usa SU PROPIA sintaxis con caracteres simples:
+
+| Quiero...   | Escribo así      | NUNCA así         |
+|-------------|------------------|-------------------|
+| Negrita     | \`*texto*\`        | \`**texto**\` ❌    |
+| Cursiva     | \`_texto_\`        | \`__texto__\` ❌    |
+| Tachado     | \`~texto~\`        | \`~~texto~~\` ❌    |
+| Monoespacio | \`\\\`texto\\\`\`         | (no usar triple) |
+
+🚨 **NUNCA uses doble asterisco para negrita** (\`**\`). El doble asterisco se renderiza literal en WhatsApp y se ve feo (\`**Hola**\` en lugar de **Hola**). Siempre asterisco SIMPLE: \`*Hola*\` → renderiza como **Hola**. Esto aplica a TODO el contenido de \`reply_text\`, incluyendo títulos, etiquetas, montos destacados, etc.
 
 # FORMATO MULTI-MENSAJE (sentite WhatsApp natural)
-Cuando tu respuesta tiene **2+ secciones distintas** y supera ~350 caracteres, separá las secciones con **doble salto de línea** (\\n\\n). El sistema las manda como mensajes WhatsApp secuenciales con typing-indicator entre uno y otro — se siente como hablar con una persona, no con un bot.
+Cuando tu respuesta tiene 2+ secciones distintas y supera ~350 caracteres, separá las secciones con doble salto de línea (\\n\\n). El sistema las manda como mensajes WhatsApp secuenciales con typing-indicator entre uno y otro — se siente como hablar con una persona, no con un bot.
 
 🎯 Particioná cuando hay:
 - Datos crudos + interpretación → "📊 Gastaste $120k este mes."  +  "Subió 22% vs el pasado, ojo."
@@ -1190,7 +1231,20 @@ Cuando tu respuesta tiene **2+ secciones distintas** y supera ~350 caracteres, s
 ❌ NO particiones cuando es:
 - Una sola idea ("✅ Anotado: $2.500 en Comida — café"): 1 mensaje.
 - Confirmaciones, saludos, agradecimientos: 1 mensaje.
-- Una lista numerada: queda en 1 mensaje (la lista entera ES una sección).
+- 🚨 **Una LISTA con su intro**: queda SIEMPRE en 1 mensaje. El intro ("Aquí están tus categorías:" / "Tus gastos del mes:") va PEGADO a la lista, sin \\n\\n entre ellos. Usá un solo \\n.
+
+🚨 **REGLA CRÍTICA — listas completas inline**:
+Cuando el usuario pide una lista (categorías, recurrentes, transacciones, presupuestos, grupos, tags), **el reply_text DEBE contener TODA la lista en una sola pieza**. NUNCA escribas "Aquí están tus categorías:" sin la lista — el usuario solo recibe ese intro y se queda esperando. Formato correcto:
+
+\`\`\`
+Aquí están tus categorías:
+1. ☕ Café
+2. 🍽️ Comida
+3. 📚 Educación
+...
+\`\`\`
+
+(intro + \\n + lista, no \\n\\n entre intro y lista). Si la lista es larga (>15 items), igual mandá todo junto — el sistema chunkea por longitud cuando hace falta, no le hagas tú el corte.
 
 ⚙️ Si querés forzar un corte específico fuera del \\n\\n natural, podés poner \`[SPLIT]\` en línea propia — pero rara vez hace falta.
 
@@ -1821,6 +1875,16 @@ if (typeof payload === 'string') {
 }
 if (!payload || typeof payload !== 'object') payload = { reply_text: '😅 No supe qué responderte. ¿Lo repetimos?', reply_kind: 'text' };
 let replyText = (payload.reply_text || '').trim() || '😅 No supe qué responderte. ¿Lo repetimos?';
+
+// Sanitizer de markdown para WhatsApp:
+//   **bold** → *bold*       (WhatsApp usa asterisco simple, doble se renderiza literal)
+//   __italic__ → _italic_   (idem)
+//   ~~strike~~ → ~strike~   (idem)
+// Aplicamos sobre replyText. No tocamos URLs ni el imageUrl (manejado aparte).
+replyText = replyText
+  .replace(/\\*\\*([^*\\n]+?)\\*\\*/g, '*$1*')
+  .replace(/__([^_\\n]+?)__/g, '_$1_')
+  .replace(/~~([^~\\n]+?)~~/g, '~$1~');
 const replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';
 const imageUrl = replyKind === 'image' ? (payload.image_url || '') : '';
 
@@ -1884,16 +1948,30 @@ function semanticSplit(s) {
   if (s.includes('[SPLIT]')) {
     return s.split(/\\s*\\[SPLIT\\]\\s*/).map(x => x.trim()).filter(Boolean);
   }
-  // Cortes por blank-line. Solo dispara si:
-  //  - El total supera SOFT_MIN (mensaje "extenso").
-  //  - Y hay 2+ párrafos (estructura multi-sección).
-  // Si el agente armó la respuesta con \\n\\n entre secciones intencionales,
-  // las mandamos como mensajes separados (lo que pidió el usuario).
   const paras = s.split(/\\n{2,}/).map(p => p.trim()).filter(Boolean);
-  if (s.length > SOFT_MIN && paras.length >= 2) {
-    return paras;
+  if (paras.length < 2 || s.length <= SOFT_MIN) return [s];
+
+  const isListIntro = (p) => /[:：]\\s*$/.test(p) && p.length < 80;
+  const startsWithList = (p) => /^(?:\\d+[.)]\\s|[-•*]\\s|🍽️|☕|💸|💰|🔁|🎯|📅)/u.test(p);
+
+  // 🚨 ANTI-HUÉRFANO: si el primer párrafo es un intro corto que termina en ":"
+  // y el segundo arranca con marcadores de lista, MERGE intro + lista en un
+  // solo bloque. Sin esto, el chunker partía en chunk[0]="Aquí están tus
+  // categorías:" + chunk[1]=lista. Si algo fallaba en el segundo, el usuario
+  // veía solo el intro huérfano.
+  const merged = [];
+  let i = 0;
+  while (i < paras.length) {
+    if (i + 1 < paras.length && isListIntro(paras[i]) && startsWithList(paras[i + 1])) {
+      merged.push(paras[i] + '\\n' + paras[i + 1]);
+      i += 2;
+    } else {
+      merged.push(paras[i]);
+      i++;
+    }
   }
-  return [s];
+  if (merged.length < 2) return [s];
+  return merged;
 }
 
 let pieces = semanticSplit(txt);
@@ -1933,35 +2011,42 @@ addNode('Save Context', 'n8n-nodes-base.set', {
 }, 6600, 0, { tv: 3.4 });
 connect('Chunk Reply', 'Save Context');
 
+// CRÍTICO: Cuando Chunk Reply produce N items (mensajes split por \\n\\n),
+// los Send nodes corren una vez por item. Si referenciamos
+// $('Save Context').first() → SIEMPRE el chunk 0 → todos los chunks mandan
+// el texto del primero. Por eso el usuario veía "Aquí están tus categorías:"
+// pero la lista se perdía. Fix: usar $json (item actual) en cada Send node.
+// $('Save Context').first() solo se mantiene para campos invariantes
+// (instance, phone, remoteJid, messageId) que son iguales en todos los chunks.
 addNode('Send Presence', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'chat-api', operation: 'send-presence',
-    instanceName: "={{ $('Save Context').first().json.instance }}",
-    remoteJid: "={{ $('Save Context').first().json.phone }}",
+    instanceName: "={{ $json.instance }}",
+    remoteJid: "={{ $json.phone }}",
     delay: 1000
 }, 6820, 0, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
 connect('Save Context', 'Send Presence');
 
 addNode('IF Image Reply', 'n8n-nodes-base.if', {
-    conditions: cond('and', [eqStr('c1', "={{ $('Save Context').first().json.replyKind }}", 'image')]),
+    conditions: cond('and', [eqStr('c1', "={{ $json.replyKind }}", 'image')]),
     options: {}
 }, 7040, 0);
 connect('Send Presence', 'IF Image Reply');
 
 addNode('Send Image', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'messages-api', operation: 'send-image',
-    instanceName: "={{ $('Save Context').first().json.instance }}",
-    remoteJid: "={{ $('Save Context').first().json.phone }}",
-    media: "={{ $('Save Context').first().json.imageUrl }}",
-    caption: "={{ $('Save Context').first().json.replyText }}",
+    instanceName: "={{ $json.instance }}",
+    remoteJid: "={{ $json.phone }}",
+    media: "={{ $json.imageUrl }}",
+    caption: "={{ $json.replyText }}",
     options_message: {}
 }, 7260, -100, { tv: 1, creds: { evolutionApi: EVO } });
 connect('IF Image Reply', 'Send Image', 0);
 
 addNode('Send Text', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'messages-api',
-    instanceName: "={{ $('Save Context').first().json.instance }}",
-    remoteJid: "={{ $('Save Context').first().json.phone }}",
-    messageText: "={{ $('Save Context').first().json.replyText }}",
+    instanceName: "={{ $json.instance }}",
+    remoteJid: "={{ $json.phone }}",
+    messageText: "={{ $json.replyText }}",
     options_message: {}
 }, 7260, 100, { tv: 1, creds: { evolutionApi: EVO } });
 connect('IF Image Reply', 'Send Text', 1);
@@ -1969,7 +2054,7 @@ connect('IF Image Reply', 'Send Text', 1);
 addNode('IF Should React', 'n8n-nodes-base.if', {
     conditions: cond('and', [{
         id: 'c1', operator: { type: 'string', operation: 'notEmpty' },
-        leftValue: "={{ $('Save Context').first().json.reactionEmoji }}", rightValue: ''
+        leftValue: "={{ $json.reactionEmoji }}", rightValue: ''
     }]), options: {}
 }, 7480, 0);
 connect('Send Image', 'IF Should React');
@@ -1977,11 +2062,11 @@ connect('Send Text', 'IF Should React');
 
 addNode('Send Reaction', 'n8n-nodes-evolution-api.evolutionApi', {
     resource: 'messages-api', operation: 'send-reaction',
-    instanceName: "={{ $('Save Context').first().json.instance }}",
-    remoteJid: "={{ $('Save Context').first().json.remoteJid }}",
-    messageId: "={{ $('Save Context').first().json.messageId }}",
+    instanceName: "={{ $json.instance }}",
+    remoteJid: "={{ $json.remoteJid }}",
+    messageId: "={{ $json.messageId }}",
     fromMe: false,
-    reaction: "={{ $('Save Context').first().json.reactionEmoji }}"
+    reaction: "={{ $json.reactionEmoji }}"
 }, 7700, -100, { tv: 1, creds: { evolutionApi: EVO }, cof: true });
 connect('IF Should React', 'Send Reaction', 0);
 

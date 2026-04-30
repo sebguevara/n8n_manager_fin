@@ -522,14 +522,22 @@ ALTER TABLE users
     ADD COLUMN IF NOT EXISTS weekly_summary_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- ---------- 5. Conversation state ----------
+-- `version` se incrementa en cada UPDATE para soportar optimistic locking
+-- (set_conv_state_if_match). Permite resolver races cuando dos webhooks del
+-- mismo user llegan dentro de la misma ventana de procesamiento (Redis dedup
+-- atrapa el mismo messageId, pero no dos mensajes distintos seguidos).
 CREATE TABLE IF NOT EXISTS conversation_state (
     user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     state       TEXT NOT NULL,
     context     JSONB NOT NULL DEFAULT '{}'::jsonb,
     expires_at  TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '5 minutes',
     created_at  TIMESTAMPTZ DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ DEFAULT NOW()
+    updated_at  TIMESTAMPTZ DEFAULT NOW(),
+    version     INT NOT NULL DEFAULT 1
 );
+-- Migración para deployments existentes (la tabla puede ya existir sin la col).
+ALTER TABLE conversation_state
+    ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
 
 DO $$ BEGIN
     CREATE TRIGGER convstate_updated_at BEFORE UPDATE ON conversation_state
@@ -658,16 +666,63 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ---------- 10. Helper: set/clear conversation state ----------
+-- Cada UPDATE incrementa `version` para que el caller pueda detectar races
+-- usando set_conv_state_if_match. El INSERT inicial nace con version=1.
+-- DROP necesario porque cambiamos return type de VOID → INT (devuelve la nueva version).
+DROP FUNCTION IF EXISTS set_conv_state(UUID, TEXT, JSONB, INT);
 CREATE OR REPLACE FUNCTION set_conv_state(p_user_id UUID, p_state TEXT, p_context JSONB DEFAULT '{}'::jsonb, p_ttl_seconds INT DEFAULT 300)
-RETURNS VOID AS $$
+RETURNS INT AS $$
+DECLARE v_version INT;
 BEGIN
-    INSERT INTO conversation_state (user_id, state, context, expires_at)
-    VALUES (p_user_id, p_state, p_context, NOW() + (p_ttl_seconds || ' seconds')::INTERVAL)
+    INSERT INTO conversation_state (user_id, state, context, expires_at, version)
+    VALUES (p_user_id, p_state, p_context, NOW() + (p_ttl_seconds || ' seconds')::INTERVAL, 1)
     ON CONFLICT (user_id) DO UPDATE
     SET state = EXCLUDED.state,
         context = EXCLUDED.context,
         expires_at = EXCLUDED.expires_at,
-        updated_at = NOW();
+        updated_at = NOW(),
+        version = conversation_state.version + 1
+    RETURNING version INTO v_version;
+    RETURN v_version;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Versión optimista: solo aplica el cambio si la version observada coincide.
+-- Devuelve la nueva version (>0) si tuvo éxito, o -1 si perdió el race.
+-- Útil para flujos críticos donde el agente leyó conv_state, decidió algo, y
+-- quiere asegurarse de que nadie modificó ese estado en el medio.
+CREATE OR REPLACE FUNCTION set_conv_state_if_match(
+    p_user_id UUID,
+    p_state TEXT,
+    p_context JSONB,
+    p_ttl_seconds INT,
+    p_expected_version INT
+)
+RETURNS INT AS $$
+DECLARE v_version INT;
+BEGIN
+    -- Caso 1: no existe row → solo aceptamos si el caller esperaba "nueva" (0)
+    IF p_expected_version = 0 THEN
+        INSERT INTO conversation_state (user_id, state, context, expires_at, version)
+        VALUES (p_user_id, p_state, p_context, NOW() + (p_ttl_seconds || ' seconds')::INTERVAL, 1)
+        ON CONFLICT (user_id) DO NOTHING
+        RETURNING version INTO v_version;
+        IF v_version IS NULL THEN RETURN -1; END IF;
+        RETURN v_version;
+    END IF;
+
+    -- Caso 2: existe row, queremos hacer UPDATE solo si version coincide
+    UPDATE conversation_state
+    SET state = p_state,
+        context = p_context,
+        expires_at = NOW() + (p_ttl_seconds || ' seconds')::INTERVAL,
+        updated_at = NOW(),
+        version = version + 1
+    WHERE user_id = p_user_id AND version = p_expected_version
+    RETURNING version INTO v_version;
+
+    IF v_version IS NULL THEN RETURN -1; END IF;
+    RETURN v_version;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -3855,14 +3910,28 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS memory_chunks (
     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    kind         TEXT NOT NULL DEFAULT 'fact',  -- 'fact'|'preference'|'context'|'goal'|'__forgotten__'|...
+    -- kinds reconocidos:
+    --   'fact'              hecho biográfico
+    --   'preference'        preferencia/restricción
+    --   'context'           contexto situacional
+    --   'goal'              meta/objetivo
+    --   'session_summary'   resumen condensado de turnos viejos (lo escribe el cron)
+    --   '__stale__'         marcado como obsoleto por el revisor semanal
+    --   '__forgotten__'     soft-deleted explícito (audit trail)
+    kind         TEXT NOT NULL DEFAULT 'fact',
     content      TEXT NOT NULL,
     embedding    vector(1536) NOT NULL,
+    -- Modelo con el que se generó el embedding. Permite re-embeddear gradual
+    -- cuando OpenAI saque un modelo mejor sin tener que re-generar todo de golpe.
+    embedding_model TEXT NOT NULL DEFAULT 'text-embedding-3-small',
     metadata     JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_recalled_at TIMESTAMPTZ,
     recall_count INT NOT NULL DEFAULT 0
 );
+-- Migración para deployments existentes
+ALTER TABLE memory_chunks
+    ADD COLUMN IF NOT EXISTS embedding_model TEXT NOT NULL DEFAULT 'text-embedding-3-small';
 
 -- HNSW index para búsqueda KNN por cosine. Filtramos por user_id ANTES de buscar.
 -- Con pocos miles de chunks por user es overkill, pero crece bien.
@@ -3873,32 +3942,88 @@ CREATE INDEX IF NOT EXISTS idx_memory_chunks_embedding
     ON memory_chunks USING hnsw (embedding vector_cosine_ops);
 
 CREATE INDEX IF NOT EXISTS idx_memory_chunks_kind
-    ON memory_chunks (user_id, kind) WHERE kind <> '__forgotten__';
+    ON memory_chunks (user_id, kind)
+    WHERE kind NOT IN ('__forgotten__', '__stale__');
+
+-- Índice para encontrar facts viejos sin recall — usado por mark_stale_memories.
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_stale_check
+    ON memory_chunks (user_id, last_recalled_at NULLS FIRST, created_at)
+    WHERE kind NOT IN ('__forgotten__', '__stale__', 'session_summary');
+
+-- =====================================================================
+-- memory_chunk_versions — audit log de updates / forgets
+-- =====================================================================
+-- Cada vez que update_memory_chunk o forget_memory_chunk modifican un chunk,
+-- guardamos snapshot de la versión anterior. Sirve para:
+--   - debug ("¿qué decía este fact antes de que el agente lo cambiara?")
+--   - rollback manual desde una entrada vieja
+--   - auditoría de "cómo evolucionó el perfil del usuario"
+-- NO guardamos el embedding (1536 floats × N versions = pesado y poco útil
+-- — el embedding viejo se puede regenerar del content viejo si hace falta).
+CREATE TABLE IF NOT EXISTS memory_chunk_versions (
+    id           BIGSERIAL PRIMARY KEY,
+    chunk_id     UUID NOT NULL,           -- no FK: queremos conservar histórico aunque el chunk se borre por cascade
+    user_id      UUID NOT NULL,
+    version      INT NOT NULL,            -- 1 para el contenido inicial, 2+ para updates
+    kind         TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    metadata     JSONB NOT NULL DEFAULT '{}'::jsonb,
+    operation    TEXT NOT NULL CHECK (operation IN ('create','update','forget','stale','reembed')),
+    operation_source TEXT,                 -- 'agent' | 'user' | 'cron:stale_review' | 'cron:reembed' | etc.
+    archived_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_memory_chunk_versions_chunk
+    ON memory_chunk_versions (chunk_id, version);
+CREATE INDEX IF NOT EXISTS idx_memory_chunk_versions_user
+    ON memory_chunk_versions (user_id, archived_at DESC);
+
+-- DROP necesario porque la signatura de retorno cambia (agregamos contradicts).
+DROP FUNCTION IF EXISTS add_memory_chunk(UUID, TEXT, TEXT, vector, JSONB);
 
 -- ---------- add_memory_chunk ----------
--- Insert + dedup blando: si ya existe un chunk del mismo user con
--- similaridad >= 0.95 al nuevo embedding, NO duplica — actualiza recall_count.
+-- Insert + dedup blando + detección de contradicciones.
+--
+-- Niveles de overlap semántico (cosine similarity = 1 - cosine_distance):
+--   • >= 0.95 → DEDUP (mismo concepto reformulado). Bumpea recall_count.
+--   • 0.85 .. 0.94 → CONTRADICTION CANDIDATE. Insertamos el nuevo PERO
+--     guardamos los IDs sospechosos en metadata.contradicts_ids. El cron
+--     semanal de revisión usa esto para preguntarle al LLM si mergear/borrar.
+--   • < 0.85 → INDEPENDIENTE.
+--
+-- p_source: 'user' (el usuario lo dijo textual) | 'agent' (el agente lo infirió)
+--           | 'cron:session_summary' (el cron condensó turnos viejos)
+-- p_embedding_model: para que el campo no quede en NULL en deployments futuros.
 CREATE OR REPLACE FUNCTION add_memory_chunk(
-    p_user_id      UUID,
-    p_kind         TEXT,
-    p_content      TEXT,
-    p_embedding    vector(1536),
-    p_metadata     JSONB DEFAULT '{}'::jsonb
+    p_user_id          UUID,
+    p_kind             TEXT,
+    p_content          TEXT,
+    p_embedding        vector(1536),
+    p_metadata         JSONB DEFAULT '{}'::jsonb,
+    p_source           TEXT DEFAULT 'agent',
+    p_embedding_model  TEXT DEFAULT 'text-embedding-3-small'
 )
-RETURNS TABLE(id UUID, was_created BOOLEAN, content TEXT, kind TEXT) AS $$
+RETURNS TABLE(
+    id           UUID,
+    was_created  BOOLEAN,
+    content      TEXT,
+    kind         TEXT,
+    contradicts  UUID[]   -- ids de chunks con similitud 0.85-0.94 (sospechosos)
+) AS $$
 DECLARE
     v_id UUID;
     v_existing UUID;
+    v_contradicts UUID[] := ARRAY[]::UUID[];
+    v_meta JSONB;
 BEGIN
     IF p_user_id IS NULL OR p_content IS NULL OR length(trim(p_content)) = 0 THEN
         RAISE EXCEPTION 'add_memory_chunk: user_id y content son requeridos';
     END IF;
 
-    -- Dedup blando: 1 - cosine_distance >= 0.95 ↔ cosine_distance <= 0.05
+    -- Dedup blando: similarity >= 0.95 (cosine_distance <= 0.05)
     SELECT mc.id INTO v_existing
     FROM memory_chunks mc
     WHERE mc.user_id = p_user_id
-      AND mc.kind <> '__forgotten__'
+      AND mc.kind NOT IN ('__forgotten__', '__stale__')
       AND mc.embedding <=> p_embedding <= 0.05
     ORDER BY mc.embedding <=> p_embedding
     LIMIT 1;
@@ -3913,29 +4038,76 @@ BEGIN
         RETURN QUERY
         SELECT v_id, FALSE,
                (SELECT mc.content FROM memory_chunks mc WHERE mc.id = v_id),
-               (SELECT mc.kind    FROM memory_chunks mc WHERE mc.id = v_id);
+               (SELECT mc.kind    FROM memory_chunks mc WHERE mc.id = v_id),
+               v_contradicts;
         RETURN;
     END IF;
 
-    INSERT INTO memory_chunks (user_id, kind, content, embedding, metadata)
+    -- Detectar candidatos de contradicción: similarity 0.85-0.94
+    -- (mismos temas pero reformulados con suficiente cambio para sospechar
+    -- que es una versión nueva o una contradicción).
+    SELECT COALESCE(array_agg(mc.id), ARRAY[]::UUID[]) INTO v_contradicts
+    FROM memory_chunks mc
+    WHERE mc.user_id = p_user_id
+      AND mc.kind NOT IN ('__forgotten__', '__stale__')
+      AND mc.embedding <=> p_embedding > 0.05
+      AND mc.embedding <=> p_embedding <= 0.15;
+
+    -- Construir metadata final con source + (si hay) contradicts_ids
+    v_meta := COALESCE(p_metadata, '{}'::jsonb)
+              || jsonb_build_object('source', COALESCE(NULLIF(p_source, ''), 'agent'));
+    IF array_length(v_contradicts, 1) > 0 THEN
+        v_meta := v_meta || jsonb_build_object(
+            'contradicts_ids', to_jsonb(v_contradicts)
+        );
+    END IF;
+
+    INSERT INTO memory_chunks (user_id, kind, content, embedding, embedding_model, metadata)
     VALUES (p_user_id, COALESCE(NULLIF(p_kind, ''), 'fact'),
-            trim(p_content), p_embedding, COALESCE(p_metadata, '{}'::jsonb))
+            trim(p_content), p_embedding,
+            COALESCE(NULLIF(p_embedding_model, ''), 'text-embedding-3-small'),
+            v_meta)
     RETURNING memory_chunks.id INTO v_id;
 
+    -- Audit log: versión 1 del chunk
+    INSERT INTO memory_chunk_versions
+        (chunk_id, user_id, version, kind, content, metadata, operation, operation_source)
+    VALUES (v_id, p_user_id, 1, COALESCE(NULLIF(p_kind, ''), 'fact'),
+            trim(p_content), v_meta, 'create', COALESCE(NULLIF(p_source, ''), 'agent'));
+
     RETURN QUERY
-    SELECT v_id, TRUE, p_content, COALESCE(NULLIF(p_kind, ''), 'fact');
+    SELECT v_id, TRUE, p_content, COALESCE(NULLIF(p_kind, ''), 'fact'), v_contradicts;
 END;
 $$ LANGUAGE plpgsql;
 
+-- DROP necesario porque cambiamos la signatura de retorno (agregamos final_score).
+-- CREATE OR REPLACE no permite cambiar return type de una function existente.
+DROP FUNCTION IF EXISTS search_memory_chunks(UUID, vector, INT, TEXT, REAL);
+
 -- ---------- search_memory_chunks ----------
--- KNN search por cosine. Devuelve top K filtrado por user (siempre) y
--- opcionalmente por kind. Excluye soft-deleted.
+-- KNN search con scoring HÍBRIDO. Filtra por user (siempre) + kind opcional,
+-- excluye __forgotten__ y __stale__, y rankea con 3 señales:
+--
+--   final_score = similarity * 0.7
+--               + recency_factor * 0.2     (1.0 = recordado hoy, 0.0 = nunca o >180d)
+--               + recall_factor * 0.1      (log de recall_count, normalizado)
+--
+-- Por qué este peso:
+--   • similarity es la señal dominante — sin relevancia semántica el resto da igual
+--   • recency_factor evita que un fact relevante pero mohoso de hace meses tape
+--     a uno reciente igualmente relevante (mitiga el #1: memory drift)
+--   • recall_factor da una ligera ventaja a facts que el sistema usa seguido
+--     (señal de "este sí importa") sin dominar — si nunca se recuperó pesa 0
+--
+-- Filtro de entrada: similarity ≥ p_min_score (gate semántico DURO).
+-- Esto asegura que aunque un chunk tenga recency=1 perfecto, si no está
+-- semánticamente cerca, no entra.
 CREATE OR REPLACE FUNCTION search_memory_chunks(
     p_user_id     UUID,
     p_embedding   vector(1536),
     p_k           INT DEFAULT 5,
     p_kind        TEXT DEFAULT NULL,
-    p_min_score   REAL DEFAULT 0.65  -- 1-cosine_distance ≥ 0.65 (subido de 0.5 → menos ruido)
+    p_min_score   REAL DEFAULT 0.65
 )
 RETURNS TABLE(
     id          UUID,
@@ -3943,6 +4115,7 @@ RETURNS TABLE(
     content     TEXT,
     metadata    JSONB,
     similarity  REAL,
+    final_score REAL,
     created_at  TIMESTAMPTZ,
     recall_count INT
 ) AS $$
@@ -3950,57 +4123,112 @@ DECLARE
     v_k INT := GREATEST(COALESCE(p_k, 5), 1);
 BEGIN
     RETURN QUERY
-    SELECT mc.id,
-           mc.kind,
-           mc.content,
-           mc.metadata,
-           (1 - (mc.embedding <=> p_embedding))::REAL AS similarity,
-           mc.created_at,
-           mc.recall_count
-    FROM memory_chunks mc
-    WHERE mc.user_id = p_user_id
-      AND mc.kind <> '__forgotten__'
-      AND (p_kind IS NULL OR mc.kind = p_kind)
-      AND (1 - (mc.embedding <=> p_embedding))::REAL >= p_min_score
-    ORDER BY mc.embedding <=> p_embedding
+    WITH candidates AS (
+        SELECT mc.id, mc.kind, mc.content, mc.metadata,
+               mc.created_at, mc.last_recalled_at, mc.recall_count,
+               (1 - (mc.embedding <=> p_embedding))::REAL AS sim
+        FROM memory_chunks mc
+        WHERE mc.user_id = p_user_id
+          AND mc.kind NOT IN ('__forgotten__', '__stale__')
+          AND (p_kind IS NULL OR mc.kind = p_kind)
+          AND (1 - (mc.embedding <=> p_embedding))::REAL >= p_min_score
+        -- Tomamos hasta 3K candidatos por similitud para tener pool de re-rank.
+        -- Sin esto, un fact recall_count alto pero similitud baja podría no entrar.
+        ORDER BY mc.embedding <=> p_embedding
+        LIMIT GREATEST(v_k * 3, 15)
+    ),
+    scored AS (
+        SELECT c.*,
+               -- recency_factor: decae lineal en 180 días desde la señal de
+               -- "uso reciente" (last_recalled_at si existe, si no created_at).
+               GREATEST(0.0, 1.0 - EXTRACT(EPOCH FROM (
+                   NOW() - COALESCE(c.last_recalled_at, c.created_at)
+               )) / (180.0 * 86400.0))::REAL AS recency_factor,
+               -- recall_factor: log10(1 + recall_count) / log10(20)
+               -- → 0 con 0 recalls, ~0.5 con 4 recalls, ~1.0 con 20+ recalls
+               LEAST(1.0, LN(1 + c.recall_count) / LN(20))::REAL AS recall_factor
+        FROM candidates c
+    )
+    SELECT s.id, s.kind, s.content, s.metadata, s.sim::REAL AS similarity,
+           (s.sim * 0.7 + s.recency_factor * 0.2 + s.recall_factor * 0.1)::REAL AS final_score,
+           s.created_at, s.recall_count
+    FROM scored s
+    ORDER BY (s.sim * 0.7 + s.recency_factor * 0.2 + s.recall_factor * 0.1) DESC
     LIMIT v_k;
 
-    -- Bumpear recall_count para los chunks recuperados (separado para no
-    -- alterar el ORDER BY KNN).
+    -- Bumpear recall_count + last_recalled_at para los TOP-K finales
+    -- (consistente con el orden híbrido devuelto arriba).
     UPDATE memory_chunks mc
     SET recall_count = mc.recall_count + 1, last_recalled_at = NOW()
-    WHERE mc.user_id = p_user_id
-      AND mc.kind <> '__forgotten__'
-      AND (p_kind IS NULL OR mc.kind = p_kind)
-      AND mc.id IN (
-          SELECT mc2.id FROM memory_chunks mc2
-          WHERE mc2.user_id = p_user_id
-            AND mc2.kind <> '__forgotten__'
-            AND (p_kind IS NULL OR mc2.kind = p_kind)
-            AND (1 - (mc2.embedding <=> p_embedding))::REAL >= p_min_score
-          ORDER BY mc2.embedding <=> p_embedding
-          LIMIT v_k
-      );
+    WHERE mc.id IN (
+        WITH candidates AS (
+            SELECT mc2.id, mc2.created_at, mc2.last_recalled_at, mc2.recall_count,
+                   (1 - (mc2.embedding <=> p_embedding))::REAL AS sim
+            FROM memory_chunks mc2
+            WHERE mc2.user_id = p_user_id
+              AND mc2.kind NOT IN ('__forgotten__', '__stale__')
+              AND (p_kind IS NULL OR mc2.kind = p_kind)
+              AND (1 - (mc2.embedding <=> p_embedding))::REAL >= p_min_score
+            ORDER BY mc2.embedding <=> p_embedding
+            LIMIT GREATEST(v_k * 3, 15)
+        )
+        SELECT c.id FROM candidates c
+        ORDER BY (
+            c.sim * 0.7
+            + GREATEST(0.0, 1.0 - EXTRACT(EPOCH FROM (
+                NOW() - COALESCE(c.last_recalled_at, c.created_at)
+              )) / (180.0 * 86400.0)) * 0.2
+            + LEAST(1.0, LN(1 + c.recall_count) / LN(20)) * 0.1
+        ) DESC
+        LIMIT v_k
+    );
 END;
 $$ LANGUAGE plpgsql;
 
 -- ---------- forget_memory_chunk ----------
 -- Soft-delete por id, con dueño-check. El chunk queda en la tabla con
 -- kind='__forgotten__' (audit trail) y deja de aparecer en search.
+-- Snapshot del estado pre-forget queda en memory_chunk_versions (operation='forget').
+-- DROP de la versión vieja (2 args) para que Postgres no se confunda con
+-- la nueva (3 args con default), porque la llamada de 2 args matchearía ambas.
+DROP FUNCTION IF EXISTS forget_memory_chunk(UUID, UUID);
 CREATE OR REPLACE FUNCTION forget_memory_chunk(
     p_user_id UUID,
-    p_id      UUID
+    p_id      UUID,
+    p_source  TEXT DEFAULT 'agent'
 )
 RETURNS TABLE(id UUID, forgot BOOLEAN) AS $$
+DECLARE
+    v_old_kind TEXT;
+    v_old_content TEXT;
+    v_old_meta JSONB;
+    v_next_version INT;
 BEGIN
+    -- Capturar estado actual antes de mutar
+    SELECT mc.kind, mc.content, mc.metadata
+      INTO v_old_kind, v_old_content, v_old_meta
+    FROM memory_chunks mc
+    WHERE mc.id = p_id AND mc.user_id = p_user_id AND mc.kind <> '__forgotten__';
+
+    IF v_old_kind IS NULL THEN
+        RETURN QUERY SELECT p_id, FALSE;
+        RETURN;
+    END IF;
+
+    -- Próxima version del audit log para este chunk
+    SELECT COALESCE(MAX(version), 0) + 1 INTO v_next_version
+    FROM memory_chunk_versions WHERE chunk_id = p_id;
+
+    INSERT INTO memory_chunk_versions
+        (chunk_id, user_id, version, kind, content, metadata, operation, operation_source)
+    VALUES (p_id, p_user_id, v_next_version, v_old_kind, v_old_content, v_old_meta,
+            'forget', COALESCE(NULLIF(p_source, ''), 'agent'));
+
     UPDATE memory_chunks mc
     SET kind = '__forgotten__'
-    WHERE mc.id = p_id AND mc.user_id = p_user_id AND mc.kind <> '__forgotten__';
-    IF FOUND THEN
-        RETURN QUERY SELECT p_id, TRUE;
-    ELSE
-        RETURN QUERY SELECT p_id, FALSE;
-    END IF;
+    WHERE mc.id = p_id AND mc.user_id = p_user_id;
+
+    RETURN QUERY SELECT p_id, TRUE;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -4009,19 +4237,49 @@ $$ LANGUAGE plpgsql;
 -- Se usa cuando un hecho evoluciona (ej. "ahorra 500k" → "ahora ahorra 700k") sin
 -- perder el id ni romper referencias. Re-embedea el contenido nuevo.
 -- Si p_id no pertenece al user → updated=false.
+-- Snapshot pre-update queda en memory_chunk_versions (operation='update').
+-- DROP de la versión vieja (6 args) para que Postgres no se confunda con la nueva (7).
+DROP FUNCTION IF EXISTS update_memory_chunk(UUID, UUID, TEXT, vector, TEXT, JSONB);
 CREATE OR REPLACE FUNCTION update_memory_chunk(
     p_user_id      UUID,
     p_id           UUID,
     p_new_content  TEXT,
     p_new_embedding vector(1536),
     p_new_kind     TEXT DEFAULT NULL,
-    p_new_metadata JSONB DEFAULT NULL
+    p_new_metadata JSONB DEFAULT NULL,
+    p_source       TEXT DEFAULT 'agent'
 )
 RETURNS TABLE(id UUID, updated BOOLEAN, content TEXT, kind TEXT) AS $$
+DECLARE
+    v_old_kind TEXT;
+    v_old_content TEXT;
+    v_old_meta JSONB;
+    v_next_version INT;
 BEGIN
     IF p_user_id IS NULL OR p_id IS NULL OR p_new_content IS NULL OR length(trim(p_new_content)) = 0 THEN
         RAISE EXCEPTION 'update_memory_chunk: user_id, id y new_content son requeridos';
     END IF;
+
+    -- Capturar estado actual ANTES de mutar
+    SELECT mc.kind, mc.content, mc.metadata
+      INTO v_old_kind, v_old_content, v_old_meta
+    FROM memory_chunks mc
+    WHERE mc.id = p_id AND mc.user_id = p_user_id AND mc.kind <> '__forgotten__';
+
+    IF v_old_kind IS NULL THEN
+        RETURN QUERY SELECT p_id, FALSE, NULL::TEXT, NULL::TEXT;
+        RETURN;
+    END IF;
+
+    -- Próxima version del audit log
+    SELECT COALESCE(MAX(version), 0) + 1 INTO v_next_version
+    FROM memory_chunk_versions WHERE chunk_id = p_id;
+
+    -- Snapshot del estado anterior antes del UPDATE
+    INSERT INTO memory_chunk_versions
+        (chunk_id, user_id, version, kind, content, metadata, operation, operation_source)
+    VALUES (p_id, p_user_id, v_next_version, v_old_kind, v_old_content, v_old_meta,
+            'update', COALESCE(NULLIF(p_source, ''), 'agent'));
 
     UPDATE memory_chunks mc
     SET content = trim(p_new_content),
@@ -4029,16 +4287,11 @@ BEGIN
         kind = COALESCE(NULLIF(p_new_kind, ''), mc.kind),
         metadata = CASE WHEN p_new_metadata IS NOT NULL THEN mc.metadata || p_new_metadata ELSE mc.metadata END
     WHERE mc.id = p_id
-      AND mc.user_id = p_user_id
-      AND mc.kind <> '__forgotten__';
+      AND mc.user_id = p_user_id;
 
-    IF FOUND THEN
-        RETURN QUERY
-        SELECT mc.id, TRUE, mc.content, mc.kind
-        FROM memory_chunks mc WHERE mc.id = p_id;
-    ELSE
-        RETURN QUERY SELECT p_id, FALSE, NULL::TEXT, NULL::TEXT;
-    END IF;
+    RETURN QUERY
+    SELECT mc.id, TRUE, mc.content, mc.kind
+    FROM memory_chunks mc WHERE mc.id = p_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -4062,9 +4315,208 @@ BEGIN
     SELECT mc.id, mc.kind, mc.content, mc.metadata, mc.created_at, mc.recall_count
     FROM memory_chunks mc
     WHERE mc.user_id = p_user_id
-      AND mc.kind <> '__forgotten__'
+      AND mc.kind NOT IN ('__forgotten__', '__stale__')
       AND (p_kind IS NULL OR mc.kind = p_kind)
     ORDER BY mc.recall_count DESC, mc.created_at DESC
     LIMIT GREATEST(COALESCE(p_limit, 20), 1);
 END;
 $$ LANGUAGE plpgsql STABLE;
+
+-- =====================================================================
+-- WAVE 3 — Helpers para mantenimiento de memoria semántica
+-- =====================================================================
+
+-- ---------- mark_stale_memories ----------
+-- El cron semanal usa esto para marcar facts viejos sin uso como '__stale__'.
+-- Criterios para marcar:
+--   • Más viejos que p_min_age_days (default 60d)
+--   • No recordados en p_idle_days (default 45d)
+--   • NO son session_summary, __forgotten__ ni ya __stale__
+--   • recall_count == 0 O ratio uso/edad < 1/180
+-- Devuelve la lista de IDs marcados (el caller los puede mostrar al usuario
+-- y darle opción de "rescatar" alguno).
+CREATE OR REPLACE FUNCTION mark_stale_memories(
+    p_user_id      UUID DEFAULT NULL,    -- NULL = todos los usuarios
+    p_idle_days    INT DEFAULT 45,
+    p_min_age_days INT DEFAULT 60
+)
+RETURNS TABLE(id UUID, user_id UUID, kind TEXT, content TEXT, age_days INT) AS $$
+DECLARE
+    v_idle  INTERVAL := (p_idle_days  || ' days')::INTERVAL;
+    v_min_age INTERVAL := (p_min_age_days || ' days')::INTERVAL;
+BEGIN
+    RETURN QUERY
+    WITH targets AS (
+        SELECT mc.id, mc.user_id, mc.kind, mc.content,
+               EXTRACT(DAY FROM (NOW() - mc.created_at))::INT AS age_d
+        FROM memory_chunks mc
+        WHERE mc.kind NOT IN ('__forgotten__', '__stale__', 'session_summary')
+          AND (p_user_id IS NULL OR mc.user_id = p_user_id)
+          AND mc.created_at < NOW() - v_min_age
+          AND (mc.last_recalled_at IS NULL
+               OR mc.last_recalled_at < NOW() - v_idle)
+          -- Heurística adicional: si nunca lo recuperamos, o el ratio de uso
+          -- por día desde su creación es muy bajo (<1 recall cada 180d).
+          AND (
+              mc.recall_count = 0
+              OR (mc.recall_count::REAL / GREATEST(1, EXTRACT(DAY FROM (NOW() - mc.created_at))) < (1.0/180.0))
+          )
+    ),
+    archived AS (
+        INSERT INTO memory_chunk_versions
+            (chunk_id, user_id, version, kind, content, metadata, operation, operation_source)
+        SELECT t.id, t.user_id,
+               (SELECT COALESCE(MAX(v.version), 0) + 1 FROM memory_chunk_versions v WHERE v.chunk_id = t.id),
+               t.kind, t.content,
+               (SELECT mc.metadata FROM memory_chunks mc WHERE mc.id = t.id),
+               'stale', 'cron:stale_review'
+        FROM targets t
+        RETURNING chunk_id
+    ),
+    marked AS (
+        UPDATE memory_chunks mc
+        SET kind = '__stale__'
+        FROM targets t
+        WHERE mc.id = t.id
+        RETURNING mc.id
+    )
+    SELECT t.id, t.user_id, t.kind, t.content, t.age_d
+    FROM targets t;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- export_user_memory ----------
+-- Devuelve un snapshot serializable (JSONB array) de todos los chunks vivos
+-- de un usuario. Lo usa el cron diario para escribir backups a JSONL.
+CREATE OR REPLACE FUNCTION export_user_memory(p_user_id UUID)
+RETURNS TABLE(
+    user_id     UUID,
+    snapshot_at TIMESTAMPTZ,
+    chunk_count INT,
+    chunks      JSONB
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT p_user_id AS user_id,
+           NOW() AS snapshot_at,
+           COUNT(*)::INT AS chunk_count,
+           COALESCE(jsonb_agg(jsonb_build_object(
+               'id', mc.id,
+               'kind', mc.kind,
+               'content', mc.content,
+               'embedding_model', mc.embedding_model,
+               'metadata', mc.metadata,
+               'created_at', mc.created_at,
+               'last_recalled_at', mc.last_recalled_at,
+               'recall_count', mc.recall_count
+           ) ORDER BY mc.created_at), '[]'::jsonb) AS chunks
+    FROM memory_chunks mc
+    WHERE mc.user_id = p_user_id
+      AND mc.kind <> '__forgotten__';
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- export_all_memory ----------
+-- Idem pero para TODOS los usuarios — formato más conveniente para el cron
+-- de snapshot (un row por usuario).
+CREATE OR REPLACE FUNCTION export_all_memory()
+RETURNS TABLE(
+    user_id     UUID,
+    phone       TEXT,
+    snapshot_at TIMESTAMPTZ,
+    chunk_count INT,
+    chunks      JSONB
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT u.id AS user_id,
+           u.phone_number AS phone,
+           NOW() AS snapshot_at,
+           COUNT(mc.*)::INT AS chunk_count,
+           COALESCE(jsonb_agg(jsonb_build_object(
+               'id', mc.id,
+               'kind', mc.kind,
+               'content', mc.content,
+               'embedding_model', mc.embedding_model,
+               'metadata', mc.metadata,
+               'created_at', mc.created_at,
+               'last_recalled_at', mc.last_recalled_at,
+               'recall_count', mc.recall_count
+           ) ORDER BY mc.created_at) FILTER (WHERE mc.id IS NOT NULL), '[]'::jsonb) AS chunks
+    FROM users u
+    LEFT JOIN memory_chunks mc ON mc.user_id = u.id AND mc.kind <> '__forgotten__'
+    GROUP BY u.id, u.phone_number
+    HAVING COUNT(mc.*) > 0;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- find_contradiction_candidates ----------
+-- Devuelve facts del user que tienen similitud 0.85-0.94 con el embedding dado.
+-- Útil para que el agente vea contradicciones candidatas antes de remember_fact.
+CREATE OR REPLACE FUNCTION find_contradiction_candidates(
+    p_user_id   UUID,
+    p_embedding vector(1536),
+    p_limit     INT DEFAULT 5
+)
+RETURNS TABLE(id UUID, kind TEXT, content TEXT, similarity REAL, created_at TIMESTAMPTZ) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT mc.id, mc.kind, mc.content,
+           (1 - (mc.embedding <=> p_embedding))::REAL,
+           mc.created_at
+    FROM memory_chunks mc
+    WHERE mc.user_id = p_user_id
+      AND mc.kind NOT IN ('__forgotten__', '__stale__')
+      AND mc.embedding <=> p_embedding > 0.05    -- no es un duplicado
+      AND mc.embedding <=> p_embedding <= 0.15   -- pero está cerca
+    ORDER BY mc.embedding <=> p_embedding
+    LIMIT GREATEST(COALESCE(p_limit, 5), 1);
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- reembed_memory_chunk ----------
+-- Cambia el embedding de un chunk a uno nuevo, opcionalmente cambiando el
+-- modelo. Útil para migrar gradualmente cuando OpenAI saque un modelo mejor.
+-- NO cambia content. Audit log con operation='reembed'.
+CREATE OR REPLACE FUNCTION reembed_memory_chunk(
+    p_user_id        UUID,
+    p_id             UUID,
+    p_new_embedding  vector(1536),
+    p_new_model      TEXT DEFAULT NULL,
+    p_source         TEXT DEFAULT 'cron:reembed'
+)
+RETURNS TABLE(id UUID, reembedded BOOLEAN) AS $$
+DECLARE
+    v_old_kind TEXT;
+    v_old_content TEXT;
+    v_old_meta JSONB;
+    v_old_model TEXT;
+    v_next_version INT;
+BEGIN
+    SELECT mc.kind, mc.content, mc.metadata, mc.embedding_model
+      INTO v_old_kind, v_old_content, v_old_meta, v_old_model
+    FROM memory_chunks mc
+    WHERE mc.id = p_id AND mc.user_id = p_user_id AND mc.kind NOT IN ('__forgotten__', '__stale__');
+
+    IF v_old_kind IS NULL THEN
+        RETURN QUERY SELECT p_id, FALSE;
+        RETURN;
+    END IF;
+
+    SELECT COALESCE(MAX(version), 0) + 1 INTO v_next_version
+    FROM memory_chunk_versions WHERE chunk_id = p_id;
+
+    INSERT INTO memory_chunk_versions
+        (chunk_id, user_id, version, kind, content, metadata, operation, operation_source)
+    VALUES (p_id, p_user_id, v_next_version, v_old_kind, v_old_content,
+            v_old_meta || jsonb_build_object('prev_embedding_model', v_old_model),
+            'reembed', COALESCE(NULLIF(p_source, ''), 'cron:reembed'));
+
+    UPDATE memory_chunks mc
+    SET embedding = p_new_embedding,
+        embedding_model = COALESCE(NULLIF(p_new_model, ''), mc.embedding_model)
+    WHERE mc.id = p_id AND mc.user_id = p_user_id;
+
+    RETURN QUERY SELECT p_id, TRUE;
+END;
+$$ LANGUAGE plpgsql;

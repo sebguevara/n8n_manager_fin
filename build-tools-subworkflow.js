@@ -1299,11 +1299,20 @@ formatNames.push(addEmbeddingPgTool(
             THEN ($2::jsonb->>'metadata')::jsonb
             ELSE '{}'::jsonb END,
             '{}'::jsonb
-        )
+        ),
+        -- source: 'user' por default — los facts que guarda el agente vienen
+        -- de algo que el usuario dijo. El cron usa 'cron:session_summary'.
+        'user',
+        'text-embedding-3-small'
     );`,
     `const r = $input.first().json;
+const contradicts = Array.isArray(r.contradicts) ? r.contradicts : [];
 return [{ json: { ok: true, tool: 'remember_fact', data: {
-  id: r.id, was_created: !!r.was_created, content: r.content, kind: r.kind
+  id: r.id, was_created: !!r.was_created, content: r.content, kind: r.kind,
+  // Si had contradiction candidates (sim 0.85-0.94 con otros facts), los
+  // devolvemos para que el agente los muestre al usuario y pregunte.
+  contradicts_ids: contradicts,
+  has_contradictions: contradicts.length > 0
 } } }];`
 ));
 
@@ -1323,7 +1332,8 @@ formatNames.push(addEmbeddingPgTool(
              AND length(trim($2::jsonb->>'metadata')) > 0
              AND ($2::jsonb->>'metadata') <> '{}'
         THEN ($2::jsonb->>'metadata')::jsonb
-        ELSE NULL END
+        ELSE NULL END,
+        'user'
     );`,
     `const r = $input.first().json;
 if (!r || !r.updated) {
@@ -1344,13 +1354,17 @@ formatNames.push(addEmbeddingPgTool(
         $3::vector(1536),
         COALESCE(NULLIF($2::jsonb->>'k','')::int, 5),
         NULLIF($2::jsonb->>'kind',''),
-        COALESCE(NULLIF($2::jsonb->>'min_score','')::real, 0.5)
+        COALESCE(NULLIF($2::jsonb->>'min_score','')::real, 0.65)
     );`,
     `const rows = $input.all().map(i => i.json);
 return [{ json: { ok: true, tool: 'recall_memory', data: {
   matches: rows.map(r => ({
     id: r.id, kind: r.kind, content: r.content,
-    metadata: r.metadata, similarity: Number(r.similarity || 0),
+    metadata: r.metadata,
+    similarity: Number(r.similarity || 0),
+    // final_score combina similarity + recencia + uso. Lo expongo para que el
+    // agente pueda preferir "el más fuerte" cuando hay empate semántico.
+    final_score: Number(r.final_score || 0),
     created_at: r.created_at, recall_count: Number(r.recall_count || 0)
   })),
   count: rows.length
@@ -1361,7 +1375,8 @@ return [{ json: { ok: true, tool: 'recall_memory', data: {
 formatNames.push(addPgTool(TOOLS.indexOf('forget_memory'), 'forget_memory',
     `SELECT * FROM forget_memory_chunk(
         $1::uuid,
-        ($2::jsonb->>'memory_id')::uuid
+        ($2::jsonb->>'memory_id')::uuid,
+        'user'
     );`,
     "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;

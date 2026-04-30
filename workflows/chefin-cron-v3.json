@@ -103,14 +103,74 @@
       ]
     },
     {
-      "parameters": {},
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 4 * * *"
+            }
+          ]
+        }
+      },
       "id": "c006",
+      "name": "Cron Daily 04:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 30 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c007",
+      "name": "Cron Daily 23:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 2 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "c008",
+      "name": "Cron Sunday 02:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1600
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c009",
       "name": "Manual Test",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
         0,
-        1000
+        1800
       ]
     },
     {
@@ -127,13 +187,13 @@
         },
         "options": {}
       },
-      "id": "c007",
+      "id": "c010",
       "name": "Pick Job",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
         220,
-        1000
+        1800
       ]
     },
     {
@@ -254,18 +314,87 @@
               },
               "renameOutput": true,
               "outputKey": "budget_alerts"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r6",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.job_name }}",
+                    "rightValue": "memory_snapshot"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "memory_snapshot"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r7",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.job_name }}",
+                    "rightValue": "session_summary"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "session_summary"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r8",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.job_name }}",
+                    "rightValue": "memory_stale_review"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "memory_stale_review"
             }
           ]
         },
         "options": {}
       },
-      "id": "c008",
+      "id": "c011",
       "name": "Dispatch Manual",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
       "position": [
         440,
-        1000
+        1800
       ]
     },
     {
@@ -276,7 +405,7 @@
           "queryReplacement": "=daily_summary"
         }
       },
-      "id": "c009",
+      "id": "c012",
       "name": "Log Start: daily_summary",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -299,7 +428,7 @@
         "query": "SELECT u.id AS user_id, u.phone_number AS phone, u.name,\n                   ds.total, ds.n, ds.top_category, ds.top_amount\n            FROM users u\n            CROSS JOIN LATERAL daily_summary(u.id) ds\n            WHERE u.daily_summary_enabled = TRUE AND u.is_active = TRUE;",
         "options": {}
       },
-      "id": "c010",
+      "id": "c013",
       "name": "Daily Summary Query",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -319,7 +448,7 @@
       "parameters": {
         "jsCode": "const items = $input.all();\nconst out = [];\nfor (const it of items) {\n  const j = it.json;\n  const total = Number(j.total || 0);\n  const n = Number(j.n || 0);\n  const fmt = x => Number(x||0).toLocaleString('es-AR');\n  let text;\n  if (n === 0) {\n    const opts = [\n      '🧘 Hoy no anotaste gastos. Buen día para la billetera.',\n      '🎉 Día sin gastos registrados. ¡Bien ahí!',\n      '✨ Hoy no me llegó nada. Si te olvidaste algo, lo podés cargar ahora.'\n    ];\n    text = opts[Math.floor(Math.random()*opts.length)];\n  } else {\n    let body = `📊 *Resumen de hoy*\\nGastaste $${fmt(total)} en ${n} ${n===1?'movimiento':'movimientos'}`;\n    if (j.top_category) body += `\\nMás fuerte: ${j.top_category} ($${fmt(j.top_amount)})`;\n    text = body;\n  }\n  out.push({ json: {\n    job_name: 'daily_summary',\n    user_id: j.user_id, phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: text\n  }});\n}\nreturn out;"
       },
-      "id": "c011",
+      "id": "c014",
       "name": "Format Daily Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -336,7 +465,7 @@
           "queryReplacement": "=weekly_summary"
         }
       },
-      "id": "c012",
+      "id": "c015",
       "name": "Log Start: weekly_summary",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -359,7 +488,7 @@
         "query": "WITH this_week AS (\n  SELECT u.id AS user_id, u.phone_number, u.name,\n         COALESCE(SUM(t.amount),0) AS this_total, COUNT(t.*) AS this_n\n  FROM users u\n  LEFT JOIN v_reportable_transactions t\n    ON t.user_id = u.id AND t.type = 'expense'\n   AND t.transaction_date >= DATE_TRUNC('week', CURRENT_DATE)\n  WHERE u.weekly_summary_enabled = TRUE AND u.is_active = TRUE\n  GROUP BY u.id, u.phone_number, u.name\n),\nlast_week AS (\n  SELECT u.id AS user_id, COALESCE(SUM(t.amount),0) AS last_total\n  FROM users u\n  LEFT JOIN v_reportable_transactions t\n    ON t.user_id = u.id AND t.type = 'expense'\n   AND t.transaction_date >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '1 week')\n   AND t.transaction_date <  DATE_TRUNC('week', CURRENT_DATE)\n  GROUP BY u.id\n),\ntop_cat AS (\n  SELECT DISTINCT ON (t.user_id) t.user_id, c.name AS category, SUM(t.amount) AS amt\n  FROM v_reportable_transactions t\n  LEFT JOIN categories c ON c.id = t.category_id\n  WHERE t.type = 'expense' AND t.transaction_date >= DATE_TRUNC('week', CURRENT_DATE)\n  GROUP BY t.user_id, c.name\n  ORDER BY t.user_id, amt DESC\n)\nSELECT tw.user_id, tw.phone_number AS phone, tw.name,\n       tw.this_total, tw.this_n,\n       lw.last_total, tc.category AS top_category, tc.amt AS top_amount\nFROM this_week tw\nLEFT JOIN last_week lw USING (user_id)\nLEFT JOIN top_cat tc USING (user_id);",
         "options": {}
       },
-      "id": "c013",
+      "id": "c016",
       "name": "Weekly Summary Query",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -379,7 +508,7 @@
       "parameters": {
         "jsCode": "const items = $input.all();\nconst out = [];\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nfor (const it of items) {\n  const j = it.json;\n  const t = Number(j.this_total||0), l = Number(j.last_total||0);\n  let trend = '';\n  if (l > 0) {\n    const pct = Math.round(((t - l) / l) * 100);\n    if (pct > 5) trend = `\\n📈 ${pct}% más que la semana pasada ($${fmt(l)})`;\n    else if (pct < -5) trend = `\\n📉 ${Math.abs(pct)}% menos que la semana pasada ($${fmt(l)})`;\n    else trend = '\\n📊 Similar a la semana pasada.';\n  }\n  let body;\n  if (Number(j.this_n) === 0) {\n    body = '🌿 *Resumen semanal*\\nEsta semana no registraste gastos.';\n  } else {\n    body = `📅 *Resumen semanal*\\nGastaste $${fmt(t)} en ${j.this_n} ${j.this_n==1?'movimiento':'movimientos'}${trend}`;\n    if (j.top_category) body += `\\nMás fuerte: ${j.top_category} ($${fmt(j.top_amount)})`;\n  }\n  out.push({ json: {\n    job_name: 'weekly_summary',\n    user_id: j.user_id, phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: body\n  }});\n}\nreturn out;"
       },
-      "id": "c014",
+      "id": "c017",
       "name": "Format Weekly Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -396,7 +525,7 @@
           "queryReplacement": "=recurring"
         }
       },
-      "id": "c015",
+      "id": "c018",
       "name": "Log Start: recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -419,7 +548,7 @@
         "query": "SELECT * FROM process_due_recurring();",
         "options": {}
       },
-      "id": "c016",
+      "id": "c019",
       "name": "Process Due Recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -439,7 +568,7 @@
       "parameters": {
         "jsCode": "const items = $input.all().filter(i => i.json.out_transaction_id);\nconst out = [];\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nfor (const it of items) {\n  const j = it.json;\n  out.push({ json: {\n    job_name: 'recurring',\n    user_id: j.out_user_id, phone: j.out_phone,\n    instance: 'chefin',\n    remoteJid: j.out_phone + '@s.whatsapp.net',\n    replyText: `🔁 Cargué tu gasto recurrente: $${fmt(j.out_amount)} de ${j.out_category_name||'sin categoría'}${j.out_description?' — '+j.out_description:''}`\n  }});\n}\nreturn out;"
       },
-      "id": "c017",
+      "id": "c020",
       "name": "Format Recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -456,7 +585,7 @@
           "queryReplacement": "=cleanup"
         }
       },
-      "id": "c018",
+      "id": "c021",
       "name": "Log Start: cleanup",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -479,7 +608,7 @@
         "query": "SELECT\n        purge_old_chat_history(30) AS chats_purged,\n        purge_expired_conv_states() AS states_purged,\n        (SELECT COUNT(*)::INT FROM cron_runs WHERE started_at < NOW() - INTERVAL '90 days') AS old_cron_runs;",
         "options": {}
       },
-      "id": "c019",
+      "id": "c022",
       "name": "Cleanup Postgres",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -499,7 +628,7 @@
       "parameters": {
         "jsCode": "const r = $input.first()?.json || {};\nconst summary = {\n  chats_purged: Number(r.chats_purged||0),\n  states_purged: Number(r.states_purged||0),\n  old_cron_runs: Number(r.old_cron_runs||0)\n};\n// No messages to send — return synthetic record so Log End has data\nreturn [{ json: { job_name: 'cleanup', skip_send: true, summary }}];"
       },
-      "id": "c020",
+      "id": "c023",
       "name": "Format Cleanup",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -516,7 +645,7 @@
           "queryReplacement": "=budget_alerts"
         }
       },
-      "id": "c021",
+      "id": "c024",
       "name": "Log Start: budget_alerts",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -539,7 +668,7 @@
         "query": "SELECT * FROM pending_budget_alerts();",
         "options": {}
       },
-      "id": "c022",
+      "id": "c025",
       "name": "Pending Alerts Query",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -559,7 +688,7 @@
       "parameters": {
         "jsCode": "const items = $input.all().filter(i => i.json.user_id);\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nconst out = [];\nfor (const it of items) {\n  const j = it.json;\n  const spent = Number(j.spent||0), amount = Number(j.amount||0);\n  const pct = amount > 0 ? Math.round(spent / amount * 100) : 0;\n  let body;\n  if (j.level === 'over_budget') {\n    body = `⚠️ Te pasaste del presupuesto de *${j.category_name}* (${j.period}): $${fmt(spent)} de $${fmt(amount)} (${pct}%).`;\n  } else {\n    body = `🟡 Vas por $${fmt(spent)} en *${j.category_name}* este ${j.period} (${pct}% del presupuesto $${fmt(amount)}).`;\n  }\n  out.push({ json: {\n    job_name: 'budget_alerts',\n    user_id: j.user_id, phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: body,\n    // Carry budget metadata so we can mark it sent after delivery\n    _budget_id: j.budget_id, _level: j.level\n  }});\n}\nreturn out;"
       },
-      "id": "c023",
+      "id": "c026",
       "name": "Format Alerts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -570,10 +699,410 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_cron_start($1::text, '{}'::jsonb) AS run_id;",
+        "options": {
+          "queryReplacement": "=memory_snapshot"
+        }
+      },
+      "id": "c027",
+      "name": "Log Start: memory_snapshot",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        1200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM export_all_memory();",
+        "options": {}
+      },
+      "id": "c028",
+      "name": "Export All Memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        1200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst items = $input.all();\n\nconst SNAPSHOT_DIR = '/data/logs/memory-snapshots';\nconst day = new Date().toISOString().slice(0, 10);\nconst file = path.join(SNAPSHOT_DIR, day + '.jsonl');\n\nlet written = 0, failed = 0;\ntry {\n  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });\n  // Truncamos antes de escribir — el snapshot del día reemplaza al previo si\n  // se reejecutó. Idempotente: re-correr el cron del mismo día sobreescribe.\n  fs.writeFileSync(file, '', 'utf8');\n  for (const it of items) {\n    const j = it.json || {};\n    if (!j.user_id) continue;\n    try {\n      fs.appendFileSync(file, JSON.stringify({\n        user_id: j.user_id,\n        phone: j.phone,\n        snapshot_at: j.snapshot_at,\n        chunk_count: Number(j.chunk_count || 0),\n        chunks: j.chunks || []\n      }) + '\\n', 'utf8');\n      written++;\n    } catch (e) {\n      console.error('[memory_snapshot] failed for user ' + j.user_id + ':', e.message);\n      failed++;\n    }\n  }\n} catch (e) {\n  console.error('[memory_snapshot] mkdir/truncate failed:', e.message);\n}\n\nreturn [{ json: {\n  job_name: 'memory_snapshot',\n  skip_send: true,\n  summary: { users_written: written, users_failed: failed, file }\n} }];"
+      },
+      "id": "c029",
+      "name": "Write Snapshot File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)\n            VALUES ('memory_snapshot', NOW(), $1::int, TRUE, $2::jsonb);",
+        "options": {
+          "queryReplacement": "={{ $json.summary.users_written || 0 }},={{ JSON.stringify($json.summary || {}) }}"
+        }
+      },
+      "id": "c030",
+      "name": "Log End Snapshot",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1320,
+        1200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_cron_start($1::text, '{}'::jsonb) AS run_id;",
+        "options": {
+          "queryReplacement": "=session_summary"
+        }
+      },
+      "id": "c031",
+      "name": "Log Start: session_summary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        1400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.id AS user_id, u.id::text AS session_id,\n                   COUNT(ch.*) AS turn_count\n            FROM users u\n            JOIN n8n_chat_histories ch ON ch.session_id = u.id::text\n                AND ch.created_at >= NOW() - INTERVAL '24 hours'\n            WHERE u.is_active = TRUE\n            GROUP BY u.id\n            HAVING COUNT(ch.*) >= 10;",
+        "options": {}
+      },
+      "id": "c032",
+      "name": "Find Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        1400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT message->'data'->>'content' AS text,\n                   message->>'type' AS role,\n                   created_at\n            FROM n8n_chat_histories\n            WHERE session_id = $1::text\n              AND created_at >= NOW() - INTERVAL '24 hours'\n            ORDER BY id DESC LIMIT 50;",
+        "options": {
+          "queryReplacement": "={{ $json.session_id }}"
+        }
+      },
+      "id": "c033",
+      "name": "Fetch Recent Turns",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1100,
+        1400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const turns = $input.all();\n// Reconstruimos en orden cronológico (la query trae DESC)\nconst ordered = turns.slice().reverse();\nconst transcript = ordered.map(t => {\n  const role = (t.json.role === 'human') ? 'Usuario' : 'Asistente';\n  return role + ': ' + (t.json.text || '').slice(0, 400);\n}).join('\\n');\n\n// Si el transcript es muy corto (saludos sueltos), bypass — no vale la pena.\nif (transcript.length < 200) {\n  return [{ json: { skip: true, reason: 'transcript_too_short' } }];\n}\n\nreturn [{ json: {\n  user_id: $('Find Active Users').first().json.user_id,\n  prompt_text: transcript,\n  skip: false\n} }];"
+      },
+      "id": "c034",
+      "name": "Build Summary Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"temperature\": 0.2, \"max_tokens\": 220,\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Sos un condensador de conversaciones. Tu output es UN PÁRRAFO en español rioplatense (máximo 60 palabras) que captura SOLO contexto persistente y útil del día — NO datos numéricos, NO transacciones específicas, NO saldos, NO categorías mencionadas en pasada. Capturá: temas recurrentes, decisiones, preferencias nuevas, planes mencionados, estados emocionales si afectan la conversación. Empezá directo, sin 'Hoy el usuario...' Si no hay nada digno de recordar, devolvé exactamente la string SKIP.\"},\n    {\"role\":\"user\",\"content\":\"Transcripción:\\n{{ ($json.prompt_text || '').replace(/[\\\\\\\"]/g, ' ') }}\"}\n  ]\n}",
+        "options": {}
+      },
+      "id": "c035",
+      "name": "Summarize with LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        1400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Build Summary Prompt').first().json;\nif (ctx.skip) {\n  return [{ json: { skip: true, reason: ctx.reason } }];\n}\nconst resp = $input.first().json || {};\nconst text = (resp.choices?.[0]?.message?.content || '').trim();\nif (!text || text.toUpperCase() === 'SKIP' || text.length < 20) {\n  return [{ json: { skip: true, reason: 'llm_returned_skip' } }];\n}\nreturn [{ json: { user_id: ctx.user_id, summary_text: text, skip: false } }];"
+      },
+      "id": "c036",
+      "name": "Extract Summary Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.summary_text || \"\") }}\n}",
+        "options": {}
+      },
+      "id": "c037",
+      "name": "Embed Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        1400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM add_memory_chunk(\n        $1::uuid,\n        'session_summary',\n        $2::text,\n        $3::vector(1536),\n        '{}'::jsonb,\n        'cron:session_summary',\n        'text-embedding-3-small'\n    );",
+        "options": {
+          "queryReplacement": "={{ $('Extract Summary Text').first().json.user_id }},={{ $('Extract Summary Text').first().json.summary_text }},={{ '[' + $json.data[0].embedding.join(',') + ']' }}"
+        }
+      },
+      "id": "c038",
+      "name": "Save Session Summary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2200,
+        1400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst written = items.filter(i => i.json && i.json.id).length;\nreturn [{ json: {\n  job_name: 'session_summary',\n  skip_send: true,\n  summary: { summaries_written: written, users_processed: items.length }\n} }];"
+      },
+      "id": "c039",
+      "name": "Aggregate Summary Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)\n            VALUES ('session_summary', NOW(), $1::int, TRUE, $2::jsonb);",
+        "options": {
+          "queryReplacement": "={{ $json.summary.summaries_written || 0 }},={{ JSON.stringify($json.summary || {}) }}"
+        }
+      },
+      "id": "c040",
+      "name": "Log End Summary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2640,
+        1400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_cron_start($1::text, '{}'::jsonb) AS run_id;",
+        "options": {
+          "queryReplacement": "=memory_stale_review"
+        }
+      },
+      "id": "c041",
+      "name": "Log Start: memory_stale_review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        1600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*)::INT AS marked FROM mark_stale_memories(NULL, 45, 60);",
+        "options": {}
+      },
+      "id": "c042",
+      "name": "Mark Stale",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        1600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first()?.json || {};\nconst marked = Number(r.marked || 0);\nreturn [{ json: {\n  job_name: 'memory_stale_review',\n  skip_send: true,\n  summary: { facts_marked_stale: marked }\n} }];"
+      },
+      "id": "c043",
+      "name": "Format Stale Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)\n            VALUES ('memory_stale_review', NOW(), $1::int, TRUE, $2::jsonb);",
+        "options": {
+          "queryReplacement": "={{ $json.summary.facts_marked_stale || 0 }},={{ JSON.stringify($json.summary || {}) }}"
+        }
+      },
+      "id": "c044",
+      "name": "Log End Stale",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1320,
+        1600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
         "mode": "append",
         "options": {}
       },
-      "id": "c024",
+      "id": "c045",
       "name": "Merge Outputs",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
@@ -614,7 +1143,7 @@
         },
         "options": {}
       },
-      "id": "c025",
+      "id": "c046",
       "name": "Filter Sendable",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
@@ -628,7 +1157,7 @@
         "batchSize": 1,
         "options": {}
       },
-      "id": "c026",
+      "id": "c047",
       "name": "Loop Batches",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -645,7 +1174,7 @@
         "messageText": "={{ $json.replyText }}",
         "options_message": {}
       },
-      "id": "c027",
+      "id": "c048",
       "name": "Send WhatsApp",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -669,7 +1198,7 @@
           "queryReplacement": "={{ $json.job_name }},={{ $json.user_id }},={{ $json._budget_id || '' }},={{ $json._level || '' }}"
         }
       },
-      "id": "c028",
+      "id": "c049",
       "name": "Mark Sent (if budget)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -691,7 +1220,7 @@
         "amount": 400,
         "unit": "ms"
       },
-      "id": "c029",
+      "id": "c050",
       "name": "Rate Limit Wait",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -704,7 +1233,7 @@
       "parameters": {
         "jsCode": "const items = $input.all();\nconst stats = {};\nfor (const it of items) {\n  const job = it.json.job_name || 'unknown';\n  stats[job] = stats[job] || { processed: 0 };\n  stats[job].processed += 1;\n}\nreturn Object.entries(stats).map(([job, s]) => ({ json: { job_name: job, items_processed: s.processed, items_sent: s.processed } }));"
       },
-      "id": "c030",
+      "id": "c051",
       "name": "Aggregate Stats",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -721,7 +1250,7 @@
           "queryReplacement": "={{ $json.job_name }},={{ $json.items_processed || 0 }},={{ $json.items_sent || 0 }}"
         }
       },
-      "id": "c031",
+      "id": "c052",
       "name": "Log End",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -745,7 +1274,7 @@
           "queryReplacement": "={{ JSON.stringify($json.summary || {}) }}"
         }
       },
-      "id": "c032",
+      "id": "c053",
       "name": "Log End Cleanup",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -829,6 +1358,27 @@
         [
           {
             "node": "Log Start: budget_alerts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Start: memory_snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Start: session_summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Start: memory_stale_review",
             "type": "main",
             "index": 0
           }
@@ -983,6 +1533,204 @@
         [
           {
             "node": "Format Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Daily 04:00": {
+      "main": [
+        [
+          {
+            "node": "Log Start: memory_snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Start: memory_snapshot": {
+      "main": [
+        [
+          {
+            "node": "Export All Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export All Memory": {
+      "main": [
+        [
+          {
+            "node": "Write Snapshot File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Snapshot File": {
+      "main": [
+        [
+          {
+            "node": "Log End Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Daily 23:30": {
+      "main": [
+        [
+          {
+            "node": "Log Start: session_summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Start: session_summary": {
+      "main": [
+        [
+          {
+            "node": "Find Active Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Active Users": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Turns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Turns": {
+      "main": [
+        [
+          {
+            "node": "Build Summary Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary Prompt": {
+      "main": [
+        [
+          {
+            "node": "Summarize with LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize with LLM": {
+      "main": [
+        [
+          {
+            "node": "Extract Summary Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Summary Text": {
+      "main": [
+        [
+          {
+            "node": "Embed Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Summary": {
+      "main": [
+        [
+          {
+            "node": "Save Session Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Session Summary": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Summary Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Summary Stats": {
+      "main": [
+        [
+          {
+            "node": "Log End Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Sunday 02:00": {
+      "main": [
+        [
+          {
+            "node": "Log Start: memory_stale_review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Start: memory_stale_review": {
+      "main": [
+        [
+          {
+            "node": "Mark Stale",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Stale": {
+      "main": [
+        [
+          {
+            "node": "Format Stale Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Stale Result": {
+      "main": [
+        [
+          {
+            "node": "Log End Stale",
             "type": "main",
             "index": 0
           }

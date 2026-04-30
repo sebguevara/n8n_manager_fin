@@ -8,12 +8,19 @@
 //   - Recurring transactions processor (06:00 daily)
 //   - Cleanup job (03:00 daily) — old chat history + expired conv_states
 //   - Budget alerts (every 4 hours, 09:00..21:00)
+//   - Memory snapshot (04:00 daily) — backup JSONL de memory_chunks por usuario
+//   - Session summary (03:30 daily) — condensa los turnos del día y los persiste
+//     como kind='session_summary' para recuperar contexto cuando salgan del window
+//   - Memory stale review (Sunday 02:00) — marca facts viejos sin uso como '__stale__'
 //   - Manual test trigger (run any job on demand)
 //
-// All paths converge into a single Send branch with rate-limiting wait.
+// All paths converge into a single Send branch with rate-limiting wait, except
+// los jobs de mantenimiento de memoria (snapshot/summary/stale) que no envían
+// nada al usuario y terminan en Log End directo.
 
 const PG = { id: 'f8CCpjEZRkcHEaJI', name: 'Postgres account' };
 const EVO = { id: 'FgeqqvxAqTER4oeD', name: 'Evolution account' };
+const OPENAI = { id: '0ErbOR5W4QIYaohV', name: 'OpenAI account' };
 const INSTANCE = 'chefin'; // default Evolution instance
 
 let idCounter = 1;
@@ -66,46 +73,52 @@ addNode('Cron Every 4h', 'n8n-nodes-base.scheduleTrigger', {
     rule: { interval: [{ field: 'cronExpression', expression: '0 0 9,13,17,21 * * *' }] }
 }, 0, 800, { tv: 1.2 });
 
+// Memory maintenance crons (separados de los user-facing — no mandan WhatsApp)
+// Memory snapshot — 04:00 daily (después del cleanup 03:30)
+addNode('Cron Daily 04:00', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'cronExpression', expression: '0 0 4 * * *' }] }
+}, 0, 1200, { tv: 1.2 });
+
+// Session summary — 23:30 daily (después del daily summary)
+addNode('Cron Daily 23:30', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'cronExpression', expression: '0 30 23 * * *' }] }
+}, 0, 1400, { tv: 1.2 });
+
+// Stale memory review — Sunday 02:00 (semanal)
+addNode('Cron Sunday 02:00', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'cronExpression', expression: '0 0 2 * * 0' }] }
+}, 0, 1600, { tv: 1.2 });
+
 // Manual test — pick a job
-addNode('Manual Test', 'n8n-nodes-base.manualTrigger', {}, 0, 1000, { tv: 1 });
+addNode('Manual Test', 'n8n-nodes-base.manualTrigger', {}, 0, 1800, { tv: 1 });
 
 addNode('Pick Job', 'n8n-nodes-base.set', {
     assignments: { assignments: [
         { id: 'j', name: 'job_name', type: 'string', value: 'daily_summary' }
     ] }, options: {}
-}, 220, 1000, { tv: 3.4 });
+}, 220, 1800, { tv: 3.4 });
 connect('Manual Test', 'Pick Job');
 
 // Job dispatcher for manual trigger
+const dispatchRule = (id, key) => ({
+    conditions: { options: { caseSensitive: true, typeValidation: 'strict', version: 1 },
+      combinator: 'and', conditions: [{
+          id, operator: { type: 'string', operation: 'equals' },
+          leftValue: '={{ $json.job_name }}', rightValue: key }] },
+    renameOutput: true, outputKey: key
+});
 addNode('Dispatch Manual', 'n8n-nodes-base.switch', {
     rules: { values: [
-        { conditions: { options: { caseSensitive: true, typeValidation: 'strict', version: 1 },
-          combinator: 'and', conditions: [{
-              id: 'r1', operator: { type: 'string', operation: 'equals' },
-              leftValue: '={{ $json.job_name }}', rightValue: 'daily_summary' }] },
-          renameOutput: true, outputKey: 'daily_summary' },
-        { conditions: { options: { caseSensitive: true, typeValidation: 'strict', version: 1 },
-          combinator: 'and', conditions: [{
-              id: 'r2', operator: { type: 'string', operation: 'equals' },
-              leftValue: '={{ $json.job_name }}', rightValue: 'weekly_summary' }] },
-          renameOutput: true, outputKey: 'weekly_summary' },
-        { conditions: { options: { caseSensitive: true, typeValidation: 'strict', version: 1 },
-          combinator: 'and', conditions: [{
-              id: 'r3', operator: { type: 'string', operation: 'equals' },
-              leftValue: '={{ $json.job_name }}', rightValue: 'recurring' }] },
-          renameOutput: true, outputKey: 'recurring' },
-        { conditions: { options: { caseSensitive: true, typeValidation: 'strict', version: 1 },
-          combinator: 'and', conditions: [{
-              id: 'r4', operator: { type: 'string', operation: 'equals' },
-              leftValue: '={{ $json.job_name }}', rightValue: 'cleanup' }] },
-          renameOutput: true, outputKey: 'cleanup' },
-        { conditions: { options: { caseSensitive: true, typeValidation: 'strict', version: 1 },
-          combinator: 'and', conditions: [{
-              id: 'r5', operator: { type: 'string', operation: 'equals' },
-              leftValue: '={{ $json.job_name }}', rightValue: 'budget_alerts' }] },
-          renameOutput: true, outputKey: 'budget_alerts' }
+        dispatchRule('r1', 'daily_summary'),
+        dispatchRule('r2', 'weekly_summary'),
+        dispatchRule('r3', 'recurring'),
+        dispatchRule('r4', 'cleanup'),
+        dispatchRule('r5', 'budget_alerts'),
+        dispatchRule('r6', 'memory_snapshot'),
+        dispatchRule('r7', 'session_summary'),
+        dispatchRule('r8', 'memory_stale_review')
     ] }, options: {}
-}, 440, 1000, { tv: 3 });
+}, 440, 1800, { tv: 3 });
 connect('Pick Job', 'Dispatch Manual');
 
 // =========================================================================
@@ -353,6 +366,258 @@ for (const it of items) {
 return out;`
 }, 1100, 800);
 connect('Pending Alerts Query', 'Format Alerts');
+
+// =========================================================================
+// 7b. MEMORY SNAPSHOT JOB — backup diario de memory_chunks por usuario
+// =========================================================================
+// Exporta a /data/logs/memory-snapshots/<YYYY-MM-DD>.jsonl (bind-mounted al host).
+// 1 línea JSONL por usuario con todos sus facts vivos. Sirve como backup
+// independiente del volumen de Postgres (defensa contra accidentes).
+const msLog = addStartLog('memory_snapshot', 660, 1200);
+connect('Cron Daily 04:00', msLog);
+connect('Dispatch Manual', msLog, 5);
+
+addNode('Export All Memory', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: 'SELECT * FROM export_all_memory();',
+    options: {}
+}, 880, 1200, { tv: 2.5, creds: { postgres: PG }, always: true });
+connect(msLog, 'Export All Memory');
+
+addNode('Write Snapshot File', 'n8n-nodes-base.code', {
+    jsCode: `const fs = require('fs');
+const path = require('path');
+const items = $input.all();
+
+const SNAPSHOT_DIR = '/data/logs/memory-snapshots';
+const day = new Date().toISOString().slice(0, 10);
+const file = path.join(SNAPSHOT_DIR, day + '.jsonl');
+
+let written = 0, failed = 0;
+try {
+  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+  // Truncamos antes de escribir — el snapshot del día reemplaza al previo si
+  // se reejecutó. Idempotente: re-correr el cron del mismo día sobreescribe.
+  fs.writeFileSync(file, '', 'utf8');
+  for (const it of items) {
+    const j = it.json || {};
+    if (!j.user_id) continue;
+    try {
+      fs.appendFileSync(file, JSON.stringify({
+        user_id: j.user_id,
+        phone: j.phone,
+        snapshot_at: j.snapshot_at,
+        chunk_count: Number(j.chunk_count || 0),
+        chunks: j.chunks || []
+      }) + '\\n', 'utf8');
+      written++;
+    } catch (e) {
+      console.error('[memory_snapshot] failed for user ' + j.user_id + ':', e.message);
+      failed++;
+    }
+  }
+} catch (e) {
+  console.error('[memory_snapshot] mkdir/truncate failed:', e.message);
+}
+
+return [{ json: {
+  job_name: 'memory_snapshot',
+  skip_send: true,
+  summary: { users_written: written, users_failed: failed, file }
+} }];`
+}, 1100, 1200);
+connect('Export All Memory', 'Write Snapshot File');
+
+addNode('Log End Snapshot', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: `INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)
+            VALUES ('memory_snapshot', NOW(), $1::int, TRUE, $2::jsonb);`,
+    options: {
+        queryReplacement: '={{ $json.summary.users_written || 0 }},={{ JSON.stringify($json.summary || {}) }}'
+    }
+}, 1320, 1200, { tv: 2.5, creds: { postgres: PG }, cof: true });
+connect('Write Snapshot File', 'Log End Snapshot');
+
+// =========================================================================
+// 7c. SESSION SUMMARY JOB — condensa el chat history del día en un fact
+// =========================================================================
+// Para cada user con >=10 turnos hoy, generamos UN párrafo de resumen y lo
+// guardamos como memory_chunk con kind='session_summary'. Esto preserva
+// contexto de turnos que van a salir del window de 20 mensajes.
+//
+// Pipeline: query → para cada user → fetch últimos 50 turnos → OpenAI summarize
+// → OpenAI embed → add_memory_chunk(kind='session_summary'). Si falla cualquiera
+// de los pasos para un user, seguimos con los demás (cof:true en cada uno).
+const ssLog = addStartLog('session_summary', 660, 1400);
+connect('Cron Daily 23:30', ssLog);
+connect('Dispatch Manual', ssLog, 6);
+
+addNode('Find Active Users', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    // Solo users con actividad real hoy (>= 10 turnos en ventana 24h).
+    // Si el user mandó 5 mensajes, no vale la pena resumirlo — el window
+    // de 20 ya lo cubre sobrado.
+    query: `SELECT u.id AS user_id, u.id::text AS session_id,
+                   COUNT(ch.*) AS turn_count
+            FROM users u
+            JOIN n8n_chat_histories ch ON ch.session_id = u.id::text
+                AND ch.created_at >= NOW() - INTERVAL '24 hours'
+            WHERE u.is_active = TRUE
+            GROUP BY u.id
+            HAVING COUNT(ch.*) >= 10;`,
+    options: {}
+}, 880, 1400, { tv: 2.5, creds: { postgres: PG }, always: true });
+connect(ssLog, 'Find Active Users');
+
+addNode('Fetch Recent Turns', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    // Trae los últimos 50 turnos del user, en orden cronológico.
+    query: `SELECT message->'data'->>'content' AS text,
+                   message->>'type' AS role,
+                   created_at
+            FROM n8n_chat_histories
+            WHERE session_id = $1::text
+              AND created_at >= NOW() - INTERVAL '24 hours'
+            ORDER BY id DESC LIMIT 50;`,
+    options: { queryReplacement: '={{ $json.session_id }}' }
+}, 1100, 1400, { tv: 2.5, creds: { postgres: PG }, cof: true, always: true });
+connect('Find Active Users', 'Fetch Recent Turns');
+
+addNode('Build Summary Prompt', 'n8n-nodes-base.code', {
+    jsCode: `const turns = $input.all();
+// Reconstruimos en orden cronológico (la query trae DESC)
+const ordered = turns.slice().reverse();
+const transcript = ordered.map(t => {
+  const role = (t.json.role === 'human') ? 'Usuario' : 'Asistente';
+  return role + ': ' + (t.json.text || '').slice(0, 400);
+}).join('\\n');
+
+// Si el transcript es muy corto (saludos sueltos), bypass — no vale la pena.
+if (transcript.length < 200) {
+  return [{ json: { skip: true, reason: 'transcript_too_short' } }];
+}
+
+return [{ json: {
+  user_id: $('Find Active Users').first().json.user_id,
+  prompt_text: transcript,
+  skip: false
+} }];`
+}, 1320, 1400);
+connect('Fetch Recent Turns', 'Build Summary Prompt');
+
+addNode('Summarize with LLM', 'n8n-nodes-base.httpRequest', {
+    method: 'POST',
+    url: 'https://api.openai.com/v1/chat/completions',
+    authentication: 'predefinedCredentialType', nodeCredentialType: 'openAiApi',
+    sendHeaders: true,
+    headerParameters: { parameters: [{ name: 'Content-Type', value: 'application/json' }] },
+    sendBody: true, specifyBody: 'json',
+    jsonBody: '={\n  "model": "gpt-4o-mini",\n  "temperature": 0.2, "max_tokens": 220,\n  "messages": [\n    {"role":"system","content":"Sos un condensador de conversaciones. Tu output es UN PÁRRAFO en español rioplatense (máximo 60 palabras) que captura SOLO contexto persistente y útil del día — NO datos numéricos, NO transacciones específicas, NO saldos, NO categorías mencionadas en pasada. Capturá: temas recurrentes, decisiones, preferencias nuevas, planes mencionados, estados emocionales si afectan la conversación. Empezá directo, sin \'Hoy el usuario...\' Si no hay nada digno de recordar, devolvé exactamente la string SKIP."},\n    {"role":"user","content":"Transcripción:\\n{{ ($json.prompt_text || \'\').replace(/[\\\\\\"]/g, \' \') }}"}\n  ]\n}',
+    options: {}
+}, 1540, 1400, { tv: 4.2, creds: { openAiApi: OPENAI }, cof: true });
+connect('Build Summary Prompt', 'Summarize with LLM');
+
+addNode('Extract Summary Text', 'n8n-nodes-base.code', {
+    jsCode: `const ctx = $('Build Summary Prompt').first().json;
+if (ctx.skip) {
+  return [{ json: { skip: true, reason: ctx.reason } }];
+}
+const resp = $input.first().json || {};
+const text = (resp.choices?.[0]?.message?.content || '').trim();
+if (!text || text.toUpperCase() === 'SKIP' || text.length < 20) {
+  return [{ json: { skip: true, reason: 'llm_returned_skip' } }];
+}
+return [{ json: { user_id: ctx.user_id, summary_text: text, skip: false } }];`
+}, 1760, 1400);
+connect('Summarize with LLM', 'Extract Summary Text');
+
+addNode('Embed Summary', 'n8n-nodes-base.httpRequest', {
+    method: 'POST',
+    url: 'https://api.openai.com/v1/embeddings',
+    authentication: 'predefinedCredentialType', nodeCredentialType: 'openAiApi',
+    sendHeaders: true,
+    headerParameters: { parameters: [{ name: 'Content-Type', value: 'application/json' }] },
+    sendBody: true, specifyBody: 'json',
+    jsonBody: `={\n  "model": "text-embedding-3-small",\n  "input": {{ JSON.stringify($json.summary_text || "") }}\n}`,
+    options: {}
+}, 1980, 1400, { tv: 4.2, creds: { openAiApi: OPENAI }, cof: true });
+connect('Extract Summary Text', 'Embed Summary');
+
+addNode('Save Session Summary', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    // Convertimos el array de embedding a vector usando ARRAY[]::vector(1536)
+    query: `SELECT * FROM add_memory_chunk(
+        $1::uuid,
+        'session_summary',
+        $2::text,
+        $3::vector(1536),
+        '{}'::jsonb,
+        'cron:session_summary',
+        'text-embedding-3-small'
+    );`,
+    options: {
+        queryReplacement: "={{ $('Extract Summary Text').first().json.user_id }},={{ $('Extract Summary Text').first().json.summary_text }},={{ '[' + $json.data[0].embedding.join(',') + ']' }}"
+    }
+}, 2200, 1400, { tv: 2.5, creds: { postgres: PG }, cof: true, always: true });
+connect('Embed Summary', 'Save Session Summary');
+
+addNode('Aggregate Summary Stats', 'n8n-nodes-base.code', {
+    jsCode: `const items = $input.all();
+const written = items.filter(i => i.json && i.json.id).length;
+return [{ json: {
+  job_name: 'session_summary',
+  skip_send: true,
+  summary: { summaries_written: written, users_processed: items.length }
+} }];`
+}, 2420, 1400);
+connect('Save Session Summary', 'Aggregate Summary Stats');
+
+addNode('Log End Summary', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: `INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)
+            VALUES ('session_summary', NOW(), $1::int, TRUE, $2::jsonb);`,
+    options: {
+        queryReplacement: '={{ $json.summary.summaries_written || 0 }},={{ JSON.stringify($json.summary || {}) }}'
+    }
+}, 2640, 1400, { tv: 2.5, creds: { postgres: PG }, cof: true });
+connect('Aggregate Summary Stats', 'Log End Summary');
+
+// =========================================================================
+// 7d. STALE MEMORY REVIEW JOB — marca facts viejos sin uso como '__stale__'
+// =========================================================================
+const stLog = addStartLog('memory_stale_review', 660, 1600);
+connect('Cron Sunday 02:00', stLog);
+connect('Dispatch Manual', stLog, 7);
+
+addNode('Mark Stale', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    // NULL p_user_id → todos los users.
+    // 45d sin recall, 60d de antigüedad mínima — facts recientes nunca se marcan.
+    query: 'SELECT COUNT(*)::INT AS marked FROM mark_stale_memories(NULL, 45, 60);',
+    options: {}
+}, 880, 1600, { tv: 2.5, creds: { postgres: PG }, always: true });
+connect(stLog, 'Mark Stale');
+
+addNode('Format Stale Result', 'n8n-nodes-base.code', {
+    jsCode: `const r = $input.first()?.json || {};
+const marked = Number(r.marked || 0);
+return [{ json: {
+  job_name: 'memory_stale_review',
+  skip_send: true,
+  summary: { facts_marked_stale: marked }
+} }];`
+}, 1100, 1600);
+connect('Mark Stale', 'Format Stale Result');
+
+addNode('Log End Stale', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: `INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)
+            VALUES ('memory_stale_review', NOW(), $1::int, TRUE, $2::jsonb);`,
+    options: {
+        queryReplacement: '={{ $json.summary.facts_marked_stale || 0 }},={{ JSON.stringify($json.summary || {}) }}'
+    }
+}, 1320, 1600, { tv: 2.5, creds: { postgres: PG }, cof: true });
+connect('Format Stale Result', 'Log End Stale');
 
 // =========================================================================
 // 8. MERGE → SEND PIPELINE (common to all jobs except cleanup)
