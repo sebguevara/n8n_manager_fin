@@ -1371,11 +1371,11 @@ const TOOL_DEFS = [
     // ----- Memoria semántica (pgvector) -----
     {
         name: 'remember_fact',
-        description: '🧠 GUARDA UN HECHO en memoria persistente del usuario. Para cuando el usuario aclare una preferencia, contexto, meta, o cualquier dato que valga la pena recordar entre conversaciones (más allá de los últimos 12 turnos del chat history). Ejemplos: "soy vegetariano y me cobran extra los uber-eats", "estoy juntando para una compu de 1.5M antes de fin de año", "Maxi es mi hermano y le devuelvo plata todos los meses", "trabajo desde casa, los cafés del Starbucks no son representativos". NO uses esto para registrar transacciones (eso es log_transaction).',
+        description: '🧠 GUARDA UN HECHO en memoria persistente del usuario. Para cuando el usuario aclare una preferencia, contexto, meta, o cualquier dato que valga la pena recordar entre conversaciones (más allá de los últimos 12 turnos del chat history). Ejemplos: "soy vegetariano y me cobran extra los uber-eats", "estoy juntando para una compu de 1.5M antes de fin de año", "mi sueldo es de 950 mil", "Maxi es mi hermano y le devuelvo plata todos los meses", "trabajo desde casa, los cafés del Starbucks no son representativos". NO uses esto para registrar transacciones (eso es log_transaction).',
         fields: [
             { name: 'content', desc: 'El hecho a recordar, en español neutro y completo (no abreviaturas). Ej: "El usuario está ahorrando para una moto de $4.000.000". Será embeddado para búsqueda semántica.', type: 'string', default: '' },
             { name: 'kind', desc: 'fact (default) | preference | context | goal | relationship', type: 'string', default: 'fact' },
-            { name: 'metadata', desc: 'Datos extra opcionales en JSON. Ej: {"target_amount":4000000, "deadline":"2026-12-31"}', type: 'json', default: {} }
+            { name: 'metadata', desc: 'Metadata opcional como JSON STRINGIFICADO (no objeto). Ej: \'{"target_amount":4000000,"deadline":"2026-12-31"}\'. Vacío = sin metadata.', type: 'string', default: '' }
         ]
     },
     {
@@ -1395,7 +1395,7 @@ const TOOL_DEFS = [
             { name: 'memory_id', desc: 'UUID del chunk a actualizar (viene de recall_memory o list_memories)', type: 'string', default: '' },
             { name: 'new_content', desc: 'Nuevo texto del hecho, completo y en español neutro. Será re-embeddado.', type: 'string', default: '' },
             { name: 'kind', desc: 'Cambiar el kind opcionalmente (fact|preference|context|goal|relationship). Vacío = mantiene el actual.', type: 'string', default: '' },
-            { name: 'metadata', desc: 'Metadata extra a hacer merge con la existente. Vacío = no toca metadata.', type: 'json', default: {} }
+            { name: 'metadata', desc: 'Metadata extra como JSON STRINGIFICADO. Ej: \'{"new_amount":700000}\'. Se mergea con la existente. Vacío = no toca metadata.', type: 'string', default: '' }
         ]
     },
     {
@@ -1666,13 +1666,15 @@ Cada mensaje del usuario llega con un bloque \`[CONTEXTO]\` al principio que tie
 
 # BUCKETS
 
-**transaction**: registrar, ver, editar, borrar gastos/ingresos puntuales.
-- Ejemplos: "compré 2500 de café", "borrá el último", "los del mes pasado", "cuánto gasté", "el último gasto fue 5000 no 2000", "los repetidos", "todos los cafés", "tomé un uber de 1500".
-- Verbos típicos: gastar, pagar, cobrar, comprar, registrar, anotar, borrar, editar, ver, mostrar, listar (transacciones).
+**transaction**: registrar, ver, editar, borrar **gastos/ingresos PUNTUALES con monto**.
+- Ejemplos: "compré 2500 de café", "borrá el último gasto", "los del mes pasado", "cuánto gasté", "el último gasto fue 5000 no 2000", "los repetidos", "todos los cafés", "tomé un uber de 1500".
+- Verbos típicos: gastar, pagar, cobrar, comprar, registrar/anotar (un movimiento), borrar/editar (un gasto), ver/mostrar/listar (transacciones).
+- 🚨 Si el mensaje NO menciona un movimiento puntual (con monto, fecha o referencia a tx específicas), NO es transaction.
 
-**config**: administrar categorías, grupos, presupuestos, recurrentes, tags, o settings del usuario. NO involucra registrar gastos puntuales.
-- Ejemplos: "creá la categoría salidas", "borrá el viaje a Brasil", "ponéle un presu de 50k a comida", "qué recurrentes tengo", "pausá Netflix", "etiquetá los últimos cafés como trabajo", "cambiá la moneda a USD", "no quiero que comida aparezca en reportes".
-- Verbos: crear, renombrar, fusionar, pausar, reanudar, cancelar, configurar, etiquetar, excluir, archivar.
+**config**: administrar **estructuras** (categorías, grupos, presupuestos, recurrentes, tags, settings). Sin involucrar movimientos puntuales.
+- 🎯 Si el verbo es **crear / renombrar / borrar / pausar / cancelar / actualizar / configurar / etiquetar / excluir / fusionar / cerrar / dar de alta / dar de baja** Y aplica a **categoría / grupo / viaje / evento / presupuesto / recurrente / suscripción / tag / etiqueta / settings / config / preferencia / moneda / horario / Netflix / nombre-de-servicio**: ES CONFIG. **Sin excepciones.**
+- Ejemplos: "creá la categoría salidas", "creá categoría X", "armá una categoría Y", "quiero tener la categoría Z", "borrá la categoría salidas", "borrá el viaje a Brasil", "ponéle un presu de 50k a comida", "qué recurrentes tengo", "pausá Netflix", "etiquetá los últimos cafés como trabajo", "cambiá la moneda a USD", "no quiero que comida aparezca en reportes", "agendá mi sueldo de 950 mil" (esto es config — guarda como recurrente o memoria, NO es una tx puntual).
+- 🚨 "agendar / programar / configurar mi sueldo / un ingreso fijo / un gasto recurrente" → CONFIG (es una recurrente, no una tx puntual).
 
 **insights**: análisis, gráficos, comparativas, proyecciones, asesoría financiera.
 - Ejemplos: "haceme un gráfico", "en qué gasté más", "comparame con el mes pasado", "cuánto ahorro al mes", "en cuánto tiempo junto 500 mil", "puedo gastar 30 mil en una salida", "cuánto me dura la plata si tengo X ahorrado", "proyectame el mes".
@@ -1691,7 +1693,11 @@ Cada mensaje del usuario llega con un bloque \`[CONTEXTO]\` al principio que tie
   "reaction_emoji": "<emoji corto si chitchat, vacío si no>"
 }
 
-Si tenés la mínima duda entre 2 buckets, elegí el más específico. Si dudás entre transaction y config, elegí transaction (más común). NUNCA pongas reply_text si intent != chitchat.`;
+**Reglas de desempate**:
+- Si el verbo es de gestión de estructura (crear/borrar/renombrar/pausar/configurar) Y el objeto es una entidad (categoría/grupo/recurrente/tag/budget/settings) → SIEMPRE config, nunca transaction.
+- Si dudás entre transaction y config y el mensaje **no tiene un monto explícito ni una transacción concreta**, es config.
+- Si dudás entre transaction e insights, elegí transaction si la pregunta es simple ("cuánto gasté") y insights si es analítica ("comparame", "en qué", "proyectame").
+- NUNCA pongas reply_text si intent != chitchat.`;
 
 const TX_PROMPT = SHARED_HEADER + `
 # DOMINIO: TRANSACCIONES
@@ -1749,7 +1755,15 @@ Cuando el usuario confirma ("sí/dale/ok"):
 ## Estados que recibís
 - \`awaiting_category\`, \`awaiting_dup_confirmation\`, \`awaiting_bulk_delete\`, \`awaiting_bulk_update\`, \`awaiting_otros_confirmation\` → ya descritos arriba.
 
-🚨 Si el mensaje no tiene nada que ver con tx (ej. el usuario tiró algo de config o insights aunque convState diga transaction), pivoteá: \`clear_conv_state\` y avisá brevemente que no entendiste el contexto, pedí que reformule.
+🚨 **REGLA DE EMERGENCIA — pivoteo limpio**:
+Si el mensaje NO es de transacciones (te llegó por ruteo errado, ej: "creá categoría X", "borrá la categoría X", "agendá mi sueldo", "qué tags tengo"):
+1. NO entres al flujo de awaiting_category.
+2. NO llames \`log_transaction\` ni \`set_conv_state\`.
+3. Si hay convState activo y el mensaje no encaja, llamá \`clear_conv_state\` UNA VEZ.
+4. Respondé un reply tipo: "Eso es para gestionar tu config (categorías/grupos/etc.). Reformulalo o esperá un momento que lo paso al flujo correcto."
+5. NO loopees llamando tools repetidamente — UNA respuesta y listo.
+
+🚨 Si después de 2 tool calls no tenés un resultado claro, parate y respondé con lo que tenés. Es preferible una respuesta parcial a un timeout.
 `;
 
 const CONFIG_PROMPT = SHARED_HEADER + `

@@ -1203,6 +1203,7 @@ ${inner}
 };
 
 // remember_fact: agente pasa {content, kind?, metadata?}
+// metadata viene como JSON-STRING (no objeto), se castea con NULLIF→jsonb. Si no parsea o vacío, default {}.
 formatNames.push(addEmbeddingPgTool(
     TOOLS.indexOf('remember_fact'),
     'remember_fact',
@@ -1212,7 +1213,14 @@ formatNames.push(addEmbeddingPgTool(
         COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),
         $2::jsonb->>'content',
         $3::vector(1536),
-        COALESCE($2::jsonb->'metadata', '{}'::jsonb)
+        COALESCE(
+            CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL
+                 AND length(trim($2::jsonb->>'metadata')) > 0
+                 AND ($2::jsonb->>'metadata') <> '{}'
+            THEN ($2::jsonb->>'metadata')::jsonb
+            ELSE '{}'::jsonb END,
+            '{}'::jsonb
+        )
     );`,
     `const r = $input.first().json;
 return [{ json: { ok: true, tool: 'remember_fact', data: {
@@ -1221,7 +1229,7 @@ return [{ json: { ok: true, tool: 'remember_fact', data: {
 ));
 
 // update_memory: agente pasa {memory_id, new_content, kind?, metadata?}
-// Re-embedea el new_content. Útil para hechos que evolucionan sin perder el id.
+// metadata como JSON-STRING; se castea a jsonb si no está vacío.
 formatNames.push(addEmbeddingPgTool(
     TOOLS.indexOf('update_memory'),
     'update_memory',
@@ -1232,7 +1240,11 @@ formatNames.push(addEmbeddingPgTool(
         $2::jsonb->>'new_content',
         $3::vector(1536),
         NULLIF($2::jsonb->>'kind',''),
-        NULLIF($2::jsonb->'metadata', 'null'::jsonb)
+        CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL
+             AND length(trim($2::jsonb->>'metadata')) > 0
+             AND ($2::jsonb->>'metadata') <> '{}'
+        THEN ($2::jsonb->>'metadata')::jsonb
+        ELSE NULL END
     );`,
     `const r = $input.first().json;
 if (!r || !r.updated) {

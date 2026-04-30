@@ -3154,7 +3154,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM add_memory_chunk(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),\n        $2::jsonb->>'content',\n        $3::vector(1536),\n        COALESCE($2::jsonb->'metadata', '{}'::jsonb)\n    );",
+        "query": "SELECT * FROM add_memory_chunk(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),\n        $2::jsonb->>'content',\n        $3::vector(1536),\n        COALESCE(\n            CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL\n                 AND length(trim($2::jsonb->>'metadata')) > 0\n                 AND ($2::jsonb->>'metadata') <> '{}'\n            THEN ($2::jsonb->>'metadata')::jsonb\n            ELSE '{}'::jsonb END,\n            '{}'::jsonb\n        )\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
@@ -3239,7 +3239,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM update_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid,\n        $2::jsonb->>'new_content',\n        $3::vector(1536),\n        NULLIF($2::jsonb->>'kind',''),\n        NULLIF($2::jsonb->'metadata', 'null'::jsonb)\n    );",
+        "query": "SELECT * FROM update_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid,\n        $2::jsonb->>'new_content',\n        $3::vector(1536),\n        NULLIF($2::jsonb->>'kind',''),\n        CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL\n             AND length(trim($2::jsonb->>'metadata')) > 0\n             AND ($2::jsonb->>'metadata') <> '{}'\n        THEN ($2::jsonb->>'metadata')::jsonb\n        ELSE NULL END\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
