@@ -692,6 +692,29 @@
                       "operation": "equals"
                     },
                     "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "find_recurring_by_hint"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "find_recurring_by_hint"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r29",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
                     "rightValue": "update_recurring"
                   }
                 ]
@@ -709,7 +732,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r29",
+                    "id": "r30",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -732,7 +755,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r30",
+                    "id": "r31",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -755,7 +778,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r31",
+                    "id": "r32",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -778,7 +801,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r32",
+                    "id": "r33",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -801,7 +824,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r33",
+                    "id": "r34",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -824,7 +847,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r34",
+                    "id": "r35",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -847,7 +870,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r35",
+                    "id": "r36",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -870,7 +893,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r36",
+                    "id": "r37",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -893,7 +916,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r37",
+                    "id": "r38",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -916,7 +939,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r38",
+                    "id": "r39",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -939,7 +962,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r39",
+                    "id": "r40",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -962,7 +985,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r40",
+                    "id": "r41",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -985,7 +1008,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r41",
+                    "id": "r42",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1008,7 +1031,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r42",
+                    "id": "r43",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1031,7 +1054,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r43",
+                    "id": "r44",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1054,7 +1077,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r44",
+                    "id": "r45",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1077,7 +1100,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r45",
+                    "id": "r46",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1100,7 +1123,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r46",
+                    "id": "r47",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1123,7 +1146,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r47",
+                    "id": "r48",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1146,7 +1169,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r48",
+                    "id": "r49",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1169,7 +1192,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r49",
+                    "id": "r50",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1192,7 +1215,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r50",
+                    "id": "r51",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1215,7 +1238,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r51",
+                    "id": "r52",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1238,7 +1261,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r52",
+                    "id": "r53",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1261,7 +1284,7 @@
                 "combinator": "and",
                 "conditions": [
                   {
-                    "id": "r53",
+                    "id": "r54",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -1811,7 +1834,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT b.id, b.amount, b.period, c.name AS category_name, c.emoji AS category_emoji,\n            COALESCE(s.spent, 0) AS spent, b.is_active\n     FROM budgets b\n     LEFT JOIN categories c ON c.id = b.category_id\n     LEFT JOIN LATERAL (\n         SELECT SUM(t.amount) AS spent\n         FROM v_reportable_transactions t\n         WHERE t.user_id = b.user_id AND t.type = 'expense'\n           AND t.category_id = b.category_id\n           AND t.transaction_date >= DATE_TRUNC(b.period::text, CURRENT_DATE)\n     ) s ON TRUE\n     WHERE b.user_id = $1::uuid AND b.is_active = TRUE;",
+        "query": "SELECT b.id, b.amount, b.period, c.name AS category_name, c.emoji AS category_emoji,\n            COALESCE(s.spent, 0) AS spent, b.is_active\n     FROM budgets b\n     LEFT JOIN categories c ON c.id = b.category_id\n     LEFT JOIN LATERAL (\n         SELECT SUM(t.amount) AS spent\n         FROM v_reportable_transactions t\n         WHERE t.user_id = b.user_id AND t.type = 'expense'\n           AND t.category_id = b.category_id\n           AND t.transaction_date >= DATE_TRUNC(\n               CASE b.period\n                   WHEN 'weekly'  THEN 'week'\n                   WHEN 'monthly' THEN 'month'\n                   WHEN 'yearly'  THEN 'year'\n                   ELSE 'month'\n               END,\n               CURRENT_DATE\n           )\n     ) s ON TRUE\n     WHERE b.user_id = $1::uuid AND b.is_active = TRUE;",
         "options": {
           "queryReplacement": "={{ $json.user_id }}"
         }
@@ -1959,7 +1982,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH p AS (SELECT $2::jsonb AS j)\n     INSERT INTO recurring_transactions (user_id, type, amount, description, category_id,\n        frequency, start_date, is_active)\n     SELECT $1::uuid,\n            'expense',\n            ((SELECT j->>'amount' FROM p))::numeric,\n            NULLIF((SELECT j->>'description' FROM p),''),\n            (SELECT category_id FROM find_best_category(\n                $1::uuid,\n                COALESCE(NULLIF((SELECT j->>'description' FROM p),''), NULLIF((SELECT j->>'category_hint' FROM p),'')),\n                'expense'\n            )),\n            COALESCE(NULLIF((SELECT j->>'frequency' FROM p),''), 'monthly'),\n            COALESCE(NULLIF((SELECT j->>'start_date' FROM p),'')::date, CURRENT_DATE),\n            TRUE\n     RETURNING id, amount, description, frequency, start_date;",
+        "query": "WITH p AS (SELECT $2::jsonb AS j),\n     vals AS (\n        SELECT\n            COALESCE(NULLIF((SELECT j->>'type' FROM p),''),'expense') AS type,\n            ((SELECT j->>'amount' FROM p))::numeric AS amount,\n            NULLIF((SELECT j->>'description' FROM p),'') AS description,\n            COALESCE(NULLIF((SELECT j->>'frequency' FROM p),''), 'monthly') AS frequency,\n            COALESCE(NULLIF((SELECT j->>'start_date' FROM p),'')::date, CURRENT_DATE) AS next_occurrence\n     )\n     INSERT INTO recurring_transactions (user_id, type, amount, description, category_id,\n        frequency, next_occurrence, day_of_period, is_active)\n     SELECT $1::uuid,\n            v.type,\n            v.amount,\n            v.description,\n            (SELECT category_id FROM find_best_category(\n                $1::uuid,\n                COALESCE(v.description, NULLIF((SELECT j->>'category_hint' FROM p),'')),\n                v.type\n            )),\n            v.frequency,\n            v.next_occurrence,\n            CASE WHEN v.frequency IN ('monthly','yearly') THEN EXTRACT(DAY FROM v.next_occurrence)::int ELSE NULL END,\n            TRUE\n     FROM vals v, p\n     RETURNING id, amount, description, frequency, next_occurrence, day_of_period;",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
@@ -1982,7 +2005,7 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'set_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'set_recurring', data: {\n  id: r.id, amount: Number(r.amount), description: r.description,\n  frequency: r.frequency, start_date: r.start_date\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'set_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'set_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'set_recurring', data: {\n  id: r.id, amount: Number(r.amount), description: r.description,\n  frequency: r.frequency,\n  next_occurrence: r.next_occurrence,\n  day_of_period: r.day_of_period\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'set_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
       "id": "t041",
       "name": "Fmt set_recurring",
@@ -2329,18 +2352,55 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM update_recurring(\n        $1::uuid,\n        ($2::jsonb->>'recurring_id')::uuid,\n        NULLIF($2::jsonb->>'new_amount','')::numeric,\n        NULLIF($2::jsonb->>'new_description',''),\n        NULLIF($2::jsonb->>'new_frequency',''),\n        NULLIF($2::jsonb->>'new_category_hint',''),\n        NULLIF($2::jsonb->>'new_next_occurrence','')::date,\n        NULLIF($2::jsonb->>'new_end_date','')::date,\n        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)\n    );",
+        "query": "SELECT * FROM find_recurring_by_hint(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'hint',''), '')\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
       "id": "t060",
-      "name": "PG update_recurring",
+      "name": "PG find_recurring_by_hint",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
         2560
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'find_recurring_by_hint', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nconst matches = rows.map(r => ({\n  id: r.id, description: r.description, amount: Number(r.amount),\n  frequency: r.frequency, is_active: r.is_active\n}));\nreturn [{ json: { ok: true, tool: 'find_recurring_by_hint', data: {\n  matches,\n  count: matches.length,\n  ambiguous: matches.length > 1\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'find_recurring_by_hint', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t061",
+      "name": "Fmt find_recurring_by_hint",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM update_recurring(\n        $1::uuid,\n        ($2::jsonb->>'recurring_id')::uuid,\n        NULLIF($2::jsonb->>'new_amount','')::numeric,\n        NULLIF($2::jsonb->>'new_description',''),\n        NULLIF($2::jsonb->>'new_frequency',''),\n        NULLIF($2::jsonb->>'new_category_hint',''),\n        NULLIF($2::jsonb->>'new_next_occurrence','')::date,\n        NULLIF($2::jsonb->>'new_end_date','')::date,\n        COALESCE(($2::jsonb->>'create_category_if_missing')::boolean, false)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t062",
+      "name": "PG update_recurring",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2680
       ],
       "credentials": {
         "postgres": {
@@ -2354,13 +2414,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'update_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.id) return [{ json: { ok: false, tool: 'update_recurring',\n  error: 'No encontré la recurrente o no es tuya' } }];\nreturn [{ json: { ok: true, tool: 'update_recurring', data: {\n  id: r.id, amount: Number(r.amount), description: r.description, frequency: r.frequency,\n  next_occurrence: r.next_occurrence, end_date: r.end_date, is_active: r.is_active,\n  category: r.category_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'update_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t061",
+      "id": "t063",
       "name": "Fmt update_recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2560
+        2680
       ]
     },
     {
@@ -2371,13 +2431,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t062",
+      "id": "t064",
       "name": "PG pause_recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        2680
+        2800
       ],
       "credentials": {
         "postgres": {
@@ -2391,13 +2451,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'pause_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.paused) return [{ json: { ok: false, tool: 'pause_recurring',\n  error: 'No encontré la recurrente o no es tuya' } }];\nreturn [{ json: { ok: true, tool: 'pause_recurring', data: {\n  id: r.id, description: r.description, was_active: !!r.was_active\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'pause_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t063",
+      "id": "t065",
       "name": "Fmt pause_recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2680
+        2800
       ]
     },
     {
@@ -2408,13 +2468,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t064",
+      "id": "t066",
       "name": "PG resume_recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        2800
+        2920
       ],
       "credentials": {
         "postgres": {
@@ -2428,13 +2488,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'resume_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.resumed) return [{ json: { ok: false, tool: 'resume_recurring',\n  error: 'No encontré la recurrente o no es tuya' } }];\nreturn [{ json: { ok: true, tool: 'resume_recurring', data: {\n  id: r.id, description: r.description\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'resume_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t065",
+      "id": "t067",
       "name": "Fmt resume_recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2800
+        2920
       ]
     },
     {
@@ -2445,13 +2505,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t066",
+      "id": "t068",
       "name": "PG cancel_recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        2920
+        3040
       ],
       "credentials": {
         "postgres": {
@@ -2465,13 +2525,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'cancel_recurring', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.cancelled) return [{ json: { ok: false, tool: 'cancel_recurring',\n  error: 'No encontré la recurrente o no es tuya' } }];\nreturn [{ json: { ok: true, tool: 'cancel_recurring', data: {\n  id: r.id, description: r.description\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'cancel_recurring', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t067",
+      "id": "t069",
       "name": "Fmt cancel_recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        2920
+        3040
       ]
     },
     {
@@ -2482,13 +2542,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t068",
+      "id": "t070",
       "name": "PG update_group",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        3040
+        3160
       ],
       "credentials": {
         "postgres": {
@@ -2502,13 +2562,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'update_group', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.id) return [{ json: { ok: false, tool: 'update_group',\n  error: 'No encontré el grupo' } }];\nreturn [{ json: { ok: true, tool: 'update_group', data: {\n  id: r.id, name: r.name, kind: r.kind, emoji: r.emoji,\n  starts_at: r.starts_at, ends_at: r.ends_at, is_active: r.is_active\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'update_group', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t069",
+      "id": "t071",
       "name": "Fmt update_group",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        3040
+        3160
       ]
     },
     {
@@ -2519,13 +2579,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t070",
+      "id": "t072",
       "name": "PG rename_group",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        3160
+        3280
       ],
       "credentials": {
         "postgres": {
@@ -2539,13 +2599,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'rename_group', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.renamed) return [{ json: { ok: false, tool: 'rename_group',\n  error: 'No encontré el grupo \"' + (r?.old_name || '') + '\"' } }];\nreturn [{ json: { ok: true, tool: 'rename_group', data: {\n  id: r.id, old_name: r.old_name, new_name: r.new_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'rename_group', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t071",
+      "id": "t073",
       "name": "Fmt rename_group",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        3160
+        3280
       ]
     },
     {
@@ -2556,13 +2616,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t072",
+      "id": "t074",
       "name": "PG close_group",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        3280
+        3400
       ],
       "credentials": {
         "postgres": {
@@ -2576,13 +2636,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'close_group', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.closed) return [{ json: { ok: false, tool: 'close_group',\n  error: 'No encontré el grupo' } }];\nreturn [{ json: { ok: true, tool: 'close_group', data: {\n  id: r.id, name: r.name, ends_at: r.ends_at\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'close_group', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t073",
+      "id": "t075",
       "name": "Fmt close_group",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        3280
+        3400
       ]
     },
     {
@@ -2593,13 +2653,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t074",
+      "id": "t076",
       "name": "PG delete_group",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        3400
+        3520
       ],
       "credentials": {
         "postgres": {
@@ -2613,13 +2673,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'delete_group', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.deleted) return [{ json: { ok: false, tool: 'delete_group',\n  error: 'No encontré el grupo' } }];\nreturn [{ json: { ok: true, tool: 'delete_group', data: {\n  id: r.id, name: r.name, moved_transactions: Number(r.moved_transactions || 0),\n  reassigned_to: r.reassigned_to || null\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'delete_group', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t075",
+      "id": "t077",
       "name": "Fmt delete_group",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        3400
+        3520
       ]
     },
     {
@@ -2630,13 +2690,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t076",
+      "id": "t078",
       "name": "PG delete_budget",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        3520
+        3640
       ],
       "credentials": {
         "postgres": {
@@ -2650,13 +2710,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'delete_budget', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nconst cnt = Number(r?.deleted_count || 0);\nif (!cnt) return [{ json: { ok: false, tool: 'delete_budget',\n  error: 'No encontré un presupuesto activo para esa categoría' } }];\nreturn [{ json: { ok: true, tool: 'delete_budget', data: {\n  deleted_count: cnt, category: r.category_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'delete_budget', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t077",
+      "id": "t079",
       "name": "Fmt delete_budget",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        3520
+        3640
       ]
     },
     {
@@ -2667,13 +2727,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t078",
+      "id": "t080",
       "name": "PG pause_budget",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        3640
+        3760
       ],
       "credentials": {
         "postgres": {
@@ -2687,13 +2747,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'pause_budget', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nconst cnt = Number(r?.paused_count || 0);\nif (!cnt) return [{ json: { ok: false, tool: 'pause_budget',\n  error: 'No encontré un presupuesto activo para esa categoría' } }];\nreturn [{ json: { ok: true, tool: 'pause_budget', data: {\n  paused_count: cnt, category: r.category_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'pause_budget', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t079",
+      "id": "t081",
       "name": "Fmt pause_budget",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        3640
+        3760
       ]
     },
     {
@@ -2704,13 +2764,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t080",
+      "id": "t082",
       "name": "PG resume_budget",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        3760
+        3880
       ],
       "credentials": {
         "postgres": {
@@ -2724,13 +2784,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'resume_budget', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nconst cnt = Number(r?.resumed_count || 0);\nif (!cnt) return [{ json: { ok: false, tool: 'resume_budget',\n  error: 'No encontré un presupuesto pausado para esa categoría' } }];\nreturn [{ json: { ok: true, tool: 'resume_budget', data: {\n  resumed_count: cnt, category: r.category_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'resume_budget', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t081",
+      "id": "t083",
       "name": "Fmt resume_budget",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        3760
+        3880
       ]
     },
     {
@@ -2741,13 +2801,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t082",
+      "id": "t084",
       "name": "PG create_tag",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        3880
+        4000
       ],
       "credentials": {
         "postgres": {
@@ -2761,13 +2821,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'create_tag', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.tag_id) return [{ json: { ok: false, tool: 'create_tag',\n  error: 'No se pudo crear el tag' } }];\nreturn [{ json: { ok: true, tool: 'create_tag', data: {\n  id: r.tag_id, name: r.tag_name, was_created: !!r.was_created\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'create_tag', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t083",
+      "id": "t085",
       "name": "Fmt create_tag",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        3880
+        4000
       ]
     },
     {
@@ -2778,13 +2838,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t084",
+      "id": "t086",
       "name": "PG rename_tag",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4000
+        4120
       ],
       "credentials": {
         "postgres": {
@@ -2798,13 +2858,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'rename_tag', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.renamed) return [{ json: { ok: false, tool: 'rename_tag',\n  error: 'No encontré el tag \"' + (r?.old_name || '') + '\"' } }];\nreturn [{ json: { ok: true, tool: 'rename_tag', data: {\n  id: r.tag_id, old_name: r.old_name, new_name: r.new_name\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'rename_tag', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t085",
+      "id": "t087",
       "name": "Fmt rename_tag",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4000
+        4120
       ]
     },
     {
@@ -2815,13 +2875,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t086",
+      "id": "t088",
       "name": "PG delete_tag",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4120
+        4240
       ],
       "credentials": {
         "postgres": {
@@ -2835,13 +2895,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'delete_tag', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.deleted) return [{ json: { ok: false, tool: 'delete_tag',\n  error: 'No encontré el tag' } }];\nreturn [{ json: { ok: true, tool: 'delete_tag', data: {\n  id: r.tag_id, name: r.tag_name,\n  untagged_transactions: Number(r.untagged_transactions || 0)\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'delete_tag', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t087",
+      "id": "t089",
       "name": "Fmt delete_tag",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4120
+        4240
       ]
     },
     {
@@ -2852,13 +2912,13 @@
           "queryReplacement": "={{ $json.user_id }}"
         }
       },
-      "id": "t088",
+      "id": "t090",
       "name": "PG list_tags",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4240
+        4360
       ],
       "credentials": {
         "postgres": {
@@ -2872,13 +2932,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'list_tags', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'list_tags', data: {\n  tags: rows.map(r => ({ id: r.id, name: r.name, color: r.color,\n    tx_count: Number(r.tx_count || 0), total: Number(r.total_amount || 0) }))\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_tags', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t089",
+      "id": "t091",
       "name": "Fmt list_tags",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4240
+        4360
       ]
     },
     {
@@ -2889,13 +2949,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t090",
+      "id": "t092",
       "name": "PG tag_transactions",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4360
+        4480
       ],
       "credentials": {
         "postgres": {
@@ -2909,13 +2969,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'tag_transactions', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'tag_transactions', data: {\n  id: r.tag_id, name: r.tag_name,\n  tagged_count: Number(r.tagged_count || 0),\n  was_created: !!r.was_created\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'tag_transactions', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t091",
+      "id": "t093",
       "name": "Fmt tag_transactions",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4360
+        4480
       ]
     },
     {
@@ -2926,13 +2986,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t092",
+      "id": "t094",
       "name": "PG untag_transactions",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4480
+        4600
       ],
       "credentials": {
         "postgres": {
@@ -2946,13 +3006,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'untag_transactions', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'untag_transactions', data: {\n  untagged_count: Number(r.untagged_count || 0)\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'untag_transactions', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t093",
+      "id": "t095",
       "name": "Fmt untag_transactions",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4480
+        4600
       ]
     },
     {
@@ -2963,13 +3023,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t094",
+      "id": "t096",
       "name": "PG suggest_tags",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4600
+        4720
       ],
       "credentials": {
         "postgres": {
@@ -2983,13 +3043,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'suggest_tags', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'suggest_tags', data: {\n  suggestions: rows.map(r => ({ id: r.tag_id, name: r.tag_name,\n    score: Number(r.score || 0), uses: Number(r.sample_uses || 0) }))\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'suggest_tags', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t095",
+      "id": "t097",
       "name": "Fmt suggest_tags",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4600
+        4720
       ]
     },
     {
@@ -3000,13 +3060,13 @@
           "queryReplacement": "={{ $json.user_id }}"
         }
       },
-      "id": "t096",
+      "id": "t098",
       "name": "PG get_settings",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4720
+        4840
       ],
       "credentials": {
         "postgres": {
@@ -3020,13 +3080,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'get_settings', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r) return [{ json: { ok: false, tool: 'get_settings', error: 'Usuario no encontrado' } }];\nreturn [{ json: { ok: true, tool: 'get_settings', data: {\n  name: r.name, phone: r.phone_number, currency: r.preferred_currency,\n  daily_summary_enabled: !!r.daily_summary_enabled,\n  daily_summary_hour: Number(r.daily_summary_hour || 0),\n  weekly_summary_enabled: !!r.weekly_summary_enabled,\n  onboarded: !!r.onboarded\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'get_settings', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t097",
+      "id": "t099",
       "name": "Fmt get_settings",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4720
+        4840
       ]
     },
     {
@@ -3037,13 +3097,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t098",
+      "id": "t100",
       "name": "PG update_settings",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4840
+        4960
       ],
       "credentials": {
         "postgres": {
@@ -3057,13 +3117,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'update_settings', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'update_settings', data: {\n  name: r.name, currency: r.preferred_currency,\n  daily_summary_enabled: !!r.daily_summary_enabled,\n  daily_summary_hour: Number(r.daily_summary_hour || 0),\n  weekly_summary_enabled: !!r.weekly_summary_enabled\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'update_settings', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t099",
+      "id": "t101",
       "name": "Fmt update_settings",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4840
+        4960
       ]
     },
     {
@@ -3074,13 +3134,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t100",
+      "id": "t102",
       "name": "PG financial_advice",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        4960
+        5080
       ],
       "credentials": {
         "postgres": {
@@ -3094,13 +3154,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'financial_advice', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r) return [{ json: { ok: false, tool: 'financial_advice', error: 'sin resultado' } }];\nconst numOrNull = v => (v === null || v === undefined || v === '') ? null : Number(v);\nreturn [{ json: { ok: true, tool: 'financial_advice', data: {\n  mode: r.mode,\n  avg_monthly_income: numOrNull(r.avg_monthly_income),\n  avg_monthly_expense: numOrNull(r.avg_monthly_expense),\n  monthly_saving: numOrNull(r.monthly_saving),\n  savings_rate_pct: numOrNull(r.savings_rate_pct),\n  months_used: numOrNull(r.months_used),\n  months_to_goal: numOrNull(r.months_to_goal),\n  target_date: r.target_date || null,\n  affordable: (r.affordable === null || r.affordable === undefined) ? null : !!r.affordable,\n  runway_months: numOrNull(r.runway_months),\n  projected_month_total_expense: numOrNull(r.projected_month_total_expense),\n  projected_month_total_income: numOrNull(r.projected_month_total_income),\n  note: r.note || ''\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'financial_advice', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t101",
+      "id": "t103",
       "name": "Fmt financial_advice",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        4960
+        5080
       ]
     },
     {
@@ -3123,13 +3183,13 @@
         "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.params.content || '') }},\n  \"encoding_format\": \"float\"\n}",
         "options": {}
       },
-      "id": "t102",
+      "id": "t104",
       "name": "Embed remember_fact",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         440,
-        5080
+        5200
       ],
       "credentials": {
         "openAiApi": {
@@ -3142,13 +3202,13 @@
       "parameters": {
         "jsCode": "const resp = $input.first().json;\nconst inp = $('Normalize Input').first().json;\nconst emb = resp?.data?.[0]?.embedding;\nif (!Array.isArray(emb)) {\n  return [{ json: { ok: false, tool: 'remember_fact', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];\n}\n// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)\nconst embStr = '[' + emb.join(',') + ']';\nreturn [{ json: { ...inp, embedding: embStr } }];"
       },
-      "id": "t103",
+      "id": "t105",
       "name": "Pack Embedding remember_fact",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         660,
-        5080
+        5200
       ]
     },
     {
@@ -3159,13 +3219,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
       },
-      "id": "t104",
+      "id": "t106",
       "name": "PG remember_fact",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         880,
-        5080
+        5200
       ],
       "credentials": {
         "postgres": {
@@ -3179,13 +3239,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'remember_fact', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'remember_fact', data: {\n  id: r.id, was_created: !!r.was_created, content: r.content, kind: r.kind\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'remember_fact', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t105",
+      "id": "t107",
       "name": "Fmt remember_fact",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1100,
-        5080
+        5200
       ]
     },
     {
@@ -3208,13 +3268,13 @@
         "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.params.new_content || '') }},\n  \"encoding_format\": \"float\"\n}",
         "options": {}
       },
-      "id": "t106",
+      "id": "t108",
       "name": "Embed update_memory",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         440,
-        5320
+        5440
       ],
       "credentials": {
         "openAiApi": {
@@ -3227,13 +3287,13 @@
       "parameters": {
         "jsCode": "const resp = $input.first().json;\nconst inp = $('Normalize Input').first().json;\nconst emb = resp?.data?.[0]?.embedding;\nif (!Array.isArray(emb)) {\n  return [{ json: { ok: false, tool: 'update_memory', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];\n}\n// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)\nconst embStr = '[' + emb.join(',') + ']';\nreturn [{ json: { ...inp, embedding: embStr } }];"
       },
-      "id": "t107",
+      "id": "t109",
       "name": "Pack Embedding update_memory",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         660,
-        5320
+        5440
       ]
     },
     {
@@ -3244,13 +3304,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
       },
-      "id": "t108",
+      "id": "t110",
       "name": "PG update_memory",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         880,
-        5320
+        5440
       ],
       "credentials": {
         "postgres": {
@@ -3264,13 +3324,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'update_memory', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.updated) {\n  return [{ json: { ok: false, tool: 'update_memory', error: 'No encontré ese recuerdo o no es tuyo' } }];\n}\nreturn [{ json: { ok: true, tool: 'update_memory', data: {\n  id: r.id, content: r.content, kind: r.kind\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'update_memory', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t109",
+      "id": "t111",
       "name": "Fmt update_memory",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1100,
-        5320
+        5440
       ]
     },
     {
@@ -3293,13 +3353,13 @@
         "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.params.query || '') }},\n  \"encoding_format\": \"float\"\n}",
         "options": {}
       },
-      "id": "t110",
+      "id": "t112",
       "name": "Embed recall_memory",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         440,
-        5200
+        5320
       ],
       "credentials": {
         "openAiApi": {
@@ -3312,13 +3372,13 @@
       "parameters": {
         "jsCode": "const resp = $input.first().json;\nconst inp = $('Normalize Input').first().json;\nconst emb = resp?.data?.[0]?.embedding;\nif (!Array.isArray(emb)) {\n  return [{ json: { ok: false, tool: 'recall_memory', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];\n}\n// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)\nconst embStr = '[' + emb.join(',') + ']';\nreturn [{ json: { ...inp, embedding: embStr } }];"
       },
-      "id": "t111",
+      "id": "t113",
       "name": "Pack Embedding recall_memory",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         660,
-        5200
+        5320
       ]
     },
     {
@@ -3329,13 +3389,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
       },
-      "id": "t112",
+      "id": "t114",
       "name": "PG recall_memory",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         880,
-        5200
+        5320
       ],
       "credentials": {
         "postgres": {
@@ -3349,13 +3409,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'recall_memory', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'recall_memory', data: {\n  matches: rows.map(r => ({\n    id: r.id, kind: r.kind, content: r.content,\n    metadata: r.metadata, similarity: Number(r.similarity || 0),\n    created_at: r.created_at, recall_count: Number(r.recall_count || 0)\n  })),\n  count: rows.length\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'recall_memory', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t113",
+      "id": "t115",
       "name": "Fmt recall_memory",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1100,
-        5200
+        5320
       ]
     },
     {
@@ -3366,13 +3426,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t114",
+      "id": "t116",
       "name": "PG forget_memory",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        5440
+        5560
       ],
       "credentials": {
         "postgres": {
@@ -3386,13 +3446,13 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'forget_memory', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.forgot) {\n  return [{ json: { ok: false, tool: 'forget_memory', error: 'No encontré ese recuerdo o no es tuyo' } }];\n}\nreturn [{ json: { ok: true, tool: 'forget_memory', data: { id: r.id, forgot: !!r.forgot } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'forget_memory', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t115",
+      "id": "t117",
       "name": "Fmt forget_memory",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        5440
+        5560
       ]
     },
     {
@@ -3403,13 +3463,13 @@
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
         }
       },
-      "id": "t116",
+      "id": "t118",
       "name": "PG list_memories",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         660,
-        5560
+        5680
       ],
       "credentials": {
         "postgres": {
@@ -3423,33 +3483,33 @@
       "parameters": {
         "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'list_memories', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'list_memories', data: {\n  memories: rows.map(r => ({\n    id: r.id, kind: r.kind, content: r.content, metadata: r.metadata,\n    created_at: r.created_at, recall_count: Number(r.recall_count || 0)\n  })),\n  count: rows.length\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_memories', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
       },
-      "id": "t117",
+      "id": "t119",
       "name": "Fmt list_memories",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
-        5560
+        5680
       ]
     },
     {
       "parameters": {
         "jsCode": "const inp = $input.first().json;\nreturn [{ json: { ok: false, tool: inp.tool_name, error: 'Unknown tool: ' + inp.tool_name } }];"
       },
-      "id": "t118",
+      "id": "t120",
       "name": "Unknown Tool",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         660,
-        5800
+        5920
       ]
     },
     {
       "parameters": {
         "jsCode": "const out = $input.first().json;\nreturn [{ json: out }];"
       },
-      "id": "t119",
+      "id": "t121",
       "name": "Wrap Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3676,6 +3736,13 @@
         [
           {
             "node": "PG list_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG find_recurring_by_hint",
             "type": "main",
             "index": 0
           }
@@ -4173,6 +4240,17 @@
         [
           {
             "node": "Fmt list_recurring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG find_recurring_by_hint": {
+      "main": [
+        [
+          {
+            "node": "Fmt find_recurring_by_hint",
             "type": "main",
             "index": 0
           }
@@ -4844,6 +4922,17 @@
       ]
     },
     "Fmt list_recurring": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt find_recurring_by_hint": {
       "main": [
         [
           {

@@ -1097,6 +1097,13 @@ const TOOL_DEFS = [
         ]
     },
     {
+        name: 'find_recurring_by_hint',
+        description: 'Búsqueda dirigida de recurrentes por nombre/descripción (ej. "alquiler", "netflix"). Devuelve hasta 5 candidatos con su recurring_id. SIEMPRE preferí esta tool sobre list_recurring cuando el usuario refiere a una recurrente puntual por nombre — es más rápido y preciso.',
+        fields: [
+            { name: 'hint', desc: 'Texto a buscar (description). Ej. "alquiler", "netflix", "spotify".', type: 'string', default: '' }
+        ]
+    },
+    {
         name: 'update_recurring',
         description: 'Edita una recurrente existente. Para cambiar la categoría usá new_category_hint (nombre, no UUID).',
         fields: [
@@ -1491,7 +1498,7 @@ const AGENT_TOOLS = {
         // Presupuestos
         'list_budgets', 'set_budget', 'delete_budget', 'pause_budget', 'resume_budget',
         // Recurrentes
-        'list_recurring', 'set_recurring', 'update_recurring', 'pause_recurring', 'resume_recurring', 'cancel_recurring',
+        'list_recurring', 'find_recurring_by_hint', 'set_recurring', 'update_recurring', 'pause_recurring', 'resume_recurring', 'cancel_recurring',
         // Tags
         'create_tag', 'rename_tag', 'delete_tag', 'list_tags', 'tag_transactions', 'untag_transactions', 'suggest_tags',
         // Settings
@@ -1556,6 +1563,24 @@ SIEMPRE devolvé JSON con esta estructura:
 - 🚨 Si vas a pedir confirmación para borrar/editar, PRIMERO buscás los UUIDs reales y los guardás en \`set_conv_state\` con \`context.ids=[<UUIDs>]\`.
 - NO mostrás UUIDs al usuario.
 - Si una tool devuelve \`ok:false\`, le decís al usuario el error en términos amables.
+
+# 🎯 IDENTIFICACIÓN DE ENTIDADES (resolve-then-act)
+Cuando el usuario refiere a algo puntual ("el alquiler", "ese gasto de café", "Netflix", "el viaje a Brasil", "mi último ingreso"), tu primer paso SIEMPRE es resolverlo a un ID real con la tool de búsqueda dirigida — nunca actúes a ciegas, nunca inventes el ID, nunca dumpees toda la lista para que el usuario adivine.
+
+| Tipo de entidad        | Tool de búsqueda                                            | Notas                                                              |
+|------------------------|-------------------------------------------------------------|--------------------------------------------------------------------|
+| Transacción (gasto/ingreso) | \`find_transactions(description_contains, type, ...)\`  | Para ingresos pasá \`type:"income"\`. Combina con monto/fecha.     |
+| Recurrente             | \`find_recurring_by_hint(hint)\`                            | Mucho mejor que \`list_recurring\`. Devuelve hasta 5 candidatos.   |
+| Grupo (viaje/evento)   | (resolución por nombre va dentro de \`update_group\` etc.)  | Si el nombre es ambiguo, listá con \`list_groups\` antes.          |
+| Categoría              | (resolución por nombre va dentro de \`update_transaction\` etc.) | Para validar antes de borrar usá \`list_categories\`.          |
+| Tag                    | (resolución por nombre va dentro de \`tag_transactions\` etc.) | Si dudás, \`list_tags\`.                                        |
+
+**Regla de oro al resolver**:
+- 0 matches → reportá claro: "No encontré '\\\${hint}'. ¿Querés que la cree, o tenés otra forma de referirla?". Sumá una sugerencia útil ("Tus recurrentes activas: …").
+- 1 match → ejecutá la operación en el MISMO turno. No narres "voy a buscar..." — buscás Y actuás.
+- N>1 matches → mostrá lista numerada y pedí "¿1, 2 o 3?". Guardá los IDs en \`set_conv_state\` para resolver el siguiente turno.
+
+🚨 **Velocidad**: el usuario espera UNA respuesta por turno. Si necesitás encadenar find→update, hacelo SIN devolver texto entre medio. El reply final cuenta toda la operación en una línea ("✏️ Listo, cambié la fecha del alquiler al 1 de cada mes.").
 
 # 🧠 MEMORIA SEMÁNTICA PERSISTENTE
 Tenés 4 tools de memoria que sobreviven entre conversaciones (más allá de los últimos 12 turnos del chat history):
@@ -1690,8 +1715,31 @@ Sos el especialista en **registrar, consultar, editar y borrar** transacciones (
 - "cuánto gasté este mes" → \`get_total({period:"this_month",type:"expense"})\`. (Si la pregunta es muy analítica/comparativa, eso es del Insights agent — pero get_total simple también está acá).
 - "mostrame los últimos 5" → \`query_transactions({period:"all",limit:5,sort:"date_desc"})\`.
 - "buscame los café" / "los uber" / "los de 5000" → \`find_transactions\` con filtros determinísticos.
+- "mi último ingreso" / "el cobro de sueldo" / "buscame el ingreso de 950k" → \`find_transactions({type:"income", description_contains:"...", exact_amount:..., limit:5})\`. **find_transactions sirve igual para gastos y para ingresos** — solo cambiá \`type\`.
 - "los repetidos" → \`find_duplicates\`.
 - Después de mostrar lista (>1 item), llamá \`remember_last_list\` con sus ids para resolver deícticos.
+
+### 🎯 Identificar para editar/borrar (gastos O ingresos)
+- "borrá el ingreso de 50k del miércoles" → \`find_transactions({type:"income", exact_amount:50000, date:"YYYY-MM-DD"})\` → si 1 match → \`delete_transaction\` directo. Si 0 → "No encuentro un ingreso de $50.000 ese día". Si N → confirmar con preview.
+- "ese gasto de café estaba mal cargado, era 3000 no 2000" → \`find_transactions({description_contains:"café", exact_amount:2000, sort:"date_desc", limit:1})\` → \`update_transaction({transaction_id, new_amount:3000})\`.
+- Si find_transactions devuelve 0 matches, **NO inventes** ni asumas que existe — reportá: "No encontré un \\\${tipo} con esos datos. ¿Lo querés buscar de otra forma (más amplio, distinta fecha, sin filtro de monto)?".
+
+### 🔁 Listas mensuales / del período → incluí recurrentes scheduled
+Cuando el usuario pide listar transacciones de un período (\`mostrame mis gastos del mes\`, \`qué gastos tengo este mes\`, \`mis movs de abril\`), las recurrentes solo aparecen como \`transactions\` UNA VEZ que el cron diario (06:00) las procesa. Si una recurrente tiene \`next_occurrence\` futura, todavía no es una transaction y NO va a salir en \`query_transactions\`.
+
+Para que el usuario vea TODO lo del mes (incluso lo agendado), después de \`query_transactions(period)\` llamá también \`list_recurring({active_only:true})\` en el MISMO turno. Si la lista de recurrentes tiene filas, agregalas al final del reply en una sección aparte:
+
+\`\`\`
+📅 Tus gastos de este mes:
+1. 30/04 · 🏠 Alquiler · $340.000
+2. ...
+
+🔁 Automatizadas activas (próximas):
+- Netflix · $5.500 · 15/05
+- Spotify · $3.200 · 20/05
+\`\`\`
+
+Esto evita la confusión "le pasé más recurrentes y no aparecen" — el usuario ve lo agendado aunque todavía no se haya cargado como transaction.
 
 ## Para BORRAR / EDITAR
 
@@ -1753,11 +1801,28 @@ Sos el especialista en **administrar las estructuras** del usuario: categorías,
 - "pausá el presu de comida" → \`pause_budget\`. Reanudar → \`resume_budget\`.
 
 ## RECURRENTES (Netflix, alquiler)
-- "qué tengo automatizado" → \`list_recurring({active_only:true})\`. Para incluir pausadas → \`active_only:false\`.
+- "qué tengo automatizado / mis recurrentes" → \`list_recurring({active_only:true})\`. Para incluir pausadas → \`active_only:false\`.
 - "creá una recurrente de Netflix 5500 mensual" → \`set_recurring({amount:5500,description:"Netflix",frequency:"monthly",category_hint:"suscripciones"})\`.
-- "pausá Netflix" → \`list_recurring\` para ID → \`pause_recurring({recurring_id})\`.
-- "cancelá Netflix" → cancelar es **definitivo**. Si dudás "pausar vs cancelar", preguntá.
-- "cambiá el monto de Netflix a 8500" → \`update_recurring({recurring_id, new_amount:8500})\`. Para categoría usá \`new_category_hint\` (nombre).
+- "agendá mi alquiler de 340 mil cada 30" → \`set_recurring({amount:340000,description:"alquiler",category_hint:"alquiler",frequency:"monthly",start_date:"YYYY-MM-30"})\`. La columna \`day_of_period\` se deriva sola.
+
+### 🔎 Patrón estándar para acciones por nombre (pausar / cancelar / cambiar monto o fecha)
+SIEMPRE: \`find_recurring_by_hint({hint})\` → resolver \`recurring_id\` → ejecutar la acción en el MISMO turno.
+
+- **0 matches** → reply: "No encuentro '\\\${hint}' entre tus recurrentes. ¿Querés que te liste lo que tengo activo o la creo?". Sin inventar IDs.
+- **1 match** → ejecutá directo.
+- **N matches** → mostrá lista numerada (sin UUIDs) + \`set_conv_state(state="awaiting_recurring_pick", context={ids:[...]})\` y pedí "¿1, 2 o 3?". En el siguiente turno resolvés con el id elegido.
+
+### Casos canónicos
+- "pausá Netflix" → \`find_recurring_by_hint({hint:"netflix"})\` → \`pause_recurring({recurring_id})\` → "⏸️ Pausé Netflix."
+- "cancelá Netflix" → cancelar es **definitivo**. Si dudás vs pausa, preguntá. Después \`cancel_recurring\`.
+- "cambiá el monto de Netflix a 8500" → \`find_recurring_by_hint({hint:"netflix"})\` → \`update_recurring({recurring_id, new_amount:8500})\` → "✏️ Cambié Netflix a $8.500."
+- "cambiá la fecha del alquiler al 1 de cada mes" / "el alquiler ahora es el día 5":
+  1. \`find_recurring_by_hint({hint:"alquiler"})\` → 1 fila con \`recurring_id\`.
+  2. Calculá \`new_next_occurrence\` como la próxima fecha futura con ese día del mes (formato YYYY-MM-DD). Ej: hoy 2026-04-30, día pedido 1 → \`2026-05-01\`. Si el día pedido ya pasó este mes, usalo el mes siguiente.
+  3. \`update_recurring({recurring_id, new_next_occurrence:"YYYY-MM-DD"})\`.
+  4. Reply: "✏️ Listo, el alquiler ahora se carga el 1 de cada mes (próxima: 01/05/2026)."
+
+🚨 **Regla anti-narración**: cuando una operación necesita 2 tools encadenadas (find → action), las llamás AMBAS en el mismo turno. NUNCA mandes un reply diciendo "voy a buscar..." sin haber llamado las tools.
 
 ## TAGS (etiquetas cross-categoría)
 - "qué tags tengo" → \`list_tags\`.
@@ -2104,12 +2169,13 @@ if (replyKind === 'image' && imageUrl) {
   if (!replyText) replyText = '📈 Acá tenés el gráfico.';
 }
 
-const shouldReact = !!payload.should_react;
-const emoji = (payload.reaction_emoji || '').toString().slice(0, 4);
+// Reactions disabled by design — el usuario las consideraba spammy (👀 en
+// cada mensaje). Forzamos shouldReact=false y reactionEmoji='' acá, sin
+// importar lo que devuelva el LLM. La rama IF Should React queda muerta.
 return [{ json: {
   replyText, replyKind,
   imageUrl,
-  shouldReact, reactionEmoji: shouldReact ? (emoji || '✅') : '',
+  shouldReact: false, reactionEmoji: '',
   userId: ctx.userId, phone: ctx.phone, instance: ctx.instance,
   remoteJid: ctx.remoteJid, messageId: ctx.messageId
 } }];`

@@ -118,8 +118,8 @@ const TOOLS = [
     'generate_chart',
     // Categorías (CRUD)
     'create_category', 'rename_category', 'delete_category',
-    // Recurrentes (CRUD)
-    'list_recurring', 'update_recurring', 'pause_recurring', 'resume_recurring', 'cancel_recurring',
+    // Recurrentes (CRUD + búsqueda por hint para identificar rápido)
+    'list_recurring', 'find_recurring_by_hint', 'update_recurring', 'pause_recurring', 'resume_recurring', 'cancel_recurring',
     // Grupos (CRUD)
     'update_group', 'rename_group', 'close_group', 'delete_group',
     // Presupuestos (D + pause)
@@ -519,6 +519,8 @@ return [{ json: { ok: true, tool: 'list_groups', data: {
 
 // 14. list_budgets
 formatNames.push(addPgTool(14, 'list_budgets',
+    // OJO: la columna budgets.period guarda 'weekly'|'monthly'|'yearly', pero
+    // DATE_TRUNC necesita 'week'|'month'|'year'. Mapeamos antes de usar.
     `SELECT b.id, b.amount, b.period, c.name AS category_name, c.emoji AS category_emoji,
             COALESCE(s.spent, 0) AS spent, b.is_active
      FROM budgets b
@@ -528,7 +530,15 @@ formatNames.push(addPgTool(14, 'list_budgets',
          FROM v_reportable_transactions t
          WHERE t.user_id = b.user_id AND t.type = 'expense'
            AND t.category_id = b.category_id
-           AND t.transaction_date >= DATE_TRUNC(b.period::text, CURRENT_DATE)
+           AND t.transaction_date >= DATE_TRUNC(
+               CASE b.period
+                   WHEN 'weekly'  THEN 'week'
+                   WHEN 'monthly' THEN 'month'
+                   WHEN 'yearly'  THEN 'year'
+                   ELSE 'month'
+               END,
+               CURRENT_DATE
+           )
      ) s ON TRUE
      WHERE b.user_id = $1::uuid AND b.is_active = TRUE;`,
     "={{ $json.user_id }}",
@@ -582,28 +592,44 @@ return [{ json: { ok: true, tool: 'toggle_category_exclusion', data: {
 ));
 
 // 18. set_recurring
+// IMPORTANTE: la tabla recurring_transactions usa `next_occurrence`, no `start_date`.
+// El agente sigue mandando `start_date` como param semántico (más natural para el LLM)
+// pero acá lo mapeamos a la columna real. También derivamos `day_of_period` cuando
+// la frecuencia es monthly/yearly (lo usa process_due_recurring para fechas estables).
 formatNames.push(addPgTool(18, 'set_recurring',
-    `WITH p AS (SELECT $2::jsonb AS j)
+    `WITH p AS (SELECT $2::jsonb AS j),
+     vals AS (
+        SELECT
+            COALESCE(NULLIF((SELECT j->>'type' FROM p),''),'expense') AS type,
+            ((SELECT j->>'amount' FROM p))::numeric AS amount,
+            NULLIF((SELECT j->>'description' FROM p),'') AS description,
+            COALESCE(NULLIF((SELECT j->>'frequency' FROM p),''), 'monthly') AS frequency,
+            COALESCE(NULLIF((SELECT j->>'start_date' FROM p),'')::date, CURRENT_DATE) AS next_occurrence
+     )
      INSERT INTO recurring_transactions (user_id, type, amount, description, category_id,
-        frequency, start_date, is_active)
+        frequency, next_occurrence, day_of_period, is_active)
      SELECT $1::uuid,
-            'expense',
-            ((SELECT j->>'amount' FROM p))::numeric,
-            NULLIF((SELECT j->>'description' FROM p),''),
+            v.type,
+            v.amount,
+            v.description,
             (SELECT category_id FROM find_best_category(
                 $1::uuid,
-                COALESCE(NULLIF((SELECT j->>'description' FROM p),''), NULLIF((SELECT j->>'category_hint' FROM p),'')),
-                'expense'
+                COALESCE(v.description, NULLIF((SELECT j->>'category_hint' FROM p),'')),
+                v.type
             )),
-            COALESCE(NULLIF((SELECT j->>'frequency' FROM p),''), 'monthly'),
-            COALESCE(NULLIF((SELECT j->>'start_date' FROM p),'')::date, CURRENT_DATE),
+            v.frequency,
+            v.next_occurrence,
+            CASE WHEN v.frequency IN ('monthly','yearly') THEN EXTRACT(DAY FROM v.next_occurrence)::int ELSE NULL END,
             TRUE
-     RETURNING id, amount, description, frequency, start_date;`,
+     FROM vals v, p
+     RETURNING id, amount, description, frequency, next_occurrence, day_of_period;`,
     "={{ $json.user_id }},={{ $json.params_json }}",
     `const r = $input.first().json;
 return [{ json: { ok: true, tool: 'set_recurring', data: {
   id: r.id, amount: Number(r.amount), description: r.description,
-  frequency: r.frequency, start_date: r.start_date
+  frequency: r.frequency,
+  next_occurrence: r.next_occurrence,
+  day_of_period: r.day_of_period
 } } }];`
 ));
 
@@ -773,6 +799,28 @@ return [{ json: { ok: true, tool: 'list_recurring', data: {
     category: r.category_name, emoji: r.category_emoji,
     payment_method: r.payment_method_name
   }))
+} } }];`
+));
+
+// find_recurring_by_hint — búsqueda dirigida por nombre. Mucho más rápido y
+// preciso que dumpear todas las recurrentes para que el LLM elija. Devuelve
+// hasta 5 candidatos rankeados por similaridad. Si data.matches.length === 0
+// el agente reporta "no encontré X" sin dar por cierto que existe.
+formatNames.push(addPgTool(TOOLS.indexOf('find_recurring_by_hint'), 'find_recurring_by_hint',
+    `SELECT * FROM find_recurring_by_hint(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'hint',''), '')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const rows = $input.all().map(i => i.json);
+const matches = rows.map(r => ({
+  id: r.id, description: r.description, amount: Number(r.amount),
+  frequency: r.frequency, is_active: r.is_active
+}));
+return [{ json: { ok: true, tool: 'find_recurring_by_hint', data: {
+  matches,
+  count: matches.length,
+  ambiguous: matches.length > 1
 } } }];`
 ));
 
