@@ -170,16 +170,39 @@ docker compose exec -T n8n sh -c 'n8n import:workflow --input=/dev/stdin' < work
 ok "imported chefin-cron-v3 with error id linked"
 
 # ---------------------------------------------------------------------------
-# 6. Activate the 3 workflows
+# 6. Activate the 4 workflows
 # ---------------------------------------------------------------------------
+# IMPORTANTE: en n8n 2.18 `update:workflow` está deprecado y NO acepta --name.
+# Solo acepta --id o --all. Por eso usamos los IDs estables que ponemos en los
+# JSONs (`id` field de cada wf). Después de activar hay que reiniciar n8n
+# porque el CLI advierte: "Changes will not take effect if n8n is running."
 bold "[6/6] Activating workflows"
-for name in "Chefin Agent Tools v3" "Chefin Error Handler v3" "Chefin Cron v3 (consolidated)" "Chefin Agent v3"; do
-    if docker compose exec -T n8n n8n update:workflow --all=false --active=true --name "$name" >/dev/null 2>&1; then
-        ok "activated: $name"
+ANY_ACTIVATED=0
+for wf_id in chefin_tools_v3 chefin_error_v3 chefin_cron_v3 chefin_agent_v3; do
+    if docker compose exec -T n8n n8n update:workflow --id="$wf_id" --active=true >/tmp/chefin-activate.log 2>&1; then
+        ok "activated: $wf_id"
+        ANY_ACTIVATED=1
     else
-        warn "could not auto-activate '$name' — toggle it in the n8n UI"
+        cat /tmp/chefin-activate.log
+        warn "could not auto-activate '$wf_id' — toggle it in the n8n UI"
     fi
 done
+
+# Reiniciar n8n para que los cambios de active=true tomen efecto
+if [ "$ANY_ACTIVATED" -eq 1 ]; then
+    bold "Restarting n8n so activations take effect"
+    docker compose restart n8n
+    echo -n "Waiting for n8n to come back..."
+    for i in $(seq 1 60); do
+        if docker compose exec -T n8n n8n --version >/dev/null 2>&1; then
+            echo " ready."
+            break
+        fi
+        echo -n "."
+        sleep 1
+    done
+    ok "n8n restarted"
+fi
 
 bold "Done."
 echo ""
