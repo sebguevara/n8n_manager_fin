@@ -4,7 +4,359 @@
   "nodes": [
     {
       "parameters": {
-        "inputSource": "passthrough"
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "tool_name",
+              "type": "string"
+            },
+            {
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "name": "period",
+              "type": "string"
+            },
+            {
+              "name": "start_date",
+              "type": "string"
+            },
+            {
+              "name": "end_date",
+              "type": "string"
+            },
+            {
+              "name": "category",
+              "type": "string"
+            },
+            {
+              "name": "description_contains",
+              "type": "string"
+            },
+            {
+              "name": "type",
+              "type": "string"
+            },
+            {
+              "name": "group_name",
+              "type": "string"
+            },
+            {
+              "name": "payment_method",
+              "type": "string"
+            },
+            {
+              "name": "exact_amount",
+              "type": "number"
+            },
+            {
+              "name": "min_amount",
+              "type": "number"
+            },
+            {
+              "name": "max_amount",
+              "type": "number"
+            },
+            {
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "name": "limit",
+              "type": "number"
+            },
+            {
+              "name": "offset",
+              "type": "number"
+            },
+            {
+              "name": "dimension",
+              "type": "string"
+            },
+            {
+              "name": "top_n",
+              "type": "number"
+            },
+            {
+              "name": "period_a",
+              "type": "string"
+            },
+            {
+              "name": "period_b",
+              "type": "string"
+            },
+            {
+              "name": "date",
+              "type": "string"
+            },
+            {
+              "name": "date_from",
+              "type": "string"
+            },
+            {
+              "name": "date_to",
+              "type": "string"
+            },
+            {
+              "name": "window_days",
+              "type": "number"
+            },
+            {
+              "name": "min_repetitions",
+              "type": "number"
+            },
+            {
+              "name": "ids",
+              "type": "object"
+            },
+            {
+              "name": "new_category_hint",
+              "type": "string"
+            },
+            {
+              "name": "create_category_if_missing",
+              "type": "boolean"
+            },
+            {
+              "name": "new_date",
+              "type": "string"
+            },
+            {
+              "name": "new_group_id",
+              "type": "string"
+            },
+            {
+              "name": "amount_delta",
+              "type": "number"
+            },
+            {
+              "name": "set_excluded",
+              "type": "boolean"
+            },
+            {
+              "name": "amount",
+              "type": "number"
+            },
+            {
+              "name": "description",
+              "type": "string"
+            },
+            {
+              "name": "category_hint",
+              "type": "string"
+            },
+            {
+              "name": "payment_method_hint",
+              "type": "string"
+            },
+            {
+              "name": "group_hint",
+              "type": "string"
+            },
+            {
+              "name": "skip_dup_check",
+              "type": "boolean"
+            },
+            {
+              "name": "transaction_id",
+              "type": "string"
+            },
+            {
+              "name": "new_amount",
+              "type": "number"
+            },
+            {
+              "name": "new_description",
+              "type": "string"
+            },
+            {
+              "name": "include_excluded",
+              "type": "boolean"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "kind",
+              "type": "string"
+            },
+            {
+              "name": "old_name",
+              "type": "string"
+            },
+            {
+              "name": "new_name",
+              "type": "string"
+            },
+            {
+              "name": "merge_into",
+              "type": "string"
+            },
+            {
+              "name": "active_only",
+              "type": "boolean"
+            },
+            {
+              "name": "hint",
+              "type": "string"
+            },
+            {
+              "name": "recurring_id",
+              "type": "string"
+            },
+            {
+              "name": "new_frequency",
+              "type": "string"
+            },
+            {
+              "name": "new_next_occurrence",
+              "type": "string"
+            },
+            {
+              "name": "new_end_date",
+              "type": "string"
+            },
+            {
+              "name": "new_kind",
+              "type": "string"
+            },
+            {
+              "name": "new_emoji",
+              "type": "string"
+            },
+            {
+              "name": "new_starts_at",
+              "type": "string"
+            },
+            {
+              "name": "new_ends_at",
+              "type": "string"
+            },
+            {
+              "name": "reassign_to_name",
+              "type": "string"
+            },
+            {
+              "name": "unassign",
+              "type": "boolean"
+            },
+            {
+              "name": "color",
+              "type": "string"
+            },
+            {
+              "name": "tag_name",
+              "type": "string"
+            },
+            {
+              "name": "tx_ids",
+              "type": "object"
+            },
+            {
+              "name": "create_if_missing",
+              "type": "boolean"
+            },
+            {
+              "name": "preferred_currency",
+              "type": "string"
+            },
+            {
+              "name": "daily_summary_enabled",
+              "type": "string"
+            },
+            {
+              "name": "daily_summary_hour",
+              "type": "number"
+            },
+            {
+              "name": "weekly_summary_enabled",
+              "type": "string"
+            },
+            {
+              "name": "frequency",
+              "type": "string"
+            },
+            {
+              "name": "items",
+              "type": "object"
+            },
+            {
+              "name": "filters_applied",
+              "type": "object"
+            },
+            {
+              "name": "ttl_seconds",
+              "type": "number"
+            },
+            {
+              "name": "state",
+              "type": "string"
+            },
+            {
+              "name": "context",
+              "type": "object"
+            },
+            {
+              "name": "mode",
+              "type": "string"
+            },
+            {
+              "name": "goal_amount",
+              "type": "number"
+            },
+            {
+              "name": "monthly_saving_override",
+              "type": "number"
+            },
+            {
+              "name": "monthly_income_override",
+              "type": "number"
+            },
+            {
+              "name": "monthly_expense_override",
+              "type": "number"
+            },
+            {
+              "name": "lookback_months",
+              "type": "number"
+            },
+            {
+              "name": "extra_monthly_saving",
+              "type": "number"
+            },
+            {
+              "name": "content",
+              "type": "string"
+            },
+            {
+              "name": "metadata",
+              "type": "string"
+            },
+            {
+              "name": "query",
+              "type": "string"
+            },
+            {
+              "name": "k",
+              "type": "number"
+            },
+            {
+              "name": "min_score",
+              "type": "number"
+            },
+            {
+              "name": "memory_id",
+              "type": "string"
+            },
+            {
+              "name": "new_content",
+              "type": "string"
+            }
+          ]
+        }
       },
       "id": "t001",
       "name": "When Called",

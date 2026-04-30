@@ -41,10 +41,39 @@ const eqStr = (id, lv, rv) => ({
 // =========================================================================
 // 1. ENTRY POINT
 // =========================================================================
-// Trigger uses passthrough mode so any field shape is accepted.
-// Tool nodes pass tool_name, user_id, and one field per tool parameter.
+// IMPORTANTE: el trigger declara explícitamente los inputs (tool_name,
+// user_id + unión de todos los fields que mandan los tool nodes del agente).
+// Si lo dejábamos en 'Accept all data' (passthrough), n8n's tool node UI
+// marcaba "Workflow inputs are outdated" porque no tenía un schema con qué
+// validar el `defineBelow` mapping del agente. Con el schema declarado,
+// la introspección coincide y el warning desaparece.
+//
+// Como Normalize Input igual hace passthrough en runtime (acepta cualquier
+// shape), declarar el schema NO restringe lo que se puede mandar — solo
+// hace explícito el contrato para la UI.
+const TOOL_DEFS = require('./tool-defs');
+const N8N_TYPE = { string: 'string', number: 'number', boolean: 'boolean', json: 'object' };
+const triggerSchema = [
+    { id: 'tool_name', displayName: 'tool_name', type: 'string', required: false, defaultMatch: false, display: true, canBeUsedToMatch: true },
+    { id: 'user_id',   displayName: 'user_id',   type: 'string', required: false, defaultMatch: false, display: true, canBeUsedToMatch: true }
+];
+const seenFields = new Set(['tool_name', 'user_id']);
+for (const t of TOOL_DEFS) {
+    for (const f of (t.fields || [])) {
+        if (seenFields.has(f.name)) continue;
+        seenFields.add(f.name);
+        triggerSchema.push({
+            id: f.name, displayName: f.name, type: N8N_TYPE[f.type] || 'string',
+            required: false, defaultMatch: false, display: true, canBeUsedToMatch: true
+        });
+    }
+}
+
 addNode('When Called', 'n8n-nodes-base.executeWorkflowTrigger', {
-    inputSource: 'passthrough'
+    inputSource: 'workflowInputs',
+    workflowInputs: {
+        values: triggerSchema.map(s => ({ name: s.id, type: s.type }))
+    }
 }, 0, 0, { tv: 1.1 });
 
 // Normalize input — accepts:
