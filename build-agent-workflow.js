@@ -130,7 +130,7 @@ addNode('Vision OCR', 'n8n-nodes-base.httpRequest', {
     sendHeaders: true,
     headerParameters: { parameters: [{ name: 'Content-Type', value: 'application/json' }] },
     sendBody: true, specifyBody: 'json',
-    jsonBody: `={\n  "model": "gpt-4o-mini",\n  "response_format": {"type":"json_object"},\n  "temperature": 0.1, "max_tokens": 1500,\n  "messages": [\n    {"role":"system","content":"Sos un experto leyendo comprobantes argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. is_receipt=TRUE si la imagen muestra CUALQUIER transacción de plata: ticket de compra, recibo, factura, comprobante de transferencia (Mercado Pago, Banco, etc.), pago de servicio, voucher, captura de movimiento bancario. is_receipt=false SOLO si la imagen no tiene info financiera (selfie, paisaje, meme). amount=monto principal sin signos. category_hint para transferencias salientes='transferencias'."},\n    {"role":"user","content":[\n      {"type":"text","text":"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}"},\n      {"type":"image_url","image_url":{"url":"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}"}}\n    ]}\n  ]\n}`,
+    jsonBody: `={\n  "model": "gpt-4o-mini",\n  "response_format": {"type":"json_object"},\n  "temperature": 0.1, "max_tokens": 1500,\n  "messages": [\n    {"role":"system","content":"Sos un experto leyendo comprobantes argentinos. Devolvé JSON con: {is_receipt:bool, merchant, amount(número), currency:'ARS', transaction_date_iso, payment_method_hint, category_hint, description, confidence(0-1), human_reply}. is_receipt=TRUE si la imagen muestra CUALQUIER transacción de plata: ticket de compra, recibo, factura, comprobante de transferencia (Mercado Pago, Banco, etc.), pago de servicio, voucher, captura de movimiento bancario. is_receipt=false SOLO si la imagen no tiene info financiera (selfie, paisaje, meme). amount=monto principal sin signos. payment_method_hint=el medio (efectivo, débito, crédito, transferencia, mercadopago, etc.). category_hint=DEJAR VACÍO ('') para transferencias, comprobantes de Mercado Pago/Banco y cualquier comprobante donde la categoría real del gasto no sea evidente del rubro del comercio. Solo poné category_hint si el comercio es claramente de un rubro (ej. 'Don Pedro Restaurante'→'comida', estación de servicio→'transporte', supermercado→'supermercado'). 'transferencias' NUNCA es category_hint, va en payment_method_hint."},\n    {"role":"user","content":[\n      {"type":"text","text":"Caption: {{ $('Extract Fields').first().json.caption || '(ninguno)' }}"},\n      {"type":"image_url","image_url":{"url":"data:{{ $json.mimetype || 'image/jpeg' }};base64,{{ $json.base64 }}"}}\n    ]}\n  ]\n}`,
     options: {}
 }, 1320, -200, { tv: 4.2, creds: { openAiApi: OPENAI } });
 connect('Download Image', 'Vision OCR');
@@ -150,7 +150,10 @@ if (amount > 0) {
   // el agente vea la ambigüedad y pregunte.
   const parts = ['pagué', String(amount)];
   const hint = (payload.category_hint || '').trim().toLowerCase();
-  const hintIsReal = hint && hint !== 'otros' && hint !== 'sin categoria' && hint !== 'sin categoría';
+  // Defensa: si la OCR igual mete 'transferencias' como categoría, lo tratamos como ausente
+  // para forzar al agente a preguntar (transferencia es método de pago, no categoría).
+  const NON_REAL_HINTS = new Set(['otros','sin categoria','sin categoría','transferencia','transferencias']);
+  const hintIsReal = hint && !NON_REAL_HINTS.has(hint);
   if (hintIsReal) parts.push('de', payload.category_hint);
   if(payload.payment_method_hint) parts.push('con', payload.payment_method_hint);
   if(dateOnly) parts.push('el', dateOnly);
@@ -245,7 +248,28 @@ connect('Pass Text', 'Bootstrap User');
 
 addNode('Get Conv State', 'n8n-nodes-base.postgres', {
     operation: 'executeQuery',
-    query: "SELECT cs.state AS conv_state, cs.context AS conv_context, u.onboarded FROM users u LEFT JOIN conversation_state cs ON cs.user_id=u.id AND cs.expires_at > NOW() WHERE u.id = $1::uuid;",
+    // Además del estado conv, devolvemos la lista de categorías activas del usuario
+    // para que el agente la vea inline en [CONTEXTO] y reutilice antes de crear nuevas.
+    // Formato: nombres separados por coma, agrupados por type.
+    query: `SELECT
+              cs.state AS conv_state,
+              cs.context AS conv_context,
+              u.onboarded,
+              COALESCE(
+                (SELECT string_agg(c.name, ', ' ORDER BY c.name)
+                 FROM categories c
+                 WHERE c.user_id = u.id AND c.is_active AND c.type = 'expense'),
+                ''
+              ) AS expense_categories,
+              COALESCE(
+                (SELECT string_agg(c.name, ', ' ORDER BY c.name)
+                 FROM categories c
+                 WHERE c.user_id = u.id AND c.is_active AND c.type = 'income'),
+                ''
+              ) AS income_categories
+            FROM users u
+            LEFT JOIN conversation_state cs ON cs.user_id=u.id AND cs.expires_at > NOW()
+            WHERE u.id = $1::uuid;`,
     options: { queryReplacement: '={{ $json.user_id }}' }
 }, 2420, 0, { tv: 2.5, creds: { postgres: PG }, always: true });
 connect('Bootstrap User', 'Get Conv State');
@@ -261,7 +285,9 @@ addNode('Merge Ctx', 'n8n-nodes-base.set', {
         { id: 'pn', name: 'pushName', type: 'string', value: "={{ $('Pass Text').first().json.pushName }}" },
         { id: 'cs', name: 'convState', type: 'string', value: "={{ $json.conv_state || '' }}" },
         { id: 'cc', name: 'convContext', type: 'object', value: "={{ $json.conv_context || {} }}" },
-        { id: 'ob', name: 'onboarded', type: 'boolean', value: "={{ $json.onboarded || false }}" }
+        { id: 'ob', name: 'onboarded', type: 'boolean', value: "={{ $json.onboarded || false }}" },
+        { id: 'ec', name: 'expenseCategories', type: 'string', value: "={{ $json.expense_categories || '' }}" },
+        { id: 'ic', name: 'incomeCategories', type: 'string', value: "={{ $json.income_categories || '' }}" }
     ] }, options: {}
 }, 2640, 0, { tv: 3.4 });
 connect('Get Conv State', 'Merge Ctx');
@@ -300,7 +326,7 @@ connect('IF First Time', 'Mark Processed', 0);
 addNode('Concat', 'n8n-nodes-base.code', {
     jsCode: `const ctx=$('Merge Ctx').first().json;
 const text=String(ctx.text || '').trim();
-return [{ json:{ userId:ctx.userId, phone:ctx.phone, remoteJid:ctx.remoteJid, instance:ctx.instance, messageId:ctx.messageId, pushName:ctx.pushName, combinedText:text, bufferLength:1, convState:ctx.convState, convContext:ctx.convContext, onboarded:ctx.onboarded }}];`
+return [{ json:{ userId:ctx.userId, phone:ctx.phone, remoteJid:ctx.remoteJid, instance:ctx.instance, messageId:ctx.messageId, pushName:ctx.pushName, combinedText:text, bufferLength:1, convState:ctx.convState, convContext:ctx.convContext, onboarded:ctx.onboarded, expenseCategories:ctx.expenseCategories||'', incomeCategories:ctx.incomeCategories||'' }}];`
 }, 3520, 0);
 connect('Mark Processed', 'Concat');
 
@@ -894,11 +920,11 @@ Próximo turno: usuario "comida" → \`delete_category(name:"salidas", merge_int
 `;
 
 // Chat model
+// maxTokens 2000: alcanza para listas largas sin cortar; bajado de 3000 para reducir
+// cola de generación en respuestas cortas (la mayoría de turnos).
 addNode('OpenAI Chat Model', '@n8n/n8n-nodes-langchain.lmChatOpenAi', {
     model: { __rl: true, mode: 'list', value: 'gpt-4o-mini' },
-    // maxTokens 3000: alcanza para listas largas (16+ categorías con descripción,
-    // 20+ recurrentes, etc.) sin que el LLM corte la respuesta a la mitad.
-    options: { temperature: 0.2, maxTokens: 3000 }
+    options: { temperature: 0.2, maxTokens: 2000 }
 }, 5500, 200, { tv: 1.2, creds: { openAiApi: OPENAI } });
 
 // Memory (Postgres chat history per user)
@@ -1331,6 +1357,22 @@ Sos el especialista en **registrar, consultar, editar y borrar** transacciones (
 ### Regla de categoría (crítica)
 - NO existe la categoría "transferencias". Eso es método de pago.
 - 🚨 **NUNCA guardes en "Otros" sin preguntar primero**. "Otros" es la elección del USUARIO, no tu fallback. Si no tenés una categoría clara → preguntá.
+- 🚨 **NO INFLES EL CATÁLOGO** (regla del usuario). Las categorías existentes están en \`[CONTEXTO] categorias_gasto\` / \`categorias_ingreso\`. ANTES de crear una nueva, REUSAR si encaja por significado. Mapeos canónicos:
+  - alquiler / renta / expensas → **Alquiler** (o Hogar si no existe Alquiler).
+  - ABL / luz / gas / agua / internet / wifi / cable → **Servicios** (no crear "ABL", "Luz" sueltos).
+  - celular / telefono → **Celular** (o Servicios si no existe).
+  - netflix / spotify / chatgpt / youtube premium → **Suscripciones**.
+  - gimnasio / gym / personal trainer → **Gimnasio** (o Salud si no existe).
+  - uber / taxi / nafta / subte / colectivo / peaje / estacionamiento → **Transporte**.
+  - almuerzo / cena / delivery / rappi / pedidos ya / café / kiosco / restaurant → **Comida**.
+  - super / supermercado / chino / verdulería → **Supermercado** (o Comida si no existe).
+  - farmacia / médico / dentista / obra social → **Salud**.
+  - vet / alimento perro/gato → **Mascotas**.
+  - regalo / cumpleaños → **Regalos**.
+  - boliche / cine / salida / bar / fiesta → **Salidas** (o Ocio).
+  - cuando dudes entre crear y reusar → REUSAR. Alquiler vs Hogar es la misma cosa para el usuario.
+  - **Solo creá categoría nueva** si NINGUNA del catálogo encaja razonablemente.
+
 - Si la categoría es **ambigua o ausente** — esto incluye:
   - Transferencias / "te envié plata" / "pagué 3000 algo" sin contexto.
   - **Comprobantes de OCR donde la síntesis NO incluye "de \\\${categoria}"** (ej. mensaje sintético "pagué 5000 — pago a Mercado Pago" sin "de X" ⇒ la OCR no detectó categoría → preguntá).
@@ -1338,13 +1380,14 @@ Sos el especialista en **registrar, consultar, editar y borrar** transacciones (
 
   Pasos:
   1. \`set_conv_state(state="awaiting_category", context={amount, description, date, payment_method_hint, type, group_hint}, ttl_seconds=600)\`
-  2. Reply: "💸 Detecté un \\\${tipo} de $X (\\\${descripción}). ¿En qué categoría lo guardo? Decime una (puede ser nueva: comida, salidas, regalos…) o 'otros' si querés mandarlo ahí."
+  2. Reply: "💸 Detecté un \\\${tipo} de $X (\\\${descripción}). ¿En qué categoría? Tenés: \\\${primeras 6-8 del catálogo separadas por '·'} u otra."
 
 - Si \`convState=awaiting_category\`, el mensaje es la respuesta:
   1. Recuperá \`convContext\`.
-  2. \`log_transaction(...campos pendientes..., category_hint=<respuesta>, create_category_if_missing=true)\`
-  3. \`clear_conv_state\`
-  4. Reply: "✅ Anotado: $X en \\\${categoría} — \\\${descripción}"
+  2. **Mapeá al catálogo existente** (ver regla "no inflar"). Si encaja con alguna existente → \`category_hint=<NOMBRE EXISTENTE>\`, \`create_category_if_missing=false\`. Si NO → \`category_hint=<lo que dijo>\`, \`create_category_if_missing=true\`.
+  3. \`log_transaction(...campos pendientes..., category_hint, create_category_if_missing)\`
+  4. \`clear_conv_state\`
+  5. Reply: "✅ Anotado: $X en \\\${categoría} — \\\${descripción}"
 
 ### Cuándo registrar directo (sin preguntar)
 - Mensaje claro tipo "2500 café" → \`category_hint="café"\`, \`create_category_if_missing=false\`.
@@ -1665,7 +1708,7 @@ addNode('Router Schema', '@n8n/n8n-nodes-langchain.outputParserStructured', {
 // mostrámelas / hacelo" que sin contexto irían mal a chitchat. Sub-agents igual
 // tienen Postgres Chat Memory, pero esto les sirve también para el primer turno
 // del agente cuando antes hubo chitchat (que también persiste).
-const USER_MESSAGE_WITH_CONTEXT = "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\nhistorial=\n{{ $('Format Recent Turns').first().json.recentTurnsText }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}";
+const USER_MESSAGE_WITH_CONTEXT = "=[CONTEXTO]\nfecha={{ $now.toFormat('yyyy-MM-dd HH:mm') }}\ndia={{ $now.toFormat('EEEE') }}\nconvState={{ $('Concat').first().json.convState || 'ninguno' }}\nconvContext={{ JSON.stringify($('Concat').first().json.convContext || {}) }}\nonboarded={{ $('Concat').first().json.onboarded }}\ncategorias_gasto={{ $('Concat').first().json.expenseCategories || '(ninguna)' }}\ncategorias_ingreso={{ $('Concat').first().json.incomeCategories || '(ninguna)' }}\nhistorial=\n{{ $('Format Recent Turns').first().json.recentTurnsText }}\n[/CONTEXTO]\n\n{{ $('Concat').first().json.combinedText }}";
 
 // Router como Basic LLM Chain — un solo round-trip a OpenAI.
 // hasOutputParser=false a propósito: parseamos manual en Extract Intent para tolerar
@@ -1796,8 +1839,9 @@ const AGENT_Y = { transaction: -200, config: 0, insights: 200 };
     //   • cof:true + alwaysOutputData:true → ningún error tira el flujo
     //   • onError:'continueRegularOutput' (n8n 1.7+) → si el output parser revienta,
     //     n8n pasa el item con .error en vez de stoppear el workflow
-    //   • maxIterations:6 → balance entre dar tiempo a encadenar tools y no caer
-    //     en "Agent stopped due to iteration limit"
+    //   • maxIterations:4 → balance entre dar tiempo a encadenar tools y no caer
+    //     en "Agent stopped due to iteration limit". Bajado de 6 para reducir
+    //     la latencia P95 (cada iteration extra son ~3-5s en gpt-4o-mini).
     //   • el system prompt del agente tiene una regla "si después de 3 tools no
     //     tenés un path claro, parate y respondé pidiendo más info"
     addNode(nodeName, '@n8n/n8n-nodes-langchain.agent', {
@@ -1807,7 +1851,7 @@ const AGENT_Y = { transaction: -200, config: 0, insights: 200 };
         text: USER_MESSAGE_WITH_CONTEXT,
         options: {
             systemMessage: AGENT_PROMPTS[agentType],
-            maxIterations: 6,
+            maxIterations: 4,
             returnIntermediateSteps: false
         },
         hasOutputParser: true
