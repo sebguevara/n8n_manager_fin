@@ -71,38 +71,43 @@ const errObj = exec.error || {};
 // Intentamos sacar el body original del webhook desde varias rutas posibles.
 // Distintas versiones de n8n exponen runData de forma distinta en el error
 // trigger. Si ninguna funciona, fallback a vacío y no respondemos.
+//
+// Nota: NO usamos optional-chaining (?.) acá. El Node viejo del VPS no lo
+// parsea (ni la forma simple ?. ni la computada ?.[]) y el test corre este
+// código vía new Function() en el host, así que necesita ser compatible.
+function getPath(obj, keys) {
+  let cur = obj;
+  for (let i = 0; i < keys.length; i++) {
+    if (cur == null) return undefined;
+    cur = cur[keys[i]];
+  }
+  return cur;
+}
 function findWebhookBody(root) {
   const candidates = [
-    root?.executionData?.resultData?.runData,
-    root?.execution?.executionData?.resultData?.runData,
-    root?.runData,
+    getPath(root, ['executionData', 'resultData', 'runData']),
+    getPath(root, ['execution', 'executionData', 'resultData', 'runData']),
+    getPath(root, ['runData']),
   ];
   for (const rd of candidates) {
     if (!rd) continue;
     const webhookKey = Object.keys(rd).find(k => /webhook/i.test(k));
     if (!webhookKey) continue;
-    // Antes esto usaba ?.[0] en cadena pero el Node 12/13 del VPS no parsea
-    // optional-chaining con acceso por índice. Usamos accesos defensivos.
-    const arr = rd[webhookKey];
-    const first = Array.isArray(arr) && arr[0] ? arr[0] : null;
-    const main = first && first.data && first.data.main;
-    const inner = Array.isArray(main) && main[0] ? main[0] : null;
-    const innerFirst = Array.isArray(inner) && inner[0] ? inner[0] : null;
-    const body = innerFirst && innerFirst.json ? innerFirst.json.body : undefined;
+    const body = getPath(rd, [webhookKey, 0, 'data', 'main', 0, 0, 'json', 'body']);
     if (body) return body;
   }
   return null;
 }
 
 const body = findWebhookBody(item);
-const remoteJid = body?.data?.key?.remoteJid || '';
+const remoteJid = (body && getPath(body, ['data', 'key', 'remoteJid'])) || '';
 const phone = remoteJid ? remoteJid.split('@')[0] : '';
-const instance = body?.instance || '';
-const messageId = body?.data?.key?.id || '';
+const instance = (body && body.instance) || '';
+const messageId = (body && getPath(body, ['data', 'key', 'id'])) || '';
 const userText =
-  body?.data?.message?.conversation ||
-  body?.data?.message?.extendedTextMessage?.text ||
-  body?.data?.message?.imageMessage?.caption ||
+  (body && getPath(body, ['data', 'message', 'conversation'])) ||
+  (body && getPath(body, ['data', 'message', 'extendedTextMessage', 'text'])) ||
+  (body && getPath(body, ['data', 'message', 'imageMessage', 'caption'])) ||
   '';
 
 const canReply = Boolean(phone && instance);
