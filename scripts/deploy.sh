@@ -213,9 +213,12 @@ done
 # limpio. Sin esto, los runs anteriores pueden dejar duplicados con el mismo
 # NOMBRE pero ids autogenerados distintos, y los triggers viejos siguen
 # disparando en paralelo con los nuevos. Estrategia: lookup por nombre →
-# desactivar → `n8n delete:workflow --id=<id>` (la CLI limpia webhooks,
-# bindings y execution_data por nosotros, lo que evita problemas de FK que
-# tendría un DELETE crudo).
+# desactivar vía CLI → DELETE crudo en workflow_entity. n8n declara
+# ON DELETE CASCADE en webhook_entity, shared_workflow, workflow_statistics,
+# workflow_history y execution_entity → execution_data, así que un solo
+# DELETE limpia todas las dependencias. Los triggers en memoria del proceso
+# n8n se sueltan en el restart del paso 6.
+# (No usamos `n8n delete:workflow`: ese subcomando no existe en la CLI.)
 bold "Purging previous Chefin workflows from n8n"
 lookup_ids_by_name() {
     local name="$1"
@@ -223,6 +226,12 @@ lookup_ids_by_name() {
         "PGPASSWORD=\$POSTGRES_PASSWORD psql -t -A -U \$POSTGRES_USER -d n8n -c \"\
             SELECT id FROM workflow_entity WHERE name = '$name'\"" \
         | tr -d '\r' | grep -v '^$' || true
+}
+delete_workflow_by_id() {
+    local wid="$1"
+    docker compose exec -T n8n_postgres sh -c \
+        "PGPASSWORD=\$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 -U \$POSTGRES_USER -d n8n -c \"\
+            DELETE FROM workflow_entity WHERE id = '$wid'\""
 }
 for wf_name in 'Chefin Agent Tools v3' 'Chefin Error Handler v3' 'Chefin Agent v3' 'Chefin Cron v3 (consolidated)'; do
     ids=$(lookup_ids_by_name "$wf_name")
@@ -234,7 +243,7 @@ for wf_name in 'Chefin Agent Tools v3' 'Chefin Error Handler v3' 'Chefin Agent v
         [ -z "$wid" ] && continue
         # Desactivar primero para que el trigger se baje antes del delete.
         docker compose exec -T n8n n8n update:workflow --id="$wid" --active=false >/dev/null 2>&1 || true
-        if docker compose exec -T n8n n8n delete:workflow --id="$wid" >/tmp/chefin-purge.log 2>&1; then
+        if delete_workflow_by_id "$wid" >/tmp/chefin-purge.log 2>&1; then
             ok "deleted '$wf_name' (id: $wid)"
         else
             cat /tmp/chefin-purge.log
