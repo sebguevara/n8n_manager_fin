@@ -81,7 +81,14 @@ function findWebhookBody(root) {
     if (!rd) continue;
     const webhookKey = Object.keys(rd).find(k => /webhook/i.test(k));
     if (!webhookKey) continue;
-    const body = rd[webhookKey]?.[0]?.data?.main?.[0]?.[0]?.json?.body;
+    // Antes esto usaba ?.[0] en cadena pero el Node 12/13 del VPS no parsea
+    // optional-chaining con acceso por índice. Usamos accesos defensivos.
+    const arr = rd[webhookKey];
+    const first = Array.isArray(arr) && arr[0] ? arr[0] : null;
+    const main = first && first.data && first.data.main;
+    const inner = Array.isArray(main) && main[0] ? main[0] : null;
+    const innerFirst = Array.isArray(inner) && inner[0] ? inner[0] : null;
+    const body = innerFirst && innerFirst.json ? innerFirst.json.body : undefined;
     if (body) return body;
   }
   return null;
