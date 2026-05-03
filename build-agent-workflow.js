@@ -1885,6 +1885,22 @@ replyText = replyText
   .replace(/\\*\\*([^*\\n]+?)\\*\\*/g, '*$1*')
   .replace(/__([^_\\n]+?)__/g, '_$1_')
   .replace(/~~([^~\\n]+?)~~/g, '~$1~');
+
+// Guard: si el agente devolvió SOLO un intro huérfano ("Aquí están tus
+// categorías:" sin lista detrás), el usuario ve un mensaje sin contenido y
+// queda esperando. Detectamos: una sola línea, < 120 chars, termina en ":".
+// Reemplazamos por un mensaje útil en lugar de mandar el intro pelado.
+{
+  const trimmed = replyText.trim();
+  const isOrphanIntro =
+    trimmed.length < 120 &&
+    /[:：]$/.test(trimmed) &&
+    !trimmed.includes('\\n');
+  if (isOrphanIntro) {
+    replyText = '😅 Se me cortó la respuesta antes de armar la lista. ¿La pedís de nuevo?';
+  }
+}
+
 const replyKind = payload.reply_kind === 'image' && payload.image_url ? 'image' : 'text';
 const imageUrl = replyKind === 'image' ? (payload.image_url || '') : '';
 
@@ -1951,18 +1967,20 @@ function semanticSplit(s) {
   const paras = s.split(/\\n{2,}/).map(p => p.trim()).filter(Boolean);
   if (paras.length < 2 || s.length <= SOFT_MIN) return [s];
 
-  const isListIntro = (p) => /[:：]\\s*$/.test(p) && p.length < 80;
-  const startsWithList = (p) => /^(?:\\d+[.)]\\s|[-•*]\\s|🍽️|☕|💸|💰|🔁|🎯|📅)/u.test(p);
+  const isListIntro = (p) => /[:：]\\s*$/.test(p) && p.length < 120;
 
-  // 🚨 ANTI-HUÉRFANO: si el primer párrafo es un intro corto que termina en ":"
-  // y el segundo arranca con marcadores de lista, MERGE intro + lista en un
-  // solo bloque. Sin esto, el chunker partía en chunk[0]="Aquí están tus
-  // categorías:" + chunk[1]=lista. Si algo fallaba en el segundo, el usuario
-  // veía solo el intro huérfano.
+  // 🚨 ANTI-HUÉRFANO: un intro corto que termina en ":" NUNCA tiene sentido
+  // como mensaje suelto — siempre lo pegamos al párrafo siguiente. Antes
+  // restringíamos esto a casos donde el siguiente párrafo arrancaba con
+  // marcadores de lista conocidos (\\d+. , -, •, *, o un set chico de
+  // emojis), pero las categorías del usuario usan emojis arbitrarios
+  // (🛒 🚗 🏥 💊 ⚽ 🎮 ...) y el merge fallaba: el usuario veía solo
+  // "Aquí están tus categorías:" sin la lista. Ahora mergeamos siempre
+  // que haya intro corto con \":\" — independiente de qué venga después.
   const merged = [];
   let i = 0;
   while (i < paras.length) {
-    if (i + 1 < paras.length && isListIntro(paras[i]) && startsWithList(paras[i + 1])) {
+    if (i + 1 < paras.length && isListIntro(paras[i])) {
       merged.push(paras[i] + '\\n' + paras[i + 1]);
       i += 2;
     } else {

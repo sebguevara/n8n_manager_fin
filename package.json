@@ -4,6 +4,8 @@
   "private": true,
   "description": "Chefin v3 — WhatsApp finance assistant on n8n + Postgres + Evolution API",
   "scripts": {
+    "clean": "node scripts/clean-workflows.js",
+    "prebuild": "node scripts/clean-workflows.js",
     "build": "node build-tools-subworkflow.js > workflows/chefin-tools-v3.json && node build-agent-workflow.js > workflows/chefin-agent-v3.json && node build-cron-workflow.js > workflows/chefin-cron-v3.json && node build-error-workflow.js > workflows/chefin-error-v3.json",
     "test:sql": "bash tests/run.sh",
     "test:chunker": "node tests/agent/test-chunker.mjs",

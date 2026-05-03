@@ -33,9 +33,12 @@ warn() { printf '\033[33m⚠\033[0m %s\n' "$*"; }
 err()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
-# 1. Build the 4 workflow JSONs (tools, error, agent, cron)
+# 1. Clean previous JSONs and rebuild the 4 workflow files (tools, error,
+#    agent, cron) desde cero. El clean-workflows borra los 4 outputs conocidos
+#    para que un workflow eliminado no quede como JSON huérfano en el repo.
 # ---------------------------------------------------------------------------
-bold "[1/6] Building workflow JSONs"
+bold "[1/6] Cleaning + rebuilding workflow JSONs"
+node scripts/clean-workflows.js
 node build-tools-subworkflow.js > workflows/chefin-tools-v3.json
 ok "chefin-tools-v3.json"
 node build-error-workflow.js    > workflows/chefin-error-v3.json
@@ -136,6 +139,41 @@ for i in $(seq 1 60); do
     fi
     echo -n "."
     sleep 1
+done
+
+# Borramos los workflows previos antes de re-importar para garantizar estado
+# limpio. Sin esto, los runs anteriores pueden dejar duplicados con el mismo
+# NOMBRE pero ids autogenerados distintos, y los triggers viejos siguen
+# disparando en paralelo con los nuevos. Estrategia: lookup por nombre →
+# desactivar → `n8n delete:workflow --id=<id>` (la CLI limpia webhooks,
+# bindings y execution_data por nosotros, lo que evita problemas de FK que
+# tendría un DELETE crudo).
+bold "Purging previous Chefin workflows from n8n"
+lookup_ids_by_name() {
+    local name="$1"
+    docker compose exec -T n8n_postgres sh -c \
+        "PGPASSWORD=\$POSTGRES_PASSWORD psql -t -A -U \$POSTGRES_USER -d n8n -c \"\
+            SELECT id FROM workflow_entity WHERE name = '$name'\"" \
+        | tr -d '\r' | grep -v '^$' || true
+}
+for wf_name in 'Chefin Agent Tools v3' 'Chefin Error Handler v3' 'Chefin Agent v3' 'Chefin Cron v3 (consolidated)'; do
+    ids=$(lookup_ids_by_name "$wf_name")
+    if [ -z "$ids" ]; then
+        ok "no previous '$wf_name' to delete"
+        continue
+    fi
+    while IFS= read -r wid; do
+        [ -z "$wid" ] && continue
+        # Desactivar primero para que el trigger se baje antes del delete.
+        docker compose exec -T n8n n8n update:workflow --id="$wid" --active=false >/dev/null 2>&1 || true
+        if docker compose exec -T n8n n8n delete:workflow --id="$wid" >/tmp/chefin-purge.log 2>&1; then
+            ok "deleted '$wf_name' (id: $wid)"
+        else
+            cat /tmp/chefin-purge.log
+            err "failed to delete '$wf_name' (id: $wid)"
+            exit 1
+        fi
+    done <<< "$ids"
 done
 
 # Importamos primero los dos "satélites" (tools sub-workflow + error handler)

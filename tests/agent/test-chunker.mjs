@@ -89,6 +89,14 @@ const cases = [
         name: 'Lista con bullets (-) e intro → 1 chunk (no separar)',
         input: 'Tus recurrentes activas:\n\n- Netflix · $5.500 · próx 15/05\n- Spotify · $3.200 · próx 20/05\n- Alquiler · $340.000 · próx 01/05\n- Internet · $9.000 · próx 03/05\n- Gimnasio · $7.800 · próx 10/05\n- Telefonía · $4.200 · próx 12/05',
         expectChunks: 1
+    },
+    {
+        // 🐛 REGRESSION: categorías reales usan emojis arbitrarios (🛒🚗🏥💊...)
+        // que no estaban en la lista hardcodeada del antiguo startsWithList.
+        // El merge fallaba y el usuario veía solo "Aquí están tus categorías:".
+        name: 'Lista con intro + items que arrancan con emojis arbitrarios (sin numerar) → 1 chunk',
+        input: 'Aquí están tus categorías:\n\n🛒 Supermercado\n🚗 Transporte\n🏥 Salud\n💊 Farmacia\n⚽ Deporte\n🎮 Gaming\n🐾 Mascotas\n🏠 Hogar\n👕 Ropa\n💡 Servicios\n📺 Suscripciones\n✈️ Viajes\n🎁 Regalos\n📚 Educación',
+        expectChunks: 1
     }
 ];
 
