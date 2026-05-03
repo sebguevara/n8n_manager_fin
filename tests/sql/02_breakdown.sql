@@ -22,9 +22,12 @@ BEGIN
     SELECT label INTO r FROM get_breakdown_dynamic(v_uid, 'category', '{"period":"this_month","type":"expense"}'::jsonb, 1);
     IF r.label NOT ILIKE 'otros' THEN RAISE EXCEPTION '[breakdown top] expected Otros, got %', r.label; END IF;
 
-    -- by day, this_month: should have 3 distinct days
+    -- by day, this_month: el setup mete las 5 fixtures todas en CURRENT_DATE
+    -- (para que cualquier día del mes funcione y "yesterday" quede vacío),
+    -- así que esperamos exactamente 1 día. Lo que importa de este check es
+    -- que la dimensión 'day' agrega correctamente y devuelve filas válidas.
     SELECT COUNT(*) INTO v_count FROM get_breakdown_dynamic(v_uid, 'day', '{"period":"this_month","type":"expense"}'::jsonb, 30);
-    IF v_count <> 3 THEN RAISE EXCEPTION '[breakdown day] expected 3 days, got %', v_count; END IF;
+    IF v_count <> 1 THEN RAISE EXCEPTION '[breakdown day] expected 1 day, got %', v_count; END IF;
 
     -- Empty period (yesterday — no data) returns 0 rows, NOT a row with NULLs
     SELECT COUNT(*) INTO v_count FROM get_breakdown_dynamic(v_uid, 'category', '{"period":"yesterday","type":"expense"}'::jsonb, 10);

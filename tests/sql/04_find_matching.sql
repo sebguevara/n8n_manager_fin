@@ -12,10 +12,12 @@ BEGIN
     SELECT COUNT(*) INTO v_count FROM find_matching_tx_v2(v_uid, NULL,NULL,NULL,NULL, 3300, NULL,NULL, NULL,NULL,NULL, 20);
     IF v_count <> 3 THEN RAISE EXCEPTION '[find exact 3300] expected 3, got %', v_count; END IF;
 
-    -- exact_amount + date → still 3 (same day)
+    -- exact_amount + date → still 3 (same day). Setup mete las 3 transferencias
+    -- en CURRENT_DATE, así que filtramos por CURRENT_DATE (antes el setup
+    -- usaba month_start + 2 que rompía cuando hoy era el día 1 o 2 del mes).
     SELECT COUNT(*) INTO v_count FROM find_matching_tx_v2(
         v_uid, NULL,
-        DATE_TRUNC('month', CURRENT_DATE)::DATE + 2,
+        CURRENT_DATE,
         NULL, NULL,
         3300, NULL, NULL,
         NULL, NULL, NULL, 20
