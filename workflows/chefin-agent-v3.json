@@ -5919,7 +5919,7 @@
                 "type": "string",
                 "operation": "equals"
               },
-              "leftValue": "={{ $json.replyKind }}",
+              "leftValue": "={{ $('Save Context').item.json.replyKind }}",
               "rightValue": "image"
             }
           ]
@@ -5939,10 +5939,10 @@
       "parameters": {
         "resource": "messages-api",
         "operation": "send-image",
-        "instanceName": "={{ $json.instance }}",
-        "remoteJid": "={{ $json.phone }}",
-        "media": "={{ $json.imageUrl }}",
-        "caption": "={{ $json.replyText }}",
+        "instanceName": "={{ $('Save Context').item.json.instance }}",
+        "remoteJid": "={{ $('Save Context').item.json.phone }}",
+        "media": "={{ $('Save Context').item.json.imageUrl }}",
+        "caption": "={{ $('Save Context').item.json.replyText }}",
         "options_message": {}
       },
       "id": "n101",
@@ -5963,9 +5963,9 @@
     {
       "parameters": {
         "resource": "messages-api",
-        "instanceName": "={{ $json.instance }}",
-        "remoteJid": "={{ $json.phone }}",
-        "messageText": "={{ $json.replyText }}",
+        "instanceName": "={{ $('Save Context').item.json.instance }}",
+        "remoteJid": "={{ $('Save Context').item.json.phone }}",
+        "messageText": "={{ $('Save Context').item.json.replyText }}",
         "options_message": {}
       },
       "id": "n102",
@@ -5999,7 +5999,7 @@
                 "type": "string",
                 "operation": "notEmpty"
               },
-              "leftValue": "={{ $json.reactionEmoji }}",
+              "leftValue": "={{ $('Save Context').item.json.reactionEmoji }}",
               "rightValue": ""
             }
           ]
@@ -6019,11 +6019,11 @@
       "parameters": {
         "resource": "messages-api",
         "operation": "send-reaction",
-        "instanceName": "={{ $json.instance }}",
-        "remoteJid": "={{ $json.remoteJid }}",
-        "messageId": "={{ $json.messageId }}",
+        "instanceName": "={{ $('Save Context').item.json.instance }}",
+        "remoteJid": "={{ $('Save Context').item.json.remoteJid }}",
+        "messageId": "={{ $('Save Context').item.json.messageId }}",
         "fromMe": false,
-        "reaction": "={{ $json.reactionEmoji }}"
+        "reaction": "={{ $('Save Context').item.json.reactionEmoji }}"
       },
       "id": "n104",
       "name": "Send Reaction",
