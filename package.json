@@ -19,6 +19,7 @@
     "db:init": "docker compose run --rm db-init",
     "deploy": "bash scripts/deploy.sh",
     "deploy:fast": "bash scripts/deploy.sh --skip-tests",
-    "deploy:build-only": "bash scripts/deploy.sh --build-only"
+    "deploy:build-only": "bash scripts/deploy.sh --build-only",
+    "deploy:purge": "bash scripts/deploy.sh --purge-db"
   }
 }

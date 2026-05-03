@@ -8,6 +8,13 @@
 #   bash scripts/deploy.sh --skip-tests   # skip tests (faster local iteration)
 #   bash scripts/deploy.sh --no-up        # don't touch docker compose state
 #   bash scripts/deploy.sh --build-only   # just regenerate JSONs and exit
+#   bash scripts/deploy.sh --purge-db     # ⚠️  DROP + recreate 'expenses' DB
+#                                         #     (borra todas las transacciones,
+#                                         #     categorías, memoria, etc.)
+#                                         #     Pide confirmación interactiva
+#                                         #     escribiendo "expenses".
+#   bash scripts/deploy.sh --purge-db --yes
+#                                         # Skip confirmation prompt (CI use)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -15,11 +22,15 @@ cd "$(dirname "$0")/.."
 SKIP_TESTS=0
 NO_UP=0
 BUILD_ONLY=0
+PURGE_DB=0
+YES=0
 for arg in "$@"; do
     case "$arg" in
         --skip-tests) SKIP_TESTS=1 ;;
         --no-up)      NO_UP=1 ;;
         --build-only) BUILD_ONLY=1 ;;
+        --purge-db)   PURGE_DB=1 ;;
+        --yes|-y)     YES=1 ;;
         -h|--help)
             grep '^#' "$0" | sed 's/^# \?//'
             exit 0 ;;
@@ -82,6 +93,46 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 2.5. Purge expenses DB (only with --purge-db). DESTRUCTIVE.
+#      Hace DROP + CREATE de la base 'expenses' y limpia los datos del usuario
+#      (transacciones, categorías, presupuestos, memoria semántica, etc.).
+#      No toca 'n8n' (workflows + credenciales) ni 'evolution' (sesiones de
+#      WhatsApp). Después corre el step 3 normal y db-init reaplica el schema
+#      sobre la base vacía.
+# ---------------------------------------------------------------------------
+if [ "$PURGE_DB" -eq 1 ]; then
+    bold "⚠️  --purge-db: DROP + recreate 'expenses' database"
+    echo "   Esto borra TODAS las transacciones, categorías, presupuestos,"
+    echo "   recurrentes, grupos, tags, memoria semántica y settings del usuario."
+    echo "   La base 'n8n' (workflows/credenciales) y 'evolution' (WhatsApp)"
+    echo "   quedan intactas."
+    if [ "$YES" -eq 0 ]; then
+        printf "   Escribí 'expenses' (sin comillas) para confirmar: "
+        read -r confirm
+        if [ "$confirm" != "expenses" ]; then
+            err "Confirmación inválida ('$confirm'). Aborting."
+            exit 1
+        fi
+    else
+        warn "skipping confirmation (--yes)"
+    fi
+
+    # Mata las conexiones abiertas a 'expenses' antes de DROP (si quedó algún
+    # cliente colgado, DROP DATABASE falla con "is being accessed by other
+    # users"). Luego drop + create. db-init reaplicará el schema en step 3.
+    docker compose exec -T n8n_postgres sh -c \
+        'PGPASSWORD=$POSTGRES_PASSWORD psql -U $POSTGRES_USER -d postgres -v ON_ERROR_STOP=1' \
+        <<'SQL'
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = 'expenses' AND pid <> pg_backend_pid();
+DROP DATABASE IF EXISTS expenses;
+CREATE DATABASE expenses;
+SQL
+    ok "'expenses' database dropped and recreated (empty)"
+fi
+
+# ---------------------------------------------------------------------------
 # 3. Apply schema (idempotent)
 # ---------------------------------------------------------------------------
 bold "[3/6] Applying SQL schema"
@@ -93,29 +144,46 @@ ok "schema applied"
 # ---------------------------------------------------------------------------
 if [ "$SKIP_TESTS" -eq 0 ]; then
     bold "[4/6] Running test suites"
-    bash tests/run.sh > /tmp/chefin-deploy-sql.log 2>&1
-    grep -E "^RESULTS:" /tmp/chefin-deploy-sql.log || (cat /tmp/chefin-deploy-sql.log; err "SQL suite failed"; exit 1)
+
+    # Helper: corre un test redirigiendo a un log; si falla (exit code O ausencia
+    # del marker esperado), DUMP del log + error. Antes esto estaba en líneas
+    # sueltas y `set -e` mataba el script ANTES de poder volcar el log, dejando
+    # al usuario sin pista de qué se rompió.
+    run_test() {
+        local label="$1" cmd="$2" log="$3" marker="$4"
+        if ! eval "$cmd" >"$log" 2>&1; then
+            echo "----- $label log -----"
+            cat "$log"
+            echo "----- end log -----"
+            err "$label failed (non-zero exit). See full log at $log"
+            exit 1
+        fi
+        if ! grep -qE "$marker" "$log"; then
+            echo "----- $label log -----"
+            cat "$log"
+            echo "----- end log -----"
+            err "$label finished but marker '$marker' not found. See $log"
+            exit 1
+        fi
+    }
+
+    run_test "SQL suite"             "bash tests/run.sh"                       /tmp/chefin-deploy-sql.log       "^RESULTS:"
     SQL_RESULT=$(grep -E "^RESULTS:" /tmp/chefin-deploy-sql.log | head -1)
     ok "SQL suite ($SQL_RESULT)"
 
-    node tests/agent/test-chunker.mjs > /tmp/chefin-deploy-chunker.log 2>&1
-    grep -E "pass · 0 fail" /tmp/chefin-deploy-chunker.log || (cat /tmp/chefin-deploy-chunker.log; err "Chunker tests failed"; exit 1)
+    run_test "Chunker tests"         "node tests/agent/test-chunker.mjs"       /tmp/chefin-deploy-chunker.log   "pass · 0 fail"
     ok "Chunker tests"
 
-    node tests/sql/test-tool-integration.mjs > /tmp/chefin-deploy-tools.log 2>&1
-    grep -E "pass · 0 fail" /tmp/chefin-deploy-tools.log || (cat /tmp/chefin-deploy-tools.log; err "Tool integration failed"; exit 1)
+    run_test "Tool integration"      "node tests/sql/test-tool-integration.mjs" /tmp/chefin-deploy-tools.log    "pass · 0 fail"
     ok "Tool integration (51 tests)"
 
-    node tests/sql/test-edits.mjs > /tmp/chefin-deploy-edits.log 2>&1
-    grep -E "pass · 0 fail" /tmp/chefin-deploy-edits.log || (cat /tmp/chefin-deploy-edits.log; err "Edit operations failed"; exit 1)
+    run_test "Edit operations"       "node tests/sql/test-edits.mjs"           /tmp/chefin-deploy-edits.log     "pass · 0 fail"
     ok "Edit operations (29 tests)"
 
-    node tests/agent/test-error-handler.mjs > /tmp/chefin-deploy-errors.log 2>&1
-    grep -E "pass · 0 fail" /tmp/chefin-deploy-errors.log || (cat /tmp/chefin-deploy-errors.log; err "Error handler tests failed"; exit 1)
+    run_test "Error handler tests"   "node tests/agent/test-error-handler.mjs" /tmp/chefin-deploy-errors.log    "pass · 0 fail"
     ok "Error handler (20 tests)"
 
-    node tests/sql/test-isolation.mjs > /tmp/chefin-deploy-isolation.log 2>&1
-    grep -E "pass · 0 fail" /tmp/chefin-deploy-isolation.log || (cat /tmp/chefin-deploy-isolation.log; err "Multi-user isolation tests failed"; exit 1)
+    run_test "Multi-user isolation"  "node tests/sql/test-isolation.mjs"       /tmp/chefin-deploy-isolation.log "pass · 0 fail"
     ok "Multi-user isolation (23 tests)"
 else
     bold "[4/6] Skipping tests (--skip-tests)"
