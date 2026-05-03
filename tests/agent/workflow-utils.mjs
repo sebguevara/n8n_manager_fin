@@ -168,7 +168,7 @@ export async function callOpenAIWithTools({ apiKey, model = 'gpt-4o-mini', syste
         throw new Error(`OpenAI ${res.status}: ${t.slice(0, 400)}`);
     }
     const data = await res.json();
-    const msg = data.choices?.[0]?.message || {};
+    const msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
     return {
         tool_calls: (msg.tool_calls || []).map(tc => ({
             name: tc.function?.name,

@@ -322,7 +322,7 @@ for (const c of extractCases) {
     let result, err;
     try {
         const out = runCode(extractNode.parameters.jsCode, c.input);
-        result = out?.[0]?.json;
+        result = (Array.isArray(out) && out[0] ? out[0].json : undefined);
     } catch (e) { err = e; }
 
     if (err) {
@@ -349,7 +349,7 @@ for (const c of writeCases) {
     try {
         const code = c.codeTransform ? c.codeTransform(writeNode.parameters.jsCode) : writeNode.parameters.jsCode;
         const out = runCode(code, c.input);
-        returned = out?.[0]?.json;
+        returned = (Array.isArray(out) && out[0] ? out[0].json : undefined);
     } catch (e) { err = e; }
 
     if (err) {
