@@ -353,10 +353,21 @@ addNode('Format Recent Turns', 'n8n-nodes-base.code', {
 const rows = $input.all().map(i => i.json).filter(r => r && r.message);
 // Rows came in DESC order; flip to chronological (oldest first).
 rows.reverse();
+// Trunca a 240 chars y, si el corte cae en medio de un surrogate pair (emoji),
+// remueve el high surrogate huérfano. Sin esto, Postgres JSONB rechaza el
+// próximo saveContext con "invalid input syntax for type json" porque la cadena
+// queda con un high-surrogate (0xD800-0xDBFF) sin su low-surrogate, lo cual no
+// es UTF-8 válido y JSONB exige strings UTF-8 bien formados.
+const stripDanglingSurrogate = (s) => {
+  if (!s) return s;
+  const last = s.charCodeAt(s.length - 1);
+  if (last >= 0xD800 && last <= 0xDBFF) return s.slice(0, -1);
+  return s;
+};
 const turns = rows.map(r => {
   const m = typeof r.message === 'string' ? JSON.parse(r.message) : r.message;
   const role = m.type === 'human' ? 'usuario' : (m.type === 'ai' ? 'chefin' : m.type);
-  const content = (m.data?.content || m.content || '').toString().slice(0, 240);
+  const content = stripDanglingSurrogate((m.data?.content || m.content || '').toString().slice(0, 240));
   return role + ': ' + content;
 }).filter(Boolean);
 const recentTurnsText = turns.length ? turns.join('\\n') : '(sin historial reciente)';
