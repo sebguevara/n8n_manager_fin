@@ -15,7 +15,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json || {};\nconst exec = item.execution || {};\nconst wf = item.workflow || {};\nconst errObj = exec.error || {};\n\n// Intentamos sacar el body original del webhook desde varias rutas posibles.\n// Distintas versiones de n8n exponen runData de forma distinta en el error\n// trigger. Si ninguna funciona, fallback a vacío y no respondemos.\n//\n// Nota: NO usamos optional-chaining (?.) acá. El Node viejo del VPS no lo\n// parsea (ni la forma simple ?. ni la computada ?.[]) y el test corre este\n// código vía new Function() en el host, así que necesita ser compatible.\nfunction getPath(obj, keys) {\n  let cur = obj;\n  for (let i = 0; i < keys.length; i++) {\n    if (cur == null) return undefined;\n    cur = cur[keys[i]];\n  }\n  return cur;\n}\nfunction findWebhookBody(root) {\n  const candidates = [\n    getPath(root, ['executionData', 'resultData', 'runData']),\n    getPath(root, ['execution', 'executionData', 'resultData', 'runData']),\n    getPath(root, ['runData']),\n  ];\n  for (const rd of candidates) {\n    if (!rd) continue;\n    const webhookKey = Object.keys(rd).find(k => /webhook/i.test(k));\n    if (!webhookKey) continue;\n    const body = getPath(rd, [webhookKey, 0, 'data', 'main', 0, 0, 'json', 'body']);\n    if (body) return body;\n  }\n  return null;\n}\n\nconst body = findWebhookBody(item);\nconst remoteJid = (body && getPath(body, ['data', 'key', 'remoteJid'])) || '';\nconst phone = remoteJid ? remoteJid.split('@')[0] : '';\nconst instance = (body && body.instance) || '';\nconst messageId = (body && getPath(body, ['data', 'key', 'id'])) || '';\nconst userText =\n  (body && getPath(body, ['data', 'message', 'conversation'])) ||\n  (body && getPath(body, ['data', 'message', 'extendedTextMessage', 'text'])) ||\n  (body && getPath(body, ['data', 'message', 'imageMessage', 'caption'])) ||\n  '';\n\nconst canReply = Boolean(phone && instance);\n\n// Mensaje amable (rioplatense) — no exponemos detalle técnico al usuario.\n// Variamos un poco según el tipo de error: timeout/red vs. cualquier otra cosa.\nconst errMsg = String(errObj.message || '');\nlet userReply = '😅 Uh, en este momento no pude resolver tu pedido. Estoy mirando qué pasó. Probá de nuevo en un ratito y, si sigue, escribime de otra forma.';\nif (/timeout|ETIMEDOUT|ECONN|fetch failed|network/i.test(errMsg)) {\n  userReply = '😅 Tuve un problema de conexión y no pude completar lo que pediste. Probá de nuevo en un minuto.';\n} else if (/postgres|database|relation|column/i.test(errMsg)) {\n  userReply = '😅 No pude guardar/leer tu info en este momento. Estoy revisando. Probá de nuevo enseguida.';\n}\n\n// Payload del log — JSON Line, una entrada por error. Mantenemos el stack\n// completo para poder debuggear; el resto va resumido.\nconst logEntry = {\n  timestamp: new Date().toISOString(),\n  workflow: { id: wf.id || '', name: wf.name || '' },\n  execution: {\n    id: exec.id || '',\n    url: exec.url || '',\n    mode: exec.mode || '',\n    lastNodeExecuted: exec.lastNodeExecuted || ''\n  },\n  error: {\n    name: errObj.name || '',\n    message: errMsg,\n    description: errObj.description || '',\n    stack: String(errObj.stack || '').split('\\n').slice(0, 30).join('\\n')\n  },\n  user: { phone, instance, messageId, remoteJid, userText: userText.slice(0, 300) },\n  replied: canReply\n};\n\nreturn [{ json: { canReply, phone, instance, messageId, remoteJid, userReply, logEntry } }];"
+        "jsCode": "const item = $input.first().json || {};\nconst exec = item.execution || {};\nconst wf = item.workflow || {};\nconst errObj = exec.error || {};\n\n// Intentamos sacar el body original del webhook desde varias rutas posibles.\n// Distintas versiones de n8n exponen runData de forma distinta en el error\n// trigger. Si ninguna funciona, fallback a vacío y no respondemos.\n//\n// Nota: NO usamos optional-chaining (?.) acá. El Node viejo del VPS no lo\n// parsea (ni la forma simple ?. ni la computada ?.[]) y el test corre este\n// código vía new Function() en el host, así que necesita ser compatible.\nfunction getPath(obj, keys) {\n  let cur = obj;\n  for (let i = 0; i < keys.length; i++) {\n    if (cur == null) return undefined;\n    cur = cur[keys[i]];\n  }\n  return cur;\n}\nfunction findWebhookBody(root) {\n  const candidates = [\n    getPath(root, ['executionData', 'resultData', 'runData']),\n    getPath(root, ['execution', 'executionData', 'resultData', 'runData']),\n    getPath(root, ['runData']),\n  ];\n  for (const rd of candidates) {\n    if (!rd) continue;\n    const webhookKey = Object.keys(rd).find(k => /webhook/i.test(k));\n    if (!webhookKey) continue;\n    const body = getPath(rd, [webhookKey, 0, 'data', 'main', 0, 0, 'json', 'body']);\n    if (body) return body;\n  }\n  return null;\n}\n\nconst body = findWebhookBody(item);\nconst remoteJid = (body && getPath(body, ['data', 'key', 'remoteJid'])) || '';\nconst phone = remoteJid ? remoteJid.split('@')[0] : '';\nconst instance = (body && body.instance) || '';\nconst messageId = (body && getPath(body, ['data', 'key', 'id'])) || '';\nconst userText =\n  (body && getPath(body, ['data', 'message', 'conversation'])) ||\n  (body && getPath(body, ['data', 'message', 'extendedTextMessage', 'text'])) ||\n  (body && getPath(body, ['data', 'message', 'imageMessage', 'caption'])) ||\n  '';\n\nconst canReply = Boolean(phone && instance);\n\n// Mensaje amable (rioplatense) — no exponemos detalle técnico al usuario.\n// Variamos un poco según el tipo de error: timeout/red vs. cualquier otra cosa.\nconst errMsg = String(errObj.message || '');\nlet userReply = '😅 Uh, en este momento no pude resolver tu pedido. Estoy mirando qué pasó. Probá de nuevo en un ratito y, si sigue, escribime de otra forma.';\n\n// Severidad — la usa el operador (logs / alertas) y nos sirve para futuro\n// alerting condicional. Default: error. Se baja a 'warn' para casos transient\n// (timeouts, rate limits) y se sube a 'critical' para fallas que indican\n// degradación de un dependency completo (postgres, redis, openai 5xx).\nlet severity = 'error';\nlet errorClass = 'unknown';\n\nif (/timeout|ETIMEDOUT|ECONN|fetch failed|network|socket hang up/i.test(errMsg)) {\n  userReply = '😅 Tuve un problema de conexión y no pude completar lo que pediste. Probá de nuevo en un minuto.';\n  severity = 'warn';\n  errorClass = 'transient_network';\n} else if (/postgres|database|relation|column|connection terminated|too many clients/i.test(errMsg)) {\n  userReply = '😅 No pude guardar/leer tu info en este momento. Estoy revisando. Probá de nuevo enseguida.';\n  severity = 'critical';\n  errorClass = 'database';\n} else if (/rate.?limit|429|quota|insufficient_quota/i.test(errMsg)) {\n  userReply = '😅 Estoy un poco saturado. Dame 30 segundos y mandalo de nuevo.';\n  severity = 'warn';\n  errorClass = 'rate_limit';\n} else if (/openai|model_not_found|invalid_api_key|context_length/i.test(errMsg)) {\n  userReply = '😅 Algo se trabó del lado del modelo. Probá reformular más corto.';\n  severity = 'critical';\n  errorClass = 'llm';\n} else if (/Agent stopped due to iteration limit|max iterations/i.test(errMsg)) {\n  userReply = '😅 Se me hizo enredo lo que pediste. Probá decírmelo de otra forma o más cortito.';\n  severity = 'warn';\n  errorClass = 'agent_iter_limit';\n} else if (/json|unexpected token|parse/i.test(errMsg)) {\n  severity = 'warn';\n  errorClass = 'parse';\n}\n\n// Payload del log — JSON Line, una entrada por error. Mantenemos el stack\n// completo para poder debuggear; el resto va resumido.\nconst logEntry = {\n  timestamp: new Date().toISOString(),\n  level: severity,                    // structured logging field\n  event: 'workflow_error',\n  errorClass,\n  workflow: { id: wf.id || '', name: wf.name || '' },\n  execution: {\n    id: exec.id || '',\n    url: exec.url || '',\n    mode: exec.mode || '',\n    lastNodeExecuted: exec.lastNodeExecuted || ''\n  },\n  error: {\n    name: errObj.name || '',\n    message: errMsg,\n    description: errObj.description || '',\n    stack: String(errObj.stack || '').split('\\n').slice(0, 30).join('\\n')\n  },\n  user: { phone, instance, messageId, remoteJid, userText: userText.slice(0, 300) },\n  replied: canReply\n};\n\n// Emitimos SIEMPRE a stderr en JSON one-line — Docker lo captura, y un grep\n// de los logs nos da todos los errores aunque la escritura del archivo falle.\n// Esto NO depende del Write Error Log node — es la red de seguridad por debajo.\ntry { console.error(JSON.stringify(logEntry)); } catch (_) { /* stderr no-op */ }\n\nreturn [{ json: { canReply, phone, instance, messageId, remoteJid, userReply, logEntry, severity, errorClass } }];"
       },
       "id": "e002",
       "name": "Extract Error Context",
@@ -28,7 +28,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst item = $input.first().json;\nconst entry = item.logEntry || {};\n\nconst LOG_DIR = '/data/logs';\nconst day = (entry.timestamp || new Date().toISOString()).slice(0, 10);\nconst file = path.join(LOG_DIR, 'errors-' + day + '.jsonl');\n\ntry {\n  fs.mkdirSync(LOG_DIR, { recursive: true });\n  fs.appendFileSync(file, JSON.stringify(entry) + '\\n', 'utf8');\n} catch (e) {\n  // No reventamos el flujo: el reply al usuario es prioritario al log.\n  console.error('[chefin-error] failed to write log:', e.message);\n}\n\nreturn [{ json: { ...item, logFile: file } }];"
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst item = $input.first().json;\nconst entry = item.logEntry || {};\n\nconst LOG_DIR = '/data/logs';\nconst day = (entry.timestamp || new Date().toISOString()).slice(0, 10);\nconst file = path.join(LOG_DIR, 'errors-' + day + '.jsonl');\n\nlet writeOk = false;\nlet writeError = null;\ntry {\n  fs.mkdirSync(LOG_DIR, { recursive: true });\n  fs.appendFileSync(file, JSON.stringify(entry) + '\\n', 'utf8');\n  writeOk = true;\n\n  // Rotación lazy: gzipea archivos errors-*.jsonl con > 7 días que aún no\n  // estén comprimidos. Es best-effort — si falla no rompe nada (cof:true).\n  // No usamos cron porque queremos que el rotation viva donde nacen los logs.\n  try {\n    const cutoffMs = Date.now() - (7 * 24 * 3600 * 1000);\n    const files = fs.readdirSync(LOG_DIR);\n    for (const f of files) {\n      if (!/^errors-\\d{4}-\\d{2}-\\d{2}\\.jsonl$/.test(f)) continue;\n      const full = path.join(LOG_DIR, f);\n      const stat = fs.statSync(full);\n      if (stat.mtimeMs >= cutoffMs) continue;\n      // gzip y borrá el original. require('zlib') es built-in, siempre disponible.\n      const zlib = require('zlib');\n      const data = fs.readFileSync(full);\n      fs.writeFileSync(full + '.gz', zlib.gzipSync(data));\n      fs.unlinkSync(full);\n    }\n    // Borramos archivos .gz con > 60 días — retention.\n    const retentionMs = Date.now() - (60 * 24 * 3600 * 1000);\n    for (const f of files) {\n      if (!/^errors-\\d{4}-\\d{2}-\\d{2}\\.jsonl\\.gz$/.test(f)) continue;\n      const full = path.join(LOG_DIR, f);\n      const stat = fs.statSync(full);\n      if (stat.mtimeMs < retentionMs) fs.unlinkSync(full);\n    }\n  } catch (_rotErr) {\n    // rotation es best-effort; si falla, lo emitimos a stderr pero no rompe\n    try { console.error(JSON.stringify({\n      ts: new Date().toISOString(), level: 'warn', event: 'log_rotation_failed',\n      message: String(_rotErr && _rotErr.message || _rotErr)\n    })); } catch (_) {}\n  }\n} catch (e) {\n  writeError = String(e && e.message || e);\n  // Fallback estructurado: stderr siempre disponible, lo capturan los logs\n  // de Docker. La entrada original ya se emitió en Extract Error Context;\n  // acá emitimos un evento adicional avisando que el archivo de log falló.\n  try { console.error(JSON.stringify({\n    ts: new Date().toISOString(), level: 'critical', event: 'error_log_write_failed',\n    target_file: file, error: writeError, original_event: entry.event\n  })); } catch (_) {}\n}\n\nreturn [{ json: { ...item, logFile: file, logWriteOk: writeOk, logWriteError: writeError } }];"
       },
       "id": "e003",
       "name": "Write Error Log",
@@ -95,14 +95,32 @@
           "name": "Evolution account"
         }
       },
-      "continueOnFail": true
+      "continueOnFail": true,
+      "alwaysOutputData": true
     },
     {
-      "parameters": {},
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst sendErr = item.error || item.errorMessage || (item.message && /error/i.test(item.message) ? item.message : null);\nconst sent = !sendErr && (item.key || item.messageId || item.id);\nconst ts = new Date().toISOString();\nif (!sent) {\n  try { console.error(JSON.stringify({\n    ts, level: 'critical', event: 'error_reply_send_failed',\n    error: String(sendErr || 'no message id in evolution response'),\n    phone_present: true,\n    note: 'usuario NO recibió ni el reply original ni el mensaje de error'\n  })); } catch (_) {}\n}\nreturn [{ json: { ...item, replySent: !!sent, replySendError: sendErr || null } }];"
+      },
       "id": "e006",
+      "name": "Verify Reply Sent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -100
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\ntry { console.error(JSON.stringify({\n  ts: new Date().toISOString(), level: 'info', event: 'error_reply_skipped',\n  reason: 'no_phone_extracted',\n  workflow: item.logEntry && item.logEntry.workflow || null\n})); } catch (_) {}\nreturn [{ json: item }];"
+      },
+      "id": "e007",
       "name": "Skip Reply",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         880,
         100
@@ -155,6 +173,17 @@
         [
           {
             "node": "Skip Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Error Reply": {
+      "main": [
+        [
+          {
+            "node": "Verify Reply Sent",
             "type": "main",
             "index": 0
           }

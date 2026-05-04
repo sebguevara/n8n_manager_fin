@@ -160,7 +160,14 @@ const TOOLS = [
     // Asesor financiero
     'financial_advice',
     // Memoria semántica (pgvector) — incluye update para hechos que evolucionan
-    'remember_fact', 'recall_memory', 'update_memory', 'forget_memory', 'list_memories'
+    'remember_fact', 'recall_memory', 'update_memory', 'forget_memory', 'list_memories',
+    // Lecciones aprendidas (agent_instructions, pgvector) — el sistema las
+    // inyecta solo al system prompt; teach_agent guarda, list/forget administran.
+    'teach_agent', 'list_lessons', 'forget_lesson',
+    // Patrones de corrección (auto-detección de lecciones aprendibles)
+    'mark_suggestion_responded',
+    // Auto-categorización por embeddings de transacciones
+    'suggest_category'
 ];
 
 addNode('Tool Router', 'n8n-nodes-base.switch', {
@@ -1400,6 +1407,124 @@ return [{ json: { ok: true, tool: 'list_memories', data: {
   })),
   count: rows.length
 } } }];`
+));
+
+// ---------- Lecciones aprendidas (agent_instructions, pgvector) ----------
+//
+// El retrieval automático de lecciones se hace en el workflow del agente
+// (Embed User Message → Search Lessons → Format Lessons), no acá. Acá solo
+// están las tools que el agente puede invocar:
+//   • teach_agent — guarda una nueva lección (con embedding).
+//   • list_lessons — lista lecciones activas.
+//   • forget_lesson — soft-delete por id.
+// No hay update_lesson — si una regla cambia, el agente hace forget + teach
+// con el contenido nuevo (preserva historial vía active=false).
+
+// teach_agent: agente pasa {instruction, trigger_hint?, priority?}
+formatNames.push(addEmbeddingPgTool(
+    TOOLS.indexOf('teach_agent'),
+    'teach_agent',
+    `{{ JSON.stringify($json.params.instruction || '') }}`,
+    `SELECT * FROM add_agent_instruction(
+        $1::uuid,
+        $2::jsonb->>'instruction',
+        $3::vector(1536),
+        NULLIF($2::jsonb->>'trigger_hint',''),
+        COALESCE(NULLIF($2::jsonb->>'priority','')::int, 0),
+        '{}'::jsonb
+    );`,
+    `const r = $input.first().json;
+return [{ json: { ok: true, tool: 'teach_agent', data: {
+  id: r.id,
+  was_created: !!r.was_created,
+  instruction: r.instruction,
+  // Cuando was_created=false significa que ya existía una lección parecida y
+  // bumpeamos su priority — el agente puede mencionar al usuario "ya tenía
+  // una regla parecida, le subí la prioridad".
+  reused_existing: !r.was_created
+} } }];`
+));
+
+// list_lessons: agente pasa {limit?}
+formatNames.push(addPgTool(TOOLS.indexOf('list_lessons'), 'list_lessons',
+    `SELECT * FROM list_agent_instructions(
+        $1::uuid,
+        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 20)
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const rows = $input.all().map(i => i.json);
+return [{ json: { ok: true, tool: 'list_lessons', data: {
+  lessons: rows.map(r => ({
+    id: r.id,
+    instruction: r.instruction,
+    trigger_hint: r.trigger_hint || '',
+    priority: Number(r.priority || 0),
+    times_applied: Number(r.times_applied || 0),
+    last_applied_at: r.last_applied_at,
+    created_at: r.created_at
+  })),
+  count: rows.length
+} } }];`
+));
+
+// forget_lesson: agente pasa {lesson_id} — soft-delete (active=false)
+formatNames.push(addPgTool(TOOLS.indexOf('forget_lesson'), 'forget_lesson',
+    `SELECT * FROM forget_agent_instruction(
+        $1::uuid,
+        ($2::jsonb->>'lesson_id')::uuid
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.forgot) {
+  return [{ json: { ok: false, tool: 'forget_lesson', error: 'No encontré esa lección o ya estaba olvidada' } }];
+}
+return [{ json: { ok: true, tool: 'forget_lesson', data: { id: r.id, forgot: true } } }];`
+));
+
+// suggest_category: agente pasa {description, k?, min_score?}
+// Necesita embedding del description → usa addEmbeddingPgTool.
+formatNames.push(addEmbeddingPgTool(
+    TOOLS.indexOf('suggest_category'),
+    'suggest_category',
+    `{{ JSON.stringify($json.params.description || '') }}`,
+    `SELECT * FROM suggest_category_by_similarity(
+        $1::uuid,
+        $3::vector(1536),
+        COALESCE(NULLIF($2::jsonb->>'k','')::int, 5),
+        COALESCE(NULLIF($2::jsonb->>'min_score','')::real, 0.65)
+    );`,
+    `const r = $input.first().json;
+if (!r || !r.category_id) {
+  return [{ json: { ok: true, tool: 'suggest_category', data: {
+    has_suggestion: false,
+    matches_count: 0,
+    note: 'No hay transacciones similares para inferir categoría'
+  } } }];
+}
+return [{ json: { ok: true, tool: 'suggest_category', data: {
+  has_suggestion: true,
+  category_id: r.category_id,
+  category_name: r.category_name,
+  confidence: Number(r.confidence || 0),
+  matches_count: Number(r.matches_count || 0),
+  top_k_count: Number(r.top_k_count || 0),
+  sample_descriptions: Array.isArray(r.sample_descriptions) ? r.sample_descriptions : []
+} } }];`
+));
+
+// mark_suggestion_responded: agente pasa {suggestion_id, response}
+formatNames.push(addPgTool(TOOLS.indexOf('mark_suggestion_responded'), 'mark_suggestion_responded',
+    `SELECT * FROM mark_suggestion_responded(
+        $1::uuid,
+        ($2::jsonb->>'suggestion_id')::int,
+        COALESCE(NULLIF($2::jsonb->>'response',''), 'presented')
+    );`,
+    "={{ $json.user_id }},={{ $json.params_json }}",
+    `const r = $input.first().json;
+if (!r || !r.ok) {
+  return [{ json: { ok: false, tool: 'mark_suggestion_responded', error: 'No pude marcar la sugerencia (id no existe o no es del usuario)' } }];
+}
+return [{ json: { ok: true, tool: 'mark_suggestion_responded', data: { id: r.id, marked: true } } }];`
 ));
 
 // =========================================================================

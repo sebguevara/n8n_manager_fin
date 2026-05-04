@@ -163,8 +163,88 @@
       ]
     },
     {
-      "parameters": {},
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */5 7-23 * * *"
+            }
+          ]
+        }
+      },
       "id": "c009",
+      "name": "Cron Every 5min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2200
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 11 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c010",
+      "name": "Cron Daily 11:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 10 1 * *"
+            }
+          ]
+        }
+      },
+      "id": "c011",
+      "name": "Cron Monthly 10:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2600
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 18 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "c012",
+      "name": "Cron Sunday 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2800
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c013",
       "name": "Manual Test",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -187,7 +267,7 @@
         },
         "options": {}
       },
-      "id": "c010",
+      "id": "c014",
       "name": "Pick Job",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -383,12 +463,127 @@
               },
               "renameOutput": true,
               "outputKey": "memory_stale_review"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r9",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.job_name }}",
+                    "rightValue": "watchdog"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "watchdog"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r10",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.job_name }}",
+                    "rightValue": "embed_transactions"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "embed_transactions"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r11",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.job_name }}",
+                    "rightValue": "anomaly_alerts"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "anomaly_alerts"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r12",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.job_name }}",
+                    "rightValue": "subscription_notice"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "subscription_notice"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r13",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.job_name }}",
+                    "rightValue": "group_candidates"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "group_candidates"
             }
           ]
         },
         "options": {}
       },
-      "id": "c011",
+      "id": "c015",
       "name": "Dispatch Manual",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
@@ -405,7 +600,7 @@
           "queryReplacement": "=daily_summary"
         }
       },
-      "id": "c012",
+      "id": "c016",
       "name": "Log Start: daily_summary",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -428,7 +623,7 @@
         "query": "SELECT u.id AS user_id, u.phone_number AS phone, u.name,\n                   ds.total, ds.n, ds.top_category, ds.top_amount\n            FROM users u\n            CROSS JOIN LATERAL daily_summary(u.id) ds\n            WHERE u.daily_summary_enabled = TRUE AND u.is_active = TRUE;",
         "options": {}
       },
-      "id": "c013",
+      "id": "c017",
       "name": "Daily Summary Query",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -448,7 +643,7 @@
       "parameters": {
         "jsCode": "const items = $input.all();\nconst out = [];\nfor (const it of items) {\n  const j = it.json;\n  const total = Number(j.total || 0);\n  const n = Number(j.n || 0);\n  const fmt = x => Number(x||0).toLocaleString('es-AR');\n  let text;\n  if (n === 0) {\n    const opts = [\n      '🧘 Hoy no anotaste gastos. Buen día para la billetera.',\n      '🎉 Día sin gastos registrados. ¡Bien ahí!',\n      '✨ Hoy no me llegó nada. Si te olvidaste algo, lo podés cargar ahora.'\n    ];\n    text = opts[Math.floor(Math.random()*opts.length)];\n  } else {\n    let body = `📊 *Resumen de hoy*\\nGastaste $${fmt(total)} en ${n} ${n===1?'movimiento':'movimientos'}`;\n    if (j.top_category) body += `\\nMás fuerte: ${j.top_category} ($${fmt(j.top_amount)})`;\n    text = body;\n  }\n  out.push({ json: {\n    job_name: 'daily_summary',\n    user_id: j.user_id, phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: text\n  }});\n}\nreturn out;"
       },
-      "id": "c014",
+      "id": "c018",
       "name": "Format Daily Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -465,7 +660,7 @@
           "queryReplacement": "=weekly_summary"
         }
       },
-      "id": "c015",
+      "id": "c019",
       "name": "Log Start: weekly_summary",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -488,7 +683,7 @@
         "query": "WITH this_week AS (\n  SELECT u.id AS user_id, u.phone_number, u.name,\n         COALESCE(SUM(t.amount),0) AS this_total, COUNT(t.*) AS this_n\n  FROM users u\n  LEFT JOIN v_reportable_transactions t\n    ON t.user_id = u.id AND t.type = 'expense'\n   AND t.transaction_date >= DATE_TRUNC('week', CURRENT_DATE)\n  WHERE u.weekly_summary_enabled = TRUE AND u.is_active = TRUE\n  GROUP BY u.id, u.phone_number, u.name\n),\nlast_week AS (\n  SELECT u.id AS user_id, COALESCE(SUM(t.amount),0) AS last_total\n  FROM users u\n  LEFT JOIN v_reportable_transactions t\n    ON t.user_id = u.id AND t.type = 'expense'\n   AND t.transaction_date >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '1 week')\n   AND t.transaction_date <  DATE_TRUNC('week', CURRENT_DATE)\n  GROUP BY u.id\n),\ntop_cat AS (\n  SELECT DISTINCT ON (t.user_id) t.user_id, c.name AS category, SUM(t.amount) AS amt\n  FROM v_reportable_transactions t\n  LEFT JOIN categories c ON c.id = t.category_id\n  WHERE t.type = 'expense' AND t.transaction_date >= DATE_TRUNC('week', CURRENT_DATE)\n  GROUP BY t.user_id, c.name\n  ORDER BY t.user_id, amt DESC\n)\nSELECT tw.user_id, tw.phone_number AS phone, tw.name,\n       tw.this_total, tw.this_n,\n       lw.last_total, tc.category AS top_category, tc.amt AS top_amount\nFROM this_week tw\nLEFT JOIN last_week lw USING (user_id)\nLEFT JOIN top_cat tc USING (user_id);",
         "options": {}
       },
-      "id": "c016",
+      "id": "c020",
       "name": "Weekly Summary Query",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -508,7 +703,7 @@
       "parameters": {
         "jsCode": "const items = $input.all();\nconst out = [];\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nfor (const it of items) {\n  const j = it.json;\n  const t = Number(j.this_total||0), l = Number(j.last_total||0);\n  let trend = '';\n  if (l > 0) {\n    const pct = Math.round(((t - l) / l) * 100);\n    if (pct > 5) trend = `\\n📈 ${pct}% más que la semana pasada ($${fmt(l)})`;\n    else if (pct < -5) trend = `\\n📉 ${Math.abs(pct)}% menos que la semana pasada ($${fmt(l)})`;\n    else trend = '\\n📊 Similar a la semana pasada.';\n  }\n  let body;\n  if (Number(j.this_n) === 0) {\n    body = '🌿 *Resumen semanal*\\nEsta semana no registraste gastos.';\n  } else {\n    body = `📅 *Resumen semanal*\\nGastaste $${fmt(t)} en ${j.this_n} ${j.this_n==1?'movimiento':'movimientos'}${trend}`;\n    if (j.top_category) body += `\\nMás fuerte: ${j.top_category} ($${fmt(j.top_amount)})`;\n  }\n  out.push({ json: {\n    job_name: 'weekly_summary',\n    user_id: j.user_id, phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: body\n  }});\n}\nreturn out;"
       },
-      "id": "c017",
+      "id": "c021",
       "name": "Format Weekly Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -525,7 +720,7 @@
           "queryReplacement": "=recurring"
         }
       },
-      "id": "c018",
+      "id": "c022",
       "name": "Log Start: recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -548,7 +743,7 @@
         "query": "SELECT * FROM process_due_recurring();",
         "options": {}
       },
-      "id": "c019",
+      "id": "c023",
       "name": "Process Due Recurring",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -568,7 +763,7 @@
       "parameters": {
         "jsCode": "const items = $input.all().filter(i => i.json.out_transaction_id);\nconst out = [];\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nfor (const it of items) {\n  const j = it.json;\n  out.push({ json: {\n    job_name: 'recurring',\n    user_id: j.out_user_id, phone: j.out_phone,\n    instance: 'chefin',\n    remoteJid: j.out_phone + '@s.whatsapp.net',\n    replyText: `🔁 Cargué tu gasto recurrente: $${fmt(j.out_amount)} de ${j.out_category_name||'sin categoría'}${j.out_description?' — '+j.out_description:''}`\n  }});\n}\nreturn out;"
       },
-      "id": "c020",
+      "id": "c024",
       "name": "Format Recurring",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -585,7 +780,7 @@
           "queryReplacement": "=cleanup"
         }
       },
-      "id": "c021",
+      "id": "c025",
       "name": "Log Start: cleanup",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -608,7 +803,7 @@
         "query": "SELECT\n        purge_old_chat_history(30) AS chats_purged,\n        purge_expired_conv_states() AS states_purged,\n        (SELECT COUNT(*)::INT FROM cron_runs WHERE started_at < NOW() - INTERVAL '90 days') AS old_cron_runs;",
         "options": {}
       },
-      "id": "c022",
+      "id": "c026",
       "name": "Cleanup Postgres",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -628,7 +823,7 @@
       "parameters": {
         "jsCode": "const r = $input.first()?.json || {};\nconst summary = {\n  chats_purged: Number(r.chats_purged||0),\n  states_purged: Number(r.states_purged||0),\n  old_cron_runs: Number(r.old_cron_runs||0)\n};\n// No messages to send — return synthetic record so Log End has data\nreturn [{ json: { job_name: 'cleanup', skip_send: true, summary }}];"
       },
-      "id": "c023",
+      "id": "c027",
       "name": "Format Cleanup",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -645,7 +840,7 @@
           "queryReplacement": "=budget_alerts"
         }
       },
-      "id": "c024",
+      "id": "c028",
       "name": "Log Start: budget_alerts",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -668,7 +863,7 @@
         "query": "SELECT * FROM pending_budget_alerts();",
         "options": {}
       },
-      "id": "c025",
+      "id": "c029",
       "name": "Pending Alerts Query",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -688,7 +883,7 @@
       "parameters": {
         "jsCode": "const items = $input.all().filter(i => i.json.user_id);\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nconst out = [];\nfor (const it of items) {\n  const j = it.json;\n  const spent = Number(j.spent||0), amount = Number(j.amount||0);\n  const pct = amount > 0 ? Math.round(spent / amount * 100) : 0;\n  let body;\n  if (j.level === 'over_budget') {\n    body = `⚠️ Te pasaste del presupuesto de *${j.category_name}* (${j.period}): $${fmt(spent)} de $${fmt(amount)} (${pct}%).`;\n  } else {\n    body = `🟡 Vas por $${fmt(spent)} en *${j.category_name}* este ${j.period} (${pct}% del presupuesto $${fmt(amount)}).`;\n  }\n  out.push({ json: {\n    job_name: 'budget_alerts',\n    user_id: j.user_id, phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: body,\n    // Carry budget metadata so we can mark it sent after delivery\n    _budget_id: j.budget_id, _level: j.level\n  }});\n}\nreturn out;"
       },
-      "id": "c026",
+      "id": "c030",
       "name": "Format Alerts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -705,7 +900,7 @@
           "queryReplacement": "=memory_snapshot"
         }
       },
-      "id": "c027",
+      "id": "c031",
       "name": "Log Start: memory_snapshot",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -728,7 +923,7 @@
         "query": "SELECT * FROM export_all_memory();",
         "options": {}
       },
-      "id": "c028",
+      "id": "c032",
       "name": "Export All Memory",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -746,9 +941,9 @@
     },
     {
       "parameters": {
-        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst items = $input.all();\n\nconst SNAPSHOT_DIR = '/data/logs/memory-snapshots';\nconst day = new Date().toISOString().slice(0, 10);\nconst file = path.join(SNAPSHOT_DIR, day + '.jsonl');\n\nlet written = 0, failed = 0;\ntry {\n  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });\n  // Truncamos antes de escribir — el snapshot del día reemplaza al previo si\n  // se reejecutó. Idempotente: re-correr el cron del mismo día sobreescribe.\n  fs.writeFileSync(file, '', 'utf8');\n  for (const it of items) {\n    const j = it.json || {};\n    if (!j.user_id) continue;\n    try {\n      fs.appendFileSync(file, JSON.stringify({\n        user_id: j.user_id,\n        phone: j.phone,\n        snapshot_at: j.snapshot_at,\n        chunk_count: Number(j.chunk_count || 0),\n        chunks: j.chunks || []\n      }) + '\\n', 'utf8');\n      written++;\n    } catch (e) {\n      console.error('[memory_snapshot] failed for user ' + j.user_id + ':', e.message);\n      failed++;\n    }\n  }\n} catch (e) {\n  console.error('[memory_snapshot] mkdir/truncate failed:', e.message);\n}\n\nreturn [{ json: {\n  job_name: 'memory_snapshot',\n  skip_send: true,\n  summary: { users_written: written, users_failed: failed, file }\n} }];"
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst items = $input.all();\n\nconst SNAPSHOT_DIR = '/data/logs/memory-snapshots';\nconst day = new Date().toISOString().slice(0, 10);\nconst baseFile = path.join(SNAPSHOT_DIR, day + '.jsonl');\n\n// Idempotencia: si el snapshot del día YA existe (re-run via Manual Test),\n// rotamos el viejo a .bak antes de truncar. Antes sobreescribíamos sin más,\n// perdiendo el snapshot original cuando alguien re-disparaba el cron a mano.\nlet file = baseFile;\nlet rotatedFrom = null;\ntry {\n  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });\n  if (fs.existsSync(baseFile) && fs.statSync(baseFile).size > 0) {\n    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);\n    const bak = path.join(SNAPSHOT_DIR, day + '.jsonl.bak-' + stamp);\n    fs.renameSync(baseFile, bak);\n    rotatedFrom = bak;\n  }\n} catch (e) {\n  try { console.error(JSON.stringify({\n    ts: new Date().toISOString(), level: 'warn', event: 'snapshot_rotate_failed',\n    file: baseFile, error: String(e && e.message || e)\n  })); } catch (_) {}\n}\n\nlet written = 0, failed = 0;\ntry {\n  for (const it of items) {\n    const j = it.json || {};\n    if (!j.user_id) continue;\n    try {\n      fs.appendFileSync(file, JSON.stringify({\n        user_id: j.user_id,\n        phone: j.phone,\n        snapshot_at: j.snapshot_at,\n        chunk_count: Number(j.chunk_count || 0),\n        chunks: j.chunks || []\n      }) + '\\n', 'utf8');\n      written++;\n    } catch (e) {\n      try { console.error(JSON.stringify({\n        ts: new Date().toISOString(), level: 'warn', event: 'snapshot_user_write_failed',\n        user_id: j.user_id, error: String(e && e.message || e)\n      })); } catch (_) {}\n      failed++;\n    }\n  }\n  // Retención de backups: borrar .bak-* con > 14 días\n  try {\n    const cutoff = Date.now() - (14 * 24 * 3600 * 1000);\n    for (const f of fs.readdirSync(SNAPSHOT_DIR)) {\n      if (!/\\.bak-/.test(f)) continue;\n      const full = path.join(SNAPSHOT_DIR, f);\n      if (fs.statSync(full).mtimeMs < cutoff) fs.unlinkSync(full);\n    }\n  } catch (_) { /* best-effort */ }\n} catch (e) {\n  try { console.error(JSON.stringify({\n    ts: new Date().toISOString(), level: 'critical', event: 'snapshot_write_failed',\n    error: String(e && e.message || e)\n  })); } catch (_) {}\n}\n\n// Telemetría estructurada del job — stderr independiente de cron_runs (DB).\ntry { console.error(JSON.stringify({\n  ts: new Date().toISOString(), level: failed ? 'warn' : 'info',\n  event: 'cron_job_finished', job: 'memory_snapshot',\n  users_written: written, users_failed: failed,\n  rotated_from: rotatedFrom, file\n})); } catch (_) {}\n\nreturn [{ json: {\n  job_name: 'memory_snapshot',\n  skip_send: true,\n  summary: { users_written: written, users_failed: failed, file, rotated_from: rotatedFrom }\n} }];"
       },
-      "id": "c029",
+      "id": "c033",
       "name": "Write Snapshot File",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -765,7 +960,7 @@
           "queryReplacement": "={{ $json.summary.users_written || 0 }},={{ JSON.stringify($json.summary || {}) }}"
         }
       },
-      "id": "c030",
+      "id": "c034",
       "name": "Log End Snapshot",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -789,7 +984,7 @@
           "queryReplacement": "=session_summary"
         }
       },
-      "id": "c031",
+      "id": "c035",
       "name": "Log Start: session_summary",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -812,7 +1007,7 @@
         "query": "SELECT u.id AS user_id, u.id::text AS session_id,\n                   COUNT(ch.*) AS turn_count\n            FROM users u\n            JOIN n8n_chat_histories ch ON ch.session_id = u.id::text\n                AND ch.created_at >= NOW() - INTERVAL '24 hours'\n            WHERE u.is_active = TRUE\n            GROUP BY u.id\n            HAVING COUNT(ch.*) >= 10;",
         "options": {}
       },
-      "id": "c032",
+      "id": "c036",
       "name": "Find Active Users",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -836,7 +1031,7 @@
           "queryReplacement": "={{ $json.session_id }}"
         }
       },
-      "id": "c033",
+      "id": "c037",
       "name": "Fetch Recent Turns",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -857,7 +1052,7 @@
       "parameters": {
         "jsCode": "const turns = $input.all();\n// Reconstruimos en orden cronológico (la query trae DESC)\nconst ordered = turns.slice().reverse();\nconst transcript = ordered.map(t => {\n  const role = (t.json.role === 'human') ? 'Usuario' : 'Asistente';\n  return role + ': ' + (t.json.text || '').slice(0, 400);\n}).join('\\n');\n\n// Si el transcript es muy corto (saludos sueltos), bypass — no vale la pena.\nif (transcript.length < 200) {\n  return [{ json: { skip: true, reason: 'transcript_too_short' } }];\n}\n\nreturn [{ json: {\n  user_id: $('Find Active Users').first().json.user_id,\n  prompt_text: transcript,\n  skip: false\n} }];"
       },
-      "id": "c034",
+      "id": "c038",
       "name": "Build Summary Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -886,7 +1081,7 @@
         "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"temperature\": 0.2, \"max_tokens\": 220,\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Sos un condensador de conversaciones. Tu output es UN PÁRRAFO en español rioplatense (máximo 60 palabras) que captura SOLO contexto persistente y útil del día — NO datos numéricos, NO transacciones específicas, NO saldos, NO categorías mencionadas en pasada. Capturá: temas recurrentes, decisiones, preferencias nuevas, planes mencionados, estados emocionales si afectan la conversación. Empezá directo, sin 'Hoy el usuario...' Si no hay nada digno de recordar, devolvé exactamente la string SKIP.\"},\n    {\"role\":\"user\",\"content\":\"Transcripción:\\n{{ ($json.prompt_text || '').replace(/[\\\\\\\"]/g, ' ') }}\"}\n  ]\n}",
         "options": {}
       },
-      "id": "c035",
+      "id": "c039",
       "name": "Summarize with LLM",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -906,7 +1101,7 @@
       "parameters": {
         "jsCode": "const ctx = $('Build Summary Prompt').first().json;\nif (ctx.skip) {\n  return [{ json: { skip: true, reason: ctx.reason } }];\n}\nconst resp = $input.first().json || {};\nconst text = (resp.choices?.[0]?.message?.content || '').trim();\nif (!text || text.toUpperCase() === 'SKIP' || text.length < 20) {\n  return [{ json: { skip: true, reason: 'llm_returned_skip' } }];\n}\nreturn [{ json: { user_id: ctx.user_id, summary_text: text, skip: false } }];"
       },
-      "id": "c036",
+      "id": "c040",
       "name": "Extract Summary Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -935,7 +1130,7 @@
         "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.summary_text || \"\") }}\n}",
         "options": {}
       },
-      "id": "c037",
+      "id": "c041",
       "name": "Embed Summary",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -959,7 +1154,7 @@
           "queryReplacement": "={{ $('Extract Summary Text').first().json.user_id }},={{ $('Extract Summary Text').first().json.summary_text }},={{ '[' + $json.data[0].embedding.join(',') + ']' }}"
         }
       },
-      "id": "c038",
+      "id": "c042",
       "name": "Save Session Summary",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -980,7 +1175,7 @@
       "parameters": {
         "jsCode": "const items = $input.all();\nconst written = items.filter(i => i.json && i.json.id).length;\nreturn [{ json: {\n  job_name: 'session_summary',\n  skip_send: true,\n  summary: { summaries_written: written, users_processed: items.length }\n} }];"
       },
-      "id": "c039",
+      "id": "c043",
       "name": "Aggregate Summary Stats",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -997,7 +1192,7 @@
           "queryReplacement": "={{ $json.summary.summaries_written || 0 }},={{ JSON.stringify($json.summary || {}) }}"
         }
       },
-      "id": "c040",
+      "id": "c044",
       "name": "Log End Summary",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -1021,7 +1216,7 @@
           "queryReplacement": "=memory_stale_review"
         }
       },
-      "id": "c041",
+      "id": "c045",
       "name": "Log Start: memory_stale_review",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -1044,7 +1239,7 @@
         "query": "SELECT COUNT(*)::INT AS marked FROM mark_stale_memories(NULL, 45, 60);",
         "options": {}
       },
-      "id": "c042",
+      "id": "c046",
       "name": "Mark Stale",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -1064,7 +1259,7 @@
       "parameters": {
         "jsCode": "const r = $input.first()?.json || {};\nconst marked = Number(r.marked || 0);\nreturn [{ json: {\n  job_name: 'memory_stale_review',\n  skip_send: true,\n  summary: { facts_marked_stale: marked }\n} }];"
       },
-      "id": "c043",
+      "id": "c047",
       "name": "Format Stale Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1076,17 +1271,53 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)\n            VALUES ('memory_stale_review', NOW(), $1::int, TRUE, $2::jsonb);",
-        "options": {
-          "queryReplacement": "={{ $json.summary.facts_marked_stale || 0 }},={{ JSON.stringify($json.summary || {}) }}"
-        }
+        "query": "SELECT * FROM flag_dead_lessons(30, 60);",
+        "options": {}
       },
-      "id": "c044",
-      "name": "Log End Stale",
+      "id": "c048",
+      "name": "Flag Dead Lessons",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
         1320,
+        1600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first()?.json || {};\nconst flaggedCount = Number(r.flagged_count || 0);\nconst ids = Array.isArray(r.sample_ids) ? r.sample_ids : [];\nconst samples = Array.isArray(r.sample_instructions) ? r.sample_instructions : [];\n\n// Telemetría — el operador puede grepear stderr para ver qué lecciones\n// están muertas y considerar borrarlas. No las desactivamos automáticamente.\ntry { console.error(JSON.stringify({\n  ts: new Date().toISOString(), level: flaggedCount ? 'info' : 'info',\n  event: 'dead_lessons_flagged',\n  count: flaggedCount,\n  sample_ids: ids.slice(0, 10),\n  sample_instructions: samples.slice(0, 10)\n})); } catch (_) {}\n\nconst prev = $('Format Stale Result').first().json.summary || {};\nreturn [{ json: {\n  job_name: 'memory_stale_review',\n  skip_send: true,\n  summary: {\n    ...prev,\n    lessons_flagged_dead: flaggedCount,\n    lessons_flagged_ids: ids\n  }\n} }];"
+      },
+      "id": "c049",
+      "name": "Format Dead Lessons",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)\n            VALUES ('memory_stale_review', NOW(),\n                    COALESCE(($1::jsonb->>'facts_marked_stale')::int, 0)\n                    + COALESCE(($1::jsonb->>'lessons_flagged_dead')::int, 0),\n                    TRUE, $1::jsonb);",
+        "options": {
+          "queryReplacement": "={{ JSON.stringify($json.summary || {}) }}"
+        }
+      },
+      "id": "c050",
+      "name": "Log End Stale",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1760,
         1600
       ],
       "credentials": {
@@ -1102,7 +1333,7 @@
         "mode": "append",
         "options": {}
       },
-      "id": "c045",
+      "id": "c051",
       "name": "Merge Outputs",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
@@ -1143,7 +1374,7 @@
         },
         "options": {}
       },
-      "id": "c046",
+      "id": "c052",
       "name": "Filter Sendable",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
@@ -1157,7 +1388,7 @@
         "batchSize": 1,
         "options": {}
       },
-      "id": "c047",
+      "id": "c053",
       "name": "Loop Batches",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -1174,7 +1405,7 @@
         "messageText": "={{ $json.replyText }}",
         "options_message": {}
       },
-      "id": "c048",
+      "id": "c054",
       "name": "Send WhatsApp",
       "type": "n8n-nodes-evolution-api.evolutionApi",
       "typeVersion": 1,
@@ -1198,7 +1429,7 @@
           "queryReplacement": "={{ $json.job_name }},={{ $json.user_id }},={{ $json._budget_id || '' }},={{ $json._level || '' }}"
         }
       },
-      "id": "c049",
+      "id": "c055",
       "name": "Mark Sent (if budget)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -1220,7 +1451,7 @@
         "amount": 400,
         "unit": "ms"
       },
-      "id": "c050",
+      "id": "c056",
       "name": "Rate Limit Wait",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -1231,9 +1462,9 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst stats = {};\nfor (const it of items) {\n  const job = it.json.job_name || 'unknown';\n  stats[job] = stats[job] || { processed: 0 };\n  stats[job].processed += 1;\n}\nreturn Object.entries(stats).map(([job, s]) => ({ json: { job_name: job, items_processed: s.processed, items_sent: s.processed } }));"
+        "jsCode": "const items = $input.all();\nconst stats = {};\nfor (const it of items) {\n  const job = it.json.job_name || 'unknown';\n  stats[job] = stats[job] || { processed: 0 };\n  stats[job].processed += 1;\n}\nconst out = Object.entries(stats).map(([job, s]) => ({ json: { job_name: job, items_processed: s.processed, items_sent: s.processed } }));\n\n// Telemetría estructurada — uno por job. Stderr es siempre confiable; cron_runs\n// va abajo por DB y puede fallar si Postgres está raro.\ntry {\n  for (const r of out) {\n    console.error(JSON.stringify({\n      ts: new Date().toISOString(), level: 'info', event: 'cron_job_finished',\n      job: r.json.job_name,\n      items_processed: r.json.items_processed,\n      items_sent: r.json.items_sent\n    }));\n  }\n} catch (_) {}\n\nreturn out;"
       },
-      "id": "c051",
+      "id": "c057",
       "name": "Aggregate Stats",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1250,7 +1481,7 @@
           "queryReplacement": "={{ $json.job_name }},={{ $json.items_processed || 0 }},={{ $json.items_sent || 0 }}"
         }
       },
-      "id": "c052",
+      "id": "c058",
       "name": "Log End",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -1274,7 +1505,7 @@
           "queryReplacement": "={{ JSON.stringify($json.summary || {}) }}"
         }
       },
-      "id": "c053",
+      "id": "c059",
       "name": "Log End Cleanup",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
@@ -1289,6 +1520,412 @@
         }
       },
       "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 30 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c060",
+      "name": "Cron Daily 08:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n        job_name,\n        started_at,\n        finished_at,\n        success,\n        LEFT(COALESCE(error_msg, ''), 240) AS error_msg,\n        items_processed,\n        CASE\n            WHEN success = FALSE THEN 'failed'\n            WHEN finished_at IS NULL AND started_at < NOW() - INTERVAL '1 hour' THEN 'zombie'\n            ELSE 'ok'\n        END AS status\n      FROM cron_runs\n      WHERE started_at > NOW() - INTERVAL '24 hours'\n        AND (success IS FALSE\n             OR (finished_at IS NULL AND started_at < NOW() - INTERVAL '1 hour'))\n      ORDER BY started_at DESC\n      LIMIT 20;",
+        "options": {}
+      },
+      "id": "c061",
+      "name": "Watchdog Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        220,
+        2000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json).filter(r => r && r.job_name);\nconst ts = new Date().toISOString();\n\n// Sin fallas: log info y skip send.\nif (!rows.length) {\n  try { console.error(JSON.stringify({\n    ts, level: 'info', event: 'watchdog_clean', failed_count: 0\n  })); } catch (_) {}\n  return [{ json: {\n    job_name: 'watchdog', skip_send: true,\n    summary: { failed_count: 0 }\n  } }];\n}\n\n// Hay fallas — log critical y prepará mensaje.\ntry { console.error(JSON.stringify({\n  ts, level: 'critical', event: 'watchdog_failures',\n  failed_count: rows.length,\n  jobs: rows.map(r => ({\n    job: r.job_name, status: r.status,\n    started: r.started_at, error: r.error_msg\n  }))\n})); } catch (_) {}\n\nconst lines = rows.slice(0, 10).map(r => {\n  const status = r.status === 'zombie' ? '🧟 (sin terminar)' : '❌';\n  const err = r.error_msg ? ' — ' + String(r.error_msg).slice(0, 80) : '';\n  return status + ' ' + r.job_name + err;\n});\nconst body = '⚠️ *Watchdog cron* (últimas 24h)\\n' +\n             rows.length + ' job(s) con problemas:\\n' +\n             lines.join('\\n');\n\nreturn [{ json: {\n  job_name: 'watchdog',\n  user_id: null,\n  phone: '5493794619729',\n  instance: 'chefin',\n  remoteJid: '5493794619729@s.whatsapp.net',\n  replyText: body,\n  summary: { failed_count: rows.length, jobs: rows.map(r => r.job_name) }\n} }];"
+      },
+      "id": "c062",
+      "name": "Format Watchdog",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)\n            VALUES ('watchdog', NOW(), $1::int, TRUE, $2::jsonb);",
+        "options": {
+          "queryReplacement": "={{ $json.summary.failed_count || 0 }},={{ JSON.stringify($json.summary || {}) }}"
+        }
+      },
+      "id": "c063",
+      "name": "Log End Watchdog",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_cron_start($1::text, '{}'::jsonb) AS run_id;",
+        "options": {
+          "queryReplacement": "=embed_transactions"
+        }
+      },
+      "id": "c064",
+      "name": "Log Start: embed_transactions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM pending_embedding_backlog(50);",
+        "options": {}
+      },
+      "id": "c065",
+      "name": "Pending Embedding Backlog",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        2200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.description || \"\") }},\n  \"encoding_format\": \"float\"\n}",
+        "options": {}
+      },
+      "id": "c066",
+      "name": "Embed Transaction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        2200
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT save_transaction_embedding(\n        $1::uuid,\n        $2::uuid,\n        $3::vector(1536),\n        $4::text,\n        'text-embedding-3-small'\n    ) AS saved;",
+        "options": {
+          "queryReplacement": "={{ $('Pending Embedding Backlog').item.json.transaction_id }},={{ $('Pending Embedding Backlog').item.json.user_id }},={{ '[' + ($json.data?.[0]?.embedding || []).join(',') + ']' }},={{ $('Pending Embedding Backlog').item.json.description || '' }}"
+        }
+      },
+      "id": "c067",
+      "name": "Save Tx Embedding",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1320,
+        2200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst saved = items.filter(i => i.json && i.json.saved === true).length;\nconst failed = items.length - saved;\ntry { console.error(JSON.stringify({\n  ts: new Date().toISOString(), level: failed ? 'warn' : 'info',\n  event: 'cron_job_finished', job: 'embed_transactions',\n  saved, failed, total: items.length\n})); } catch (_) {}\nreturn [{ json: {\n  job_name: 'embed_transactions',\n  skip_send: true,\n  summary: { saved, failed, total: items.length }\n} }];"
+      },
+      "id": "c068",
+      "name": "Aggregate Embed Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        2200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)\n            VALUES ('embed_transactions', NOW(), $1::int,\n                    CASE WHEN ($2::jsonb->>'failed')::int = 0 THEN TRUE ELSE FALSE END,\n                    $2::jsonb);",
+        "options": {
+          "queryReplacement": "={{ $json.summary.saved || 0 }},={{ JSON.stringify($json.summary || {}) }}"
+        }
+      },
+      "id": "c069",
+      "name": "Log End Embed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1760,
+        2200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_cron_start($1::text, '{}'::jsonb) AS run_id;",
+        "options": {
+          "queryReplacement": "=anomaly_alerts"
+        }
+      },
+      "id": "c070",
+      "name": "Log Start: anomaly_alerts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM claim_anomalies_for_cron();",
+        "options": {}
+      },
+      "id": "c071",
+      "name": "Claim Anomalies",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        2400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().filter(i => i.json && i.json.user_id);\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nconst out = [];\nfor (const it of items) {\n  const j = it.json;\n  const amt = Number(j.amount || 0);\n  const baseline = Number(j.baseline || 0);\n  const mult = Number(j.multiplier || 0);\n  const desc = String(j.description || '').slice(0, 60);\n  const date = j.transaction_date ? String(j.transaction_date).slice(0, 10) : '';\n  const cat = j.category_name || 'sin categoría';\n\n  // Mensaje natural — el agente captará la respuesta vía conv_state\n  // 'awaiting_anomaly_confirm' (set por la SQL function).\n  let body = '🚨 *Movimiento inusual detectado*\\n';\n  body += '$' + fmt(amt) + ' en *' + cat + '*';\n  if (desc) body += ' — ' + desc;\n  if (date) body += ' (' + date + ')';\n  if (baseline > 0 && mult > 1.5) {\n    body += '\\n📊 Es ' + mult.toFixed(1) + 'x tu promedio en ' + cat + ' ($' + fmt(baseline) + ').';\n  }\n  body += '\\n¿Es correcto o lo cargaste mal?';\n\n  out.push({ json: {\n    job_name: 'anomaly_alerts',\n    user_id: j.user_id,\n    phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: body\n  } });\n}\nreturn out;"
+      },
+      "id": "c072",
+      "name": "Format Anomalies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_cron_start($1::text, '{}'::jsonb) AS run_id;",
+        "options": {
+          "queryReplacement": "=subscription_notice"
+        }
+      },
+      "id": "c073",
+      "name": "Log Start: subscription_notice",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM claim_new_subscriptions_for_cron();",
+        "options": {}
+      },
+      "id": "c074",
+      "name": "Claim Subscriptions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        2600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().filter(i => i.json && i.json.user_id);\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nconst out = [];\nfor (const it of items) {\n  const j = it.json;\n  const arr = Array.isArray(j.items) ? j.items : (typeof j.items === 'string' ? JSON.parse(j.items || '[]') : []);\n  const newCount = Number(j.new_count || 0);\n  const monthlyTotal = Number(j.monthly_total || 0);\n  if (newCount === 0 || arr.length === 0) continue;\n\n  let body = '🔔 *Detecté ' + newCount + ' suscripción' + (newCount > 1 ? 'es' : '') + ' nueva' + (newCount > 1 ? 's' : '') + '*\\n';\n  for (const sub of arr.slice(0, 5)) {\n    const merchant = sub.merchant_key || sub.sample_description || 'desconocido';\n    const amt = Number(sub.estimated_monthly_amount || sub.amount || 0);\n    body += '• ' + merchant + ' · $' + fmt(amt) + '/mes\\n';\n  }\n  if (monthlyTotal > 0) {\n    body += '\\nTotal mensual estimado: *$' + fmt(monthlyTotal) + '*';\n  }\n  body += '\\n\\n¿Querés que las dé de alta como recurrentes? Podés decirme cuál sí y cuál no.';\n\n  out.push({ json: {\n    job_name: 'subscription_notice',\n    user_id: j.user_id,\n    phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: body\n  } });\n}\nreturn out;"
+      },
+      "id": "c075",
+      "name": "Format Subscriptions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        2600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_cron_start($1::text, '{}'::jsonb) AS run_id;",
+        "options": {
+          "queryReplacement": "=group_candidates"
+        }
+      },
+      "id": "c076",
+      "name": "Log Start: group_candidates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        2800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM claim_group_candidates_for_cron();",
+        "options": {}
+      },
+      "id": "c077",
+      "name": "Claim Group Candidates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        2800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().filter(i => i.json && i.json.user_id && i.json.keyword);\nconst fmt = n => Number(n||0).toLocaleString('es-AR');\nconst out = [];\nfor (const it of items) {\n  const j = it.json;\n  // Capitalizar primera letra para verse natural\n  const keyword = String(j.keyword || '').replace(/^./, c => c.toUpperCase());\n  const txCount = Number(j.tx_count || 0);\n  const total = Number(j.total_amount || 0);\n  const earliest = j.earliest_date ? String(j.earliest_date).slice(0, 10) : '';\n  const latest = j.latest_date ? String(j.latest_date).slice(0, 10) : '';\n  const samples = Array.isArray(j.sample_descriptions) ? j.sample_descriptions : [];\n\n  let body = '🗺️ *Detecté un patrón en tus gastos*\\n';\n  body += 'Veo ' + txCount + ' movimientos relacionados con *' + keyword + '*';\n  if (earliest && latest && earliest !== latest) {\n    body += ' entre ' + earliest + ' y ' + latest;\n  }\n  body += ' por *$' + fmt(total) + '*.\\n';\n  if (samples.length) {\n    body += '\\nEj: ' + samples.slice(0, 3).map(s => '\"' + String(s).slice(0, 50) + '\"').join(', ') + '\\n';\n  }\n  body += '\\n¿Querés que arme el grupo \"' + keyword + '\" y mueva esos movimientos ahí?';\n\n  out.push({ json: {\n    job_name: 'group_candidates',\n    user_id: j.user_id,\n    phone: j.phone,\n    instance: 'chefin',\n    remoteJid: j.phone + '@s.whatsapp.net',\n    replyText: body\n  } });\n}\nreturn out;"
+      },
+      "id": "c078",
+      "name": "Format Group Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        2800
+      ]
     }
   ],
   "connections": {
@@ -1379,6 +2016,41 @@
         [
           {
             "node": "Log Start: memory_stale_review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Watchdog Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Start: embed_transactions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Start: anomaly_alerts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Start: subscription_notice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Start: group_candidates",
             "type": "main",
             "index": 0
           }
@@ -1730,6 +2402,28 @@
       "main": [
         [
           {
+            "node": "Flag Dead Lessons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Dead Lessons": {
+      "main": [
+        [
+          {
+            "node": "Format Dead Lessons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Dead Lessons": {
+      "main": [
+        [
+          {
             "node": "Log End Stale",
             "type": "main",
             "index": 0
@@ -1870,6 +2564,242 @@
         [
           {
             "node": "Log End Cleanup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Daily 08:30": {
+      "main": [
+        [
+          {
+            "node": "Watchdog Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Watchdog Query": {
+      "main": [
+        [
+          {
+            "node": "Format Watchdog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Watchdog": {
+      "main": [
+        [
+          {
+            "node": "Merge Outputs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log End Watchdog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Every 5min": {
+      "main": [
+        [
+          {
+            "node": "Log Start: embed_transactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Start: embed_transactions": {
+      "main": [
+        [
+          {
+            "node": "Pending Embedding Backlog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pending Embedding Backlog": {
+      "main": [
+        [
+          {
+            "node": "Embed Transaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Transaction": {
+      "main": [
+        [
+          {
+            "node": "Save Tx Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Tx Embedding": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Embed Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Embed Stats": {
+      "main": [
+        [
+          {
+            "node": "Log End Embed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Daily 11:00": {
+      "main": [
+        [
+          {
+            "node": "Log Start: anomaly_alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Start: anomaly_alerts": {
+      "main": [
+        [
+          {
+            "node": "Claim Anomalies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Anomalies": {
+      "main": [
+        [
+          {
+            "node": "Format Anomalies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Anomalies": {
+      "main": [
+        [
+          {
+            "node": "Merge Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Monthly 10:00": {
+      "main": [
+        [
+          {
+            "node": "Log Start: subscription_notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Start: subscription_notice": {
+      "main": [
+        [
+          {
+            "node": "Claim Subscriptions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Subscriptions": {
+      "main": [
+        [
+          {
+            "node": "Format Subscriptions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Subscriptions": {
+      "main": [
+        [
+          {
+            "node": "Merge Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Sunday 18:00": {
+      "main": [
+        [
+          {
+            "node": "Log Start: group_candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Start: group_candidates": {
+      "main": [
+        [
+          {
+            "node": "Claim Group Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Group Candidates": {
+      "main": [
+        [
+          {
+            "node": "Format Group Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Group Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Outputs",
             "type": "main",
             "index": 0
           }

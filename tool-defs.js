@@ -510,5 +510,51 @@ module.exports = [
             { name: 'kind', desc: 'Filtro opcional (fact|preference|context|goal|relationship|session_summary). Vacío = todos.', type: 'string', default: '' },
             { name: 'limit', desc: 'Cantidad max de items', type: 'number', default: 20 }
         ]
+    },
+
+    // ----- Lecciones aprendidas (agent_instructions, pgvector) -----
+    // Distinto de remember_fact: estas son INSTRUCCIONES OPERATIVAS que el
+    // usuario le da al agente para cambiar su comportamiento. El sistema las
+    // inyecta automáticamente al system prompt en cada turno (retrieval por
+    // similitud con el mensaje del usuario), no se piden con recall.
+    {
+        name: 'teach_agent',
+        description: '🎓 GUARDA UNA LECCIÓN OPERATIVA — instrucción que modifica cómo respondés/actuás de ahora en adelante. DETECTÁ AUTOMÁTICAMENTE estos disparadores y llamá esta tool: "de ahora en adelante…", "siempre que…", "cuando te pregunte X, hacé Y", "no me digas más…", "preferiría que…", "no incluyas X en…", "tratame de…", "respondeme más corto/largo", "aprendé que…". Es DISTINTA de remember_fact: remember_fact guarda HECHOS sobre el usuario (preferencias, metas, contexto biográfico); teach_agent guarda REGLAS sobre tu comportamiento (cómo respondés, qué incluir/excluir, formato, jerga). Las lecciones se aplican automáticamente — no necesitás recall. Ejemplos válidos: "no me muestres centavos en los totales", "siempre redondéa a la decena de miles", "cuando te diga \'gastos esenciales\' agrupá comida + alquiler + servicios", "si pregunto por mi sueldo mostrame el último ingreso tipo \'sueldo\'", "no me sugieras categorías nuevas, usá las que ya tengo". NO uses para guardar números/montos absolutos (esos cambian — guardá la regla, no el valor).',
+        fields: [
+            { name: 'instruction', desc: 'La regla en lenguaje natural, completa, en imperativo, sin abreviaturas. Ej: "Cuando el usuario pida \'gastos esenciales\', sumar comida + alquiler + servicios y mostrar el total agrupado". Será embeddada para retrieval automático.', type: 'string', default: '' },
+            { name: 'trigger_hint', desc: 'Frase corta que describe CUÁNDO aplicar la lección (mejora retrieval). Ej: "cuando pregunte por gastos esenciales" o "al mostrar totales". Vacío = se infiere de instruction.', type: 'string', default: '' },
+            { name: 'priority', desc: 'Importancia 0-5. 0 default. Subí a 2-3 si el usuario insiste mucho ("ya te lo dije, NUNCA…"). El sistema bumpea +1 automático si guardás una lección parecida a una que ya tenías.', type: 'number', default: 0 }
+        ]
+    },
+    {
+        name: 'list_lessons',
+        description: '📚 Lista las lecciones activas que el usuario te enseñó. Para "¿qué aprendiste de mí?", "¿qué reglas tenés conmigo?", "¿qué te enseñé?". Ordenadas por priority + uso. Excluye lecciones desactivadas (forget_lesson).',
+        fields: [
+            { name: 'limit', desc: 'Cantidad max de lecciones', type: 'number', default: 20 }
+        ]
+    },
+    {
+        name: 'forget_lesson',
+        description: '🗑️ Olvida una lección operativa (soft-delete). Usala cuando el usuario diga "olvidá esa regla", "ya no hagas más X", "borrá la instrucción de Y". Pasá el `lesson_id` que viene de list_lessons. Si la lección solo CAMBIÓ (ej. "antes te dije redondea a 10mil, ahora redondea a 1mil"), olvidá la vieja Y llamá teach_agent con la nueva.',
+        fields: [
+            { name: 'lesson_id', desc: 'UUID de la lección a olvidar (viene de list_lessons)', type: 'string', default: '' }
+        ]
+    },
+    {
+        name: 'suggest_category',
+        description: '🔮 SUGIERE CATEGORÍA basada en transacciones pasadas similares (embeddings + pgvector). Usá esto ANTES de log_transaction cuando la descripción sea ambigua y NO encaje obviamente con una categoría conocida del usuario. Ej: el usuario dice "brunch en Crisol $5000" — vos no sabés si es Comida o Salidas. Llamás suggest_category(description="brunch en Crisol") y recibís la categoría más probable basada en lo que ya tiene en el historial. Devuelve `category_name`, `confidence` (0-1), `matches_count` y `sample_descriptions` (texto de las txs similares). Si confidence ≥ 0.6 y matches_count ≥ 2, podés usarla directamente. Si está entre 0.4 y 0.6, mostrásela al usuario como sugerencia ("¿Querés que vaya a Comida como las cenas de Crisol?"). Si está por debajo o devuelve count 0, preguntá. NO uses esto para descripciones triviales tipo "agua" o "café" — para esas, find_best_category alcanza.',
+        fields: [
+            { name: 'description', desc: 'Texto libre del gasto, en español, completo. Ej: "brunch en Crisol con clientes". Será embeddado para buscar similares.', type: 'string', default: '' },
+            { name: 'k', desc: 'Top-K transacciones similares a considerar', type: 'number', default: 5 },
+            { name: 'min_score', desc: 'Similitud mínima (0-1). Default 0.65.', type: 'number', default: 0.65 }
+        ]
+    },
+    {
+        name: 'mark_suggestion_responded',
+        description: '✍️ Marca cómo respondió el usuario a una sugerencia de lección automática. El sistema detecta patrones (ej: "ya van 3 veces que cambiás cenas a Trabajo") y te los presenta en `sugerencia_pendiente` del [CONTEXTO]. Cuando se la mencionás al usuario por primera vez, llamá esto con `response="presented"` (no se la vamos a repetir). Cuando el usuario responde sí/no, llamá con `response="accepted"` (y además llamá `teach_agent` con la regla) o `response="rejected"`. Si rechaza, no se le vuelve a sugerir hasta que el patrón se repita 5 veces más.',
+        fields: [
+            { name: 'suggestion_id', desc: 'ID numérico de la sugerencia (viene en `sugerencia_pendiente` como [id=N])', type: 'number', default: 0 },
+            { name: 'response', desc: '"presented" (al mencionarla) | "accepted" (usuario aceptó aprender la regla) | "rejected" (usuario dijo que no)', type: 'string', default: 'presented' }
+        ]
     }
 ];

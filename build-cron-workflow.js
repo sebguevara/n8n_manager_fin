@@ -89,6 +89,34 @@ addNode('Cron Sunday 02:00', 'n8n-nodes-base.scheduleTrigger', {
     rule: { interval: [{ field: 'cronExpression', expression: '0 0 2 * * 0' }] }
 }, 0, 1600, { tv: 1.2 });
 
+// Embed transactions (auto-categorización backfill) — every 5 min, day-time only.
+// Procesa pending_embedding_backlog en lotes de 50. No corre toda la noche
+// porque a esa hora no hay nuevas transacciones.
+addNode('Cron Every 5min', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'cronExpression', expression: '0 */5 7-23 * * *' }] }
+}, 0, 2200, { tv: 1.2 });
+
+// Anomaly alerts — daily 11:00. Detecta movimientos que se desvían >2.5x del
+// baseline del usuario en últimos 60 días. claim_anomalies_for_cron ya hace
+// dedup vía anomaly_alert_log y setea conv_state='awaiting_anomaly_confirm'
+// para que el agente capte la respuesta del usuario.
+addNode('Cron Daily 11:00', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'cronExpression', expression: '0 0 11 * * *' }] }
+}, 0, 2400, { tv: 1.2 });
+
+// Subscription notice — first day of month 10:00. Avisa al usuario que
+// detectamos suscripciones nuevas (cargos recurrentes con merchant similar).
+addNode('Cron Monthly 10:00', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'cronExpression', expression: '0 0 10 1 * *' }] }
+}, 0, 2600, { tv: 1.2 });
+
+// Auto-grupos — Sunday 18:00. Detecta palabras repetidas en descriptions de
+// últimos 14d sin grupo asignado (probablemente viaje/evento) y propone armar
+// el grupo. 30d de cooldown por keyword para no spammear.
+addNode('Cron Sunday 18:00', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'cronExpression', expression: '0 0 18 * * 0' }] }
+}, 0, 2800, { tv: 1.2 });
+
 // Manual test — pick a job
 addNode('Manual Test', 'n8n-nodes-base.manualTrigger', {}, 0, 1800, { tv: 1 });
 
@@ -116,7 +144,12 @@ addNode('Dispatch Manual', 'n8n-nodes-base.switch', {
         dispatchRule('r5', 'budget_alerts'),
         dispatchRule('r6', 'memory_snapshot'),
         dispatchRule('r7', 'session_summary'),
-        dispatchRule('r8', 'memory_stale_review')
+        dispatchRule('r8', 'memory_stale_review'),
+        dispatchRule('r9', 'watchdog'),
+        dispatchRule('r10', 'embed_transactions'),
+        dispatchRule('r11', 'anomaly_alerts'),
+        dispatchRule('r12', 'subscription_notice'),
+        dispatchRule('r13', 'group_candidates')
     ] }, options: {}
 }, 440, 1800, { tv: 3 });
 connect('Pick Job', 'Dispatch Manual');
@@ -391,14 +424,30 @@ const items = $input.all();
 
 const SNAPSHOT_DIR = '/data/logs/memory-snapshots';
 const day = new Date().toISOString().slice(0, 10);
-const file = path.join(SNAPSHOT_DIR, day + '.jsonl');
+const baseFile = path.join(SNAPSHOT_DIR, day + '.jsonl');
+
+// Idempotencia: si el snapshot del día YA existe (re-run via Manual Test),
+// rotamos el viejo a .bak antes de truncar. Antes sobreescribíamos sin más,
+// perdiendo el snapshot original cuando alguien re-disparaba el cron a mano.
+let file = baseFile;
+let rotatedFrom = null;
+try {
+  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+  if (fs.existsSync(baseFile) && fs.statSync(baseFile).size > 0) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const bak = path.join(SNAPSHOT_DIR, day + '.jsonl.bak-' + stamp);
+    fs.renameSync(baseFile, bak);
+    rotatedFrom = bak;
+  }
+} catch (e) {
+  try { console.error(JSON.stringify({
+    ts: new Date().toISOString(), level: 'warn', event: 'snapshot_rotate_failed',
+    file: baseFile, error: String(e && e.message || e)
+  })); } catch (_) {}
+}
 
 let written = 0, failed = 0;
 try {
-  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
-  // Truncamos antes de escribir — el snapshot del día reemplaza al previo si
-  // se reejecutó. Idempotente: re-correr el cron del mismo día sobreescribe.
-  fs.writeFileSync(file, '', 'utf8');
   for (const it of items) {
     const j = it.json || {};
     if (!j.user_id) continue;
@@ -412,18 +461,41 @@ try {
       }) + '\\n', 'utf8');
       written++;
     } catch (e) {
-      console.error('[memory_snapshot] failed for user ' + j.user_id + ':', e.message);
+      try { console.error(JSON.stringify({
+        ts: new Date().toISOString(), level: 'warn', event: 'snapshot_user_write_failed',
+        user_id: j.user_id, error: String(e && e.message || e)
+      })); } catch (_) {}
       failed++;
     }
   }
+  // Retención de backups: borrar .bak-* con > 14 días
+  try {
+    const cutoff = Date.now() - (14 * 24 * 3600 * 1000);
+    for (const f of fs.readdirSync(SNAPSHOT_DIR)) {
+      if (!/\\.bak-/.test(f)) continue;
+      const full = path.join(SNAPSHOT_DIR, f);
+      if (fs.statSync(full).mtimeMs < cutoff) fs.unlinkSync(full);
+    }
+  } catch (_) { /* best-effort */ }
 } catch (e) {
-  console.error('[memory_snapshot] mkdir/truncate failed:', e.message);
+  try { console.error(JSON.stringify({
+    ts: new Date().toISOString(), level: 'critical', event: 'snapshot_write_failed',
+    error: String(e && e.message || e)
+  })); } catch (_) {}
 }
+
+// Telemetría estructurada del job — stderr independiente de cron_runs (DB).
+try { console.error(JSON.stringify({
+  ts: new Date().toISOString(), level: failed ? 'warn' : 'info',
+  event: 'cron_job_finished', job: 'memory_snapshot',
+  users_written: written, users_failed: failed,
+  rotated_from: rotatedFrom, file
+})); } catch (_) {}
 
 return [{ json: {
   job_name: 'memory_snapshot',
   skip_send: true,
-  summary: { users_written: written, users_failed: failed, file }
+  summary: { users_written: written, users_failed: failed, file, rotated_from: rotatedFrom }
 } }];`
 }, 1100, 1200);
 connect('Export All Memory', 'Write Snapshot File');
@@ -609,15 +681,57 @@ return [{ json: {
 }, 1100, 1600);
 connect('Mark Stale', 'Format Stale Result');
 
+// Después del stale review de memory_chunks, marcamos también las lecciones
+// muertas (agent_instructions). Mismo cron Sunday 02:00 (no agrega trigger).
+// thresholds: never-applied + 30d, o idle 60d.
+addNode('Flag Dead Lessons', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: 'SELECT * FROM flag_dead_lessons(30, 60);',
+    options: {}
+}, 1320, 1600, { tv: 2.5, creds: { postgres: PG }, cof: true, always: true });
+connect('Format Stale Result', 'Flag Dead Lessons');
+
+addNode('Format Dead Lessons', 'n8n-nodes-base.code', {
+    jsCode: `const r = $input.first()?.json || {};
+const flaggedCount = Number(r.flagged_count || 0);
+const ids = Array.isArray(r.sample_ids) ? r.sample_ids : [];
+const samples = Array.isArray(r.sample_instructions) ? r.sample_instructions : [];
+
+// Telemetría — el operador puede grepear stderr para ver qué lecciones
+// están muertas y considerar borrarlas. No las desactivamos automáticamente.
+try { console.error(JSON.stringify({
+  ts: new Date().toISOString(), level: flaggedCount ? 'info' : 'info',
+  event: 'dead_lessons_flagged',
+  count: flaggedCount,
+  sample_ids: ids.slice(0, 10),
+  sample_instructions: samples.slice(0, 10)
+})); } catch (_) {}
+
+const prev = $('Format Stale Result').first().json.summary || {};
+return [{ json: {
+  job_name: 'memory_stale_review',
+  skip_send: true,
+  summary: {
+    ...prev,
+    lessons_flagged_dead: flaggedCount,
+    lessons_flagged_ids: ids
+  }
+} }];`
+}, 1540, 1600);
+connect('Flag Dead Lessons', 'Format Dead Lessons');
+
 addNode('Log End Stale', 'n8n-nodes-base.postgres', {
     operation: 'executeQuery',
     query: `INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)
-            VALUES ('memory_stale_review', NOW(), $1::int, TRUE, $2::jsonb);`,
+            VALUES ('memory_stale_review', NOW(),
+                    COALESCE(($1::jsonb->>'facts_marked_stale')::int, 0)
+                    + COALESCE(($1::jsonb->>'lessons_flagged_dead')::int, 0),
+                    TRUE, $1::jsonb);`,
     options: {
-        queryReplacement: '={{ $json.summary.facts_marked_stale || 0 }},={{ JSON.stringify($json.summary || {}) }}'
+        queryReplacement: '={{ JSON.stringify($json.summary || {}) }}'
     }
-}, 1320, 1600, { tv: 2.5, creds: { postgres: PG }, cof: true });
-connect('Format Stale Result', 'Log End Stale');
+}, 1760, 1600, { tv: 2.5, creds: { postgres: PG }, cof: true });
+connect('Format Dead Lessons', 'Log End Stale');
 
 // =========================================================================
 // 8. MERGE → SEND PIPELINE (common to all jobs except cleanup)
@@ -690,7 +804,22 @@ for (const it of items) {
   stats[job] = stats[job] || { processed: 0 };
   stats[job].processed += 1;
 }
-return Object.entries(stats).map(([job, s]) => ({ json: { job_name: job, items_processed: s.processed, items_sent: s.processed } }));`
+const out = Object.entries(stats).map(([job, s]) => ({ json: { job_name: job, items_processed: s.processed, items_sent: s.processed } }));
+
+// Telemetría estructurada — uno por job. Stderr es siempre confiable; cron_runs
+// va abajo por DB y puede fallar si Postgres está raro.
+try {
+  for (const r of out) {
+    console.error(JSON.stringify({
+      ts: new Date().toISOString(), level: 'info', event: 'cron_job_finished',
+      job: r.json.job_name,
+      items_processed: r.json.items_processed,
+      items_sent: r.json.items_sent
+    }));
+  }
+} catch (_) {}
+
+return out;`
 }, 1980, 0);
 connect('Loop Batches', 'Aggregate Stats', 0);
 
@@ -712,6 +841,352 @@ addNode('Log End Cleanup', 'n8n-nodes-base.postgres', {
     options: { queryReplacement: '={{ JSON.stringify($json.summary || {}) }}' }
 }, 1320, 600, { tv: 2.5, creds: { postgres: PG }, cof: true });
 connect('Format Cleanup', 'Log End Cleanup');
+
+// =========================================================================
+// 10. WATCHDOG — corre 08:30 (después de todos los jobs nocturnos) y avisa
+// si algún cron de las últimas 24h falló o quedó colgado.
+// =========================================================================
+// Detecta dos tipos de problema:
+//   • success = FALSE  → el job falló y log_cron_end lo registró
+//   • finished_at IS NULL Y started_at < NOW()-1h → el job ARRANCÓ pero NUNCA
+//     terminó (crash, timeout, container restart). Sin esto, un job zombie
+//     se ve como "no hubo run" y nadie se entera.
+// Si hay problemas, manda WhatsApp al primer phone admin (hardcoded).
+// Siempre emite stderr structured.
+const ADMIN_PHONE = '5493794619729'; // Mismo que ALLOWED_PHONES[0] en build-agent-workflow.js
+
+addNode('Cron Daily 08:30', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'cronExpression', expression: '0 30 8 * * *' }] }
+}, 0, 2000, { tv: 1.2 });
+
+addNode('Watchdog Query', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: `SELECT
+        job_name,
+        started_at,
+        finished_at,
+        success,
+        LEFT(COALESCE(error_msg, ''), 240) AS error_msg,
+        items_processed,
+        CASE
+            WHEN success = FALSE THEN 'failed'
+            WHEN finished_at IS NULL AND started_at < NOW() - INTERVAL '1 hour' THEN 'zombie'
+            ELSE 'ok'
+        END AS status
+      FROM cron_runs
+      WHERE started_at > NOW() - INTERVAL '24 hours'
+        AND (success IS FALSE
+             OR (finished_at IS NULL AND started_at < NOW() - INTERVAL '1 hour'))
+      ORDER BY started_at DESC
+      LIMIT 20;`,
+    options: {}
+}, 220, 2000, { tv: 2.5, creds: { postgres: PG }, cof: true, always: true });
+connect('Cron Daily 08:30', 'Watchdog Query');
+connect('Dispatch Manual', 'Watchdog Query', 8); // expose via Manual Test too — see Dispatch Manual switch
+
+addNode('Format Watchdog', 'n8n-nodes-base.code', {
+    jsCode: `const rows = $input.all().map(i => i.json).filter(r => r && r.job_name);
+const ts = new Date().toISOString();
+
+// Sin fallas: log info y skip send.
+if (!rows.length) {
+  try { console.error(JSON.stringify({
+    ts, level: 'info', event: 'watchdog_clean', failed_count: 0
+  })); } catch (_) {}
+  return [{ json: {
+    job_name: 'watchdog', skip_send: true,
+    summary: { failed_count: 0 }
+  } }];
+}
+
+// Hay fallas — log critical y prepará mensaje.
+try { console.error(JSON.stringify({
+  ts, level: 'critical', event: 'watchdog_failures',
+  failed_count: rows.length,
+  jobs: rows.map(r => ({
+    job: r.job_name, status: r.status,
+    started: r.started_at, error: r.error_msg
+  }))
+})); } catch (_) {}
+
+const lines = rows.slice(0, 10).map(r => {
+  const status = r.status === 'zombie' ? '🧟 (sin terminar)' : '❌';
+  const err = r.error_msg ? ' — ' + String(r.error_msg).slice(0, 80) : '';
+  return status + ' ' + r.job_name + err;
+});
+const body = '⚠️ *Watchdog cron* (últimas 24h)\\n' +
+             rows.length + ' job(s) con problemas:\\n' +
+             lines.join('\\n');
+
+return [{ json: {
+  job_name: 'watchdog',
+  user_id: null,
+  phone: '${ADMIN_PHONE}',
+  instance: '${INSTANCE}',
+  remoteJid: '${ADMIN_PHONE}@s.whatsapp.net',
+  replyText: body,
+  summary: { failed_count: rows.length, jobs: rows.map(r => r.job_name) }
+} }];`
+}, 440, 2000);
+connect('Watchdog Query', 'Format Watchdog');
+
+// Lo unimos al merge para que use el mismo pipeline de Send WhatsApp + Rate Limit
+connect('Format Watchdog', 'Merge Outputs', 0);
+
+addNode('Log End Watchdog', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: `INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)
+            VALUES ('watchdog', NOW(), $1::int, TRUE, $2::jsonb);`,
+    options: {
+        queryReplacement: '={{ $json.summary.failed_count || 0 }},={{ JSON.stringify($json.summary || {}) }}'
+    }
+}, 660, 2000, { tv: 2.5, creds: { postgres: PG }, cof: true });
+connect('Format Watchdog', 'Log End Watchdog');
+
+// =========================================================================
+// 11. EMBED TRANSACTIONS — backfill async para auto-categorización
+// =========================================================================
+// Cada 5 min en horas activas, agarramos hasta 50 txs sin embedding y las
+// embedeamos. El embedding queda en transaction_embeddings y se usa después
+// vía suggest_category_by_similarity cuando el usuario loguea algo nuevo.
+//
+// Por qué async (no inline en log_transaction):
+//   • Embedding es 60-150ms extra por log → afecta sensación de "rápido".
+//   • Cron paraleliza 50 a la vez sin impacto al usuario.
+//   • Si OpenAI falla, el log NO se rompe; solo queda sin embedding hasta
+//     el próximo run del cron.
+//
+// Patrón: Pending Backlog Query → (n8n itera sobre items) Embed HTTP → Save
+// → Aggregate → Log End. cof:true en HTTP/Save para que un fallo en una tx
+// no rompa el batch entero.
+const etLog = addStartLog('embed_transactions', 660, 2200);
+connect('Cron Every 5min', etLog);
+connect('Dispatch Manual', etLog, 9);
+
+addNode('Pending Embedding Backlog', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: 'SELECT * FROM pending_embedding_backlog(50);',
+    options: {}
+}, 880, 2200, { tv: 2.5, creds: { postgres: PG }, always: true });
+connect(etLog, 'Pending Embedding Backlog');
+
+addNode('Embed Transaction', 'n8n-nodes-base.httpRequest', {
+    method: 'POST',
+    url: 'https://api.openai.com/v1/embeddings',
+    authentication: 'predefinedCredentialType', nodeCredentialType: 'openAiApi',
+    sendHeaders: true,
+    headerParameters: { parameters: [{ name: 'Content-Type', value: 'application/json' }] },
+    sendBody: true, specifyBody: 'json',
+    jsonBody: `={\n  "model": "text-embedding-3-small",\n  "input": {{ JSON.stringify($json.description || "") }},\n  "encoding_format": "float"\n}`,
+    options: {}
+}, 1100, 2200, { tv: 4.2, creds: { openAiApi: OPENAI }, cof: true, always: true });
+connect('Pending Embedding Backlog', 'Embed Transaction');
+
+addNode('Save Tx Embedding', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    // user_id, description y transaction_id vienen del nodo anterior (Pending);
+    // n8n los retiene en el item original. El embedding viene en $json.data[0].
+    query: `SELECT save_transaction_embedding(
+        $1::uuid,
+        $2::uuid,
+        $3::vector(1536),
+        $4::text,
+        'text-embedding-3-small'
+    ) AS saved;`,
+    options: {
+        queryReplacement: "={{ $('Pending Embedding Backlog').item.json.transaction_id }},={{ $('Pending Embedding Backlog').item.json.user_id }},={{ '[' + ($json.data?.[0]?.embedding || []).join(',') + ']' }},={{ $('Pending Embedding Backlog').item.json.description || '' }}"
+    }
+}, 1320, 2200, { tv: 2.5, creds: { postgres: PG }, cof: true, always: true });
+connect('Embed Transaction', 'Save Tx Embedding');
+
+addNode('Aggregate Embed Stats', 'n8n-nodes-base.code', {
+    jsCode: `const items = $input.all();
+const saved = items.filter(i => i.json && i.json.saved === true).length;
+const failed = items.length - saved;
+try { console.error(JSON.stringify({
+  ts: new Date().toISOString(), level: failed ? 'warn' : 'info',
+  event: 'cron_job_finished', job: 'embed_transactions',
+  saved, failed, total: items.length
+})); } catch (_) {}
+return [{ json: {
+  job_name: 'embed_transactions',
+  skip_send: true,
+  summary: { saved, failed, total: items.length }
+} }];`
+}, 1540, 2200);
+connect('Save Tx Embedding', 'Aggregate Embed Stats');
+
+addNode('Log End Embed', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: `INSERT INTO cron_runs (job_name, finished_at, items_processed, success, metadata)
+            VALUES ('embed_transactions', NOW(), $1::int,
+                    CASE WHEN ($2::jsonb->>'failed')::int = 0 THEN TRUE ELSE FALSE END,
+                    $2::jsonb);`,
+    options: {
+        queryReplacement: '={{ $json.summary.saved || 0 }},={{ JSON.stringify($json.summary || {}) }}'
+    }
+}, 1760, 2200, { tv: 2.5, creds: { postgres: PG }, cof: true });
+connect('Aggregate Embed Stats', 'Log End Embed');
+
+// =========================================================================
+// 12. ANOMALY ALERTS — daily 11:00
+// =========================================================================
+// claim_anomalies_for_cron hace todo el trabajo crítico (dedup + conv_state).
+// Acá solo formateamos el mensaje y lo pasamos al pipeline de send.
+const aaLog = addStartLog('anomaly_alerts', 660, 2400);
+connect('Cron Daily 11:00', aaLog);
+connect('Dispatch Manual', aaLog, 10);
+
+addNode('Claim Anomalies', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: 'SELECT * FROM claim_anomalies_for_cron();',
+    options: {}
+}, 880, 2400, { tv: 2.5, creds: { postgres: PG }, always: true });
+connect(aaLog, 'Claim Anomalies');
+
+addNode('Format Anomalies', 'n8n-nodes-base.code', {
+    jsCode: `const items = $input.all().filter(i => i.json && i.json.user_id);
+const fmt = n => Number(n||0).toLocaleString('es-AR');
+const out = [];
+for (const it of items) {
+  const j = it.json;
+  const amt = Number(j.amount || 0);
+  const baseline = Number(j.baseline || 0);
+  const mult = Number(j.multiplier || 0);
+  const desc = String(j.description || '').slice(0, 60);
+  const date = j.transaction_date ? String(j.transaction_date).slice(0, 10) : '';
+  const cat = j.category_name || 'sin categoría';
+
+  // Mensaje natural — el agente captará la respuesta vía conv_state
+  // 'awaiting_anomaly_confirm' (set por la SQL function).
+  let body = '🚨 *Movimiento inusual detectado*\\n';
+  body += '$' + fmt(amt) + ' en *' + cat + '*';
+  if (desc) body += ' — ' + desc;
+  if (date) body += ' (' + date + ')';
+  if (baseline > 0 && mult > 1.5) {
+    body += '\\n📊 Es ' + mult.toFixed(1) + 'x tu promedio en ' + cat + ' ($' + fmt(baseline) + ').';
+  }
+  body += '\\n¿Es correcto o lo cargaste mal?';
+
+  out.push({ json: {
+    job_name: 'anomaly_alerts',
+    user_id: j.user_id,
+    phone: j.phone,
+    instance: '${INSTANCE}',
+    remoteJid: j.phone + '@s.whatsapp.net',
+    replyText: body
+  } });
+}
+return out;`
+}, 1100, 2400);
+connect('Claim Anomalies', 'Format Anomalies');
+// Conectar al pipeline de send (mismo que daily_summary etc.)
+connect('Format Anomalies', 'Merge Outputs', 0);
+
+// =========================================================================
+// 13. SUBSCRIPTION NOTICE — monthly (1st @ 10:00)
+// =========================================================================
+// claim_new_subscriptions_for_cron detecta cargos recurrentes nuevos por
+// merchant similarity y los marca como notificados.
+const snLog = addStartLog('subscription_notice', 660, 2600);
+connect('Cron Monthly 10:00', snLog);
+connect('Dispatch Manual', snLog, 11);
+
+addNode('Claim Subscriptions', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: 'SELECT * FROM claim_new_subscriptions_for_cron();',
+    options: {}
+}, 880, 2600, { tv: 2.5, creds: { postgres: PG }, always: true });
+connect(snLog, 'Claim Subscriptions');
+
+addNode('Format Subscriptions', 'n8n-nodes-base.code', {
+    jsCode: `const items = $input.all().filter(i => i.json && i.json.user_id);
+const fmt = n => Number(n||0).toLocaleString('es-AR');
+const out = [];
+for (const it of items) {
+  const j = it.json;
+  const arr = Array.isArray(j.items) ? j.items : (typeof j.items === 'string' ? JSON.parse(j.items || '[]') : []);
+  const newCount = Number(j.new_count || 0);
+  const monthlyTotal = Number(j.monthly_total || 0);
+  if (newCount === 0 || arr.length === 0) continue;
+
+  let body = '🔔 *Detecté ' + newCount + ' suscripción' + (newCount > 1 ? 'es' : '') + ' nueva' + (newCount > 1 ? 's' : '') + '*\\n';
+  for (const sub of arr.slice(0, 5)) {
+    const merchant = sub.merchant_key || sub.sample_description || 'desconocido';
+    const amt = Number(sub.estimated_monthly_amount || sub.amount || 0);
+    body += '• ' + merchant + ' · $' + fmt(amt) + '/mes\\n';
+  }
+  if (monthlyTotal > 0) {
+    body += '\\nTotal mensual estimado: *$' + fmt(monthlyTotal) + '*';
+  }
+  body += '\\n\\n¿Querés que las dé de alta como recurrentes? Podés decirme cuál sí y cuál no.';
+
+  out.push({ json: {
+    job_name: 'subscription_notice',
+    user_id: j.user_id,
+    phone: j.phone,
+    instance: '${INSTANCE}',
+    remoteJid: j.phone + '@s.whatsapp.net',
+    replyText: body
+  } });
+}
+return out;`
+}, 1100, 2600);
+connect('Claim Subscriptions', 'Format Subscriptions');
+connect('Format Subscriptions', 'Merge Outputs', 0);
+
+// =========================================================================
+// 14. GROUP CANDIDATES — Sunday 18:00
+// =========================================================================
+const gcLog = addStartLog('group_candidates', 660, 2800);
+connect('Cron Sunday 18:00', gcLog);
+connect('Dispatch Manual', gcLog, 12);
+
+addNode('Claim Group Candidates', 'n8n-nodes-base.postgres', {
+    operation: 'executeQuery',
+    query: 'SELECT * FROM claim_group_candidates_for_cron();',
+    options: {}
+}, 880, 2800, { tv: 2.5, creds: { postgres: PG }, always: true });
+connect(gcLog, 'Claim Group Candidates');
+
+addNode('Format Group Candidates', 'n8n-nodes-base.code', {
+    jsCode: `const items = $input.all().filter(i => i.json && i.json.user_id && i.json.keyword);
+const fmt = n => Number(n||0).toLocaleString('es-AR');
+const out = [];
+for (const it of items) {
+  const j = it.json;
+  // Capitalizar primera letra para verse natural
+  const keyword = String(j.keyword || '').replace(/^./, c => c.toUpperCase());
+  const txCount = Number(j.tx_count || 0);
+  const total = Number(j.total_amount || 0);
+  const earliest = j.earliest_date ? String(j.earliest_date).slice(0, 10) : '';
+  const latest = j.latest_date ? String(j.latest_date).slice(0, 10) : '';
+  const samples = Array.isArray(j.sample_descriptions) ? j.sample_descriptions : [];
+
+  let body = '🗺️ *Detecté un patrón en tus gastos*\\n';
+  body += 'Veo ' + txCount + ' movimientos relacionados con *' + keyword + '*';
+  if (earliest && latest && earliest !== latest) {
+    body += ' entre ' + earliest + ' y ' + latest;
+  }
+  body += ' por *$' + fmt(total) + '*.\\n';
+  if (samples.length) {
+    body += '\\nEj: ' + samples.slice(0, 3).map(s => '"' + String(s).slice(0, 50) + '"').join(', ') + '\\n';
+  }
+  body += '\\n¿Querés que arme el grupo "' + keyword + '" y mueva esos movimientos ahí?';
+
+  out.push({ json: {
+    job_name: 'group_candidates',
+    user_id: j.user_id,
+    phone: j.phone,
+    instance: '${INSTANCE}',
+    remoteJid: j.phone + '@s.whatsapp.net',
+    replyText: body
+  } });
+}
+return out;`
+}, 1100, 2800);
+connect('Claim Group Candidates', 'Format Group Candidates');
+connect('Format Group Candidates', 'Merge Outputs', 0);
 
 // =========================================================================
 // EMIT JSON

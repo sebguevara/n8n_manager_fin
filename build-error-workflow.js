@@ -116,16 +116,46 @@ const canReply = Boolean(phone && instance);
 // Variamos un poco según el tipo de error: timeout/red vs. cualquier otra cosa.
 const errMsg = String(errObj.message || '');
 let userReply = '😅 Uh, en este momento no pude resolver tu pedido. Estoy mirando qué pasó. Probá de nuevo en un ratito y, si sigue, escribime de otra forma.';
-if (/timeout|ETIMEDOUT|ECONN|fetch failed|network/i.test(errMsg)) {
+
+// Severidad — la usa el operador (logs / alertas) y nos sirve para futuro
+// alerting condicional. Default: error. Se baja a 'warn' para casos transient
+// (timeouts, rate limits) y se sube a 'critical' para fallas que indican
+// degradación de un dependency completo (postgres, redis, openai 5xx).
+let severity = 'error';
+let errorClass = 'unknown';
+
+if (/timeout|ETIMEDOUT|ECONN|fetch failed|network|socket hang up/i.test(errMsg)) {
   userReply = '😅 Tuve un problema de conexión y no pude completar lo que pediste. Probá de nuevo en un minuto.';
-} else if (/postgres|database|relation|column/i.test(errMsg)) {
+  severity = 'warn';
+  errorClass = 'transient_network';
+} else if (/postgres|database|relation|column|connection terminated|too many clients/i.test(errMsg)) {
   userReply = '😅 No pude guardar/leer tu info en este momento. Estoy revisando. Probá de nuevo enseguida.';
+  severity = 'critical';
+  errorClass = 'database';
+} else if (/rate.?limit|429|quota|insufficient_quota/i.test(errMsg)) {
+  userReply = '😅 Estoy un poco saturado. Dame 30 segundos y mandalo de nuevo.';
+  severity = 'warn';
+  errorClass = 'rate_limit';
+} else if (/openai|model_not_found|invalid_api_key|context_length/i.test(errMsg)) {
+  userReply = '😅 Algo se trabó del lado del modelo. Probá reformular más corto.';
+  severity = 'critical';
+  errorClass = 'llm';
+} else if (/Agent stopped due to iteration limit|max iterations/i.test(errMsg)) {
+  userReply = '😅 Se me hizo enredo lo que pediste. Probá decírmelo de otra forma o más cortito.';
+  severity = 'warn';
+  errorClass = 'agent_iter_limit';
+} else if (/json|unexpected token|parse/i.test(errMsg)) {
+  severity = 'warn';
+  errorClass = 'parse';
 }
 
 // Payload del log — JSON Line, una entrada por error. Mantenemos el stack
 // completo para poder debuggear; el resto va resumido.
 const logEntry = {
   timestamp: new Date().toISOString(),
+  level: severity,                    // structured logging field
+  event: 'workflow_error',
+  errorClass,
   workflow: { id: wf.id || '', name: wf.name || '' },
   execution: {
     id: exec.id || '',
@@ -143,7 +173,12 @@ const logEntry = {
   replied: canReply
 };
 
-return [{ json: { canReply, phone, instance, messageId, remoteJid, userReply, logEntry } }];`
+// Emitimos SIEMPRE a stderr en JSON one-line — Docker lo captura, y un grep
+// de los logs nos da todos los errores aunque la escritura del archivo falle.
+// Esto NO depende del Write Error Log node — es la red de seguridad por debajo.
+try { console.error(JSON.stringify(logEntry)); } catch (_) { /* stderr no-op */ }
+
+return [{ json: { canReply, phone, instance, messageId, remoteJid, userReply, logEntry, severity, errorClass } }];`
 }, 220, 0);
 connect('Error Trigger', 'Extract Error Context');
 
@@ -167,15 +202,57 @@ const LOG_DIR = '/data/logs';
 const day = (entry.timestamp || new Date().toISOString()).slice(0, 10);
 const file = path.join(LOG_DIR, 'errors-' + day + '.jsonl');
 
+let writeOk = false;
+let writeError = null;
 try {
   fs.mkdirSync(LOG_DIR, { recursive: true });
   fs.appendFileSync(file, JSON.stringify(entry) + '\\n', 'utf8');
+  writeOk = true;
+
+  // Rotación lazy: gzipea archivos errors-*.jsonl con > 7 días que aún no
+  // estén comprimidos. Es best-effort — si falla no rompe nada (cof:true).
+  // No usamos cron porque queremos que el rotation viva donde nacen los logs.
+  try {
+    const cutoffMs = Date.now() - (7 * 24 * 3600 * 1000);
+    const files = fs.readdirSync(LOG_DIR);
+    for (const f of files) {
+      if (!/^errors-\\d{4}-\\d{2}-\\d{2}\\.jsonl$/.test(f)) continue;
+      const full = path.join(LOG_DIR, f);
+      const stat = fs.statSync(full);
+      if (stat.mtimeMs >= cutoffMs) continue;
+      // gzip y borrá el original. require('zlib') es built-in, siempre disponible.
+      const zlib = require('zlib');
+      const data = fs.readFileSync(full);
+      fs.writeFileSync(full + '.gz', zlib.gzipSync(data));
+      fs.unlinkSync(full);
+    }
+    // Borramos archivos .gz con > 60 días — retention.
+    const retentionMs = Date.now() - (60 * 24 * 3600 * 1000);
+    for (const f of files) {
+      if (!/^errors-\\d{4}-\\d{2}-\\d{2}\\.jsonl\\.gz$/.test(f)) continue;
+      const full = path.join(LOG_DIR, f);
+      const stat = fs.statSync(full);
+      if (stat.mtimeMs < retentionMs) fs.unlinkSync(full);
+    }
+  } catch (_rotErr) {
+    // rotation es best-effort; si falla, lo emitimos a stderr pero no rompe
+    try { console.error(JSON.stringify({
+      ts: new Date().toISOString(), level: 'warn', event: 'log_rotation_failed',
+      message: String(_rotErr && _rotErr.message || _rotErr)
+    })); } catch (_) {}
+  }
 } catch (e) {
-  // No reventamos el flujo: el reply al usuario es prioritario al log.
-  console.error('[chefin-error] failed to write log:', e.message);
+  writeError = String(e && e.message || e);
+  // Fallback estructurado: stderr siempre disponible, lo capturan los logs
+  // de Docker. La entrada original ya se emitió en Extract Error Context;
+  // acá emitimos un evento adicional avisando que el archivo de log falló.
+  try { console.error(JSON.stringify({
+    ts: new Date().toISOString(), level: 'critical', event: 'error_log_write_failed',
+    target_file: file, error: writeError, original_event: entry.event
+  })); } catch (_) {}
 }
 
-return [{ json: { ...item, logFile: file } }];`
+return [{ json: { ...item, logFile: file, logWriteOk: writeOk, logWriteError: writeError } }];`
 }, 440, 0, { cof: true, always: true });
 connect('Extract Error Context', 'Write Error Log');
 
@@ -209,11 +286,41 @@ addNode('Send Error Reply', 'n8n-nodes-evolution-api.evolutionApi', {
     remoteJid: '={{ $json.phone }}',
     messageText: '={{ $json.userReply }}',
     options_message: {}
-}, 880, -100, { tv: 1, creds: { evolutionApi: EVO }, cof: true });
+}, 880, -100, { tv: 1, creds: { evolutionApi: EVO }, cof: true, always: true });
 connect('IF Can Reply', 'Send Error Reply', 0);
 
-// Rama "no podemos responder" → no hacemos nada extra (el log ya quedó).
-addNode('Skip Reply', 'n8n-nodes-base.noOp', {}, 880, 100, { tv: 1 });
+// Verificación post-send: si Evolution falló, el usuario NO recibió ni el
+// reply original (porque el agente reventó) NI el mensaje de error (porque
+// Evolution está caído). Es el peor escenario UX. Lo logueamos como CRITICAL
+// para que el operador lo note en stderr aunque la base esté OK.
+addNode('Verify Reply Sent', 'n8n-nodes-base.code', {
+    jsCode: `const item = $input.first()?.json || {};
+const sendErr = item.error || item.errorMessage || (item.message && /error/i.test(item.message) ? item.message : null);
+const sent = !sendErr && (item.key || item.messageId || item.id);
+const ts = new Date().toISOString();
+if (!sent) {
+  try { console.error(JSON.stringify({
+    ts, level: 'critical', event: 'error_reply_send_failed',
+    error: String(sendErr || 'no message id in evolution response'),
+    phone_present: true,
+    note: 'usuario NO recibió ni el reply original ni el mensaje de error'
+  })); } catch (_) {}
+}
+return [{ json: { ...item, replySent: !!sent, replySendError: sendErr || null } }];`
+}, 1100, -100, { cof: true, always: true });
+connect('Send Error Reply', 'Verify Reply Sent');
+
+// Rama "no podemos responder" → log estructurado para diferenciar "no había
+// teléfono" (e.g. error en cron) vs. "Evolution falló" (más arriba).
+addNode('Skip Reply', 'n8n-nodes-base.code', {
+    jsCode: `const item = $input.first()?.json || {};
+try { console.error(JSON.stringify({
+  ts: new Date().toISOString(), level: 'info', event: 'error_reply_skipped',
+  reason: 'no_phone_extracted',
+  workflow: item.logEntry && item.logEntry.workflow || null
+})); } catch (_) {}
+return [{ json: item }];`
+}, 880, 100);
 connect('IF Can Reply', 'Skip Reply', 1);
 
 // =========================================================================

@@ -135,6 +135,40 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Apply schema (idempotent)
 # ---------------------------------------------------------------------------
+# Backup automático de la base 'expenses' antes de aplicar el schema.
+# Aunque el schema usa CREATE TABLE/FUNCTION IF NOT EXISTS y CREATE OR REPLACE,
+# un cambio mal pensado en una función puede romper datos (ej. ALTER TABLE
+# con DROP COLUMN, una migration que cambia constraints). Tener el dump del
+# minuto antes nos da un rollback de un solo comando.
+#
+# Skipping cuando --purge-db (no tiene sentido backupear lo que vas a borrar)
+# o cuando la DB no existe todavía (primer deploy en una máquina limpia).
+if [ "$PURGE_DB" -ne 1 ]; then
+    bold "[3a/6] Backing up 'expenses' before schema apply"
+    DB_EXISTS=$(docker compose exec -T n8n_postgres sh -c \
+        "PGPASSWORD=\$POSTGRES_PASSWORD psql -t -A -U \$POSTGRES_USER -d postgres -c \"SELECT 1 FROM pg_database WHERE datname='expenses'\"" \
+        | tr -d '\r\n' || true)
+    if [ "$DB_EXISTS" = "1" ]; then
+        BACKUP_DIR="backups"
+        mkdir -p "$BACKUP_DIR"
+        BACKUP_FILE="$BACKUP_DIR/expenses-$(date +%Y%m%d-%H%M%S).sql.gz"
+        if docker compose exec -T n8n_postgres sh -c \
+            'PGPASSWORD=$POSTGRES_PASSWORD pg_dump -U $POSTGRES_USER -d expenses --clean --if-exists --quote-all-identifiers' \
+            2>/dev/null | gzip > "$BACKUP_FILE"; then
+            BACKUP_SIZE=$(du -h "$BACKUP_FILE" 2>/dev/null | cut -f1 || echo "?")
+            ok "backup: $BACKUP_FILE ($BACKUP_SIZE)"
+
+            # Retention: borrar backups con > 7 días. Best-effort, no falla el deploy.
+            find "$BACKUP_DIR" -maxdepth 1 -name 'expenses-*.sql.gz' -type f -mtime +7 -delete 2>/dev/null || true
+        else
+            warn "pg_dump falló, sigo igual (no abortamos por una falla de backup)"
+            rm -f "$BACKUP_FILE" 2>/dev/null
+        fi
+    else
+        warn "DB 'expenses' no existe todavía — saltando backup (primer deploy)"
+    fi
+fi
+
 bold "[3/6] Applying SQL schema"
 docker compose run --rm db-init
 ok "schema applied"
@@ -208,6 +242,28 @@ for i in $(seq 1 60); do
     echo -n "."
     sleep 1
 done
+
+# Health check del API HTTP de n8n. El binario CLI puede arrancar aunque el
+# server interno haya quebrado durante init (e.g. langchain falló al cargar,
+# DB con schema incompatible, port collision). En ese caso importar workflows
+# silenciosamente fallaba y nadie se enteraba hasta el primer mensaje del
+# usuario. Falla rápido si /healthz no responde 200 en 60s.
+echo -n "Probing n8n /healthz..."
+HEALTHZ_OK=0
+for i in $(seq 1 60); do
+    if docker compose exec -T n8n sh -c 'wget -qO- --timeout=2 http://127.0.0.1:5678/healthz 2>/dev/null | grep -q "ok"' >/dev/null 2>&1; then
+        echo " ok."
+        HEALTHZ_OK=1
+        break
+    fi
+    echo -n "."
+    sleep 1
+done
+if [ "$HEALTHZ_OK" -ne 1 ]; then
+    err "n8n /healthz did not respond OK in 60s. Container alive but server broken."
+    err "Inspecciona: docker compose logs --tail=50 n8n"
+    exit 1
+fi
 
 # Borramos los workflows previos antes de re-importar para garantizar estado
 # limpio. Sin esto, los runs anteriores pueden dejar duplicados con el mismo

@@ -4520,3 +4520,962 @@ BEGIN
     RETURN QUERY SELECT p_id, TRUE;
 END;
 $$ LANGUAGE plpgsql;
+
+-- =====================================================================
+-- AGENT INSTRUCTIONS (lecciones aprendidas — pgvector)
+-- =====================================================================
+-- Distinto de memory_chunks: estas son INSTRUCCIONES OPERATIVAS que el
+-- usuario le da al agente para modificar su comportamiento. Se inyectan
+-- automáticamente al system prompt en cada turno (vía retrieval por
+-- similitud con el mensaje del usuario), no las invoca el agente con
+-- recall_*. El agente decide cuándo GUARDARLAS llamando teach_agent
+-- frente a disparadores como "de ahora en adelante…", "siempre que…",
+-- "no me digas más…", "preferiría que…".
+--
+-- Diseño:
+--   • Per-user (scope hardcoded — no global por ahora).
+--   • Embedding del campo `instruction` (lo que se compara contra el
+--     mensaje del turno).
+--   • active=false como soft-delete; el cron podría purgar viejos.
+--   • times_applied / last_applied_at: telemetría — el cron semanal
+--     podría desactivar lecciones que nunca matchean.
+--   • priority: desempate cuando varias lecciones son igualmente
+--     relevantes. Default 0 — el agente lo bumpea si el usuario insiste.
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS agent_instructions (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    instruction     TEXT NOT NULL,           -- la regla en lenguaje natural
+    trigger_hint    TEXT,                    -- contexto de cuándo aplica (opcional)
+    embedding       vector(1536) NOT NULL,
+    embedding_model TEXT NOT NULL DEFAULT 'text-embedding-3-small',
+    priority        INT NOT NULL DEFAULT 0,
+    active          BOOLEAN NOT NULL DEFAULT TRUE,
+    times_applied   INT NOT NULL DEFAULT 0,
+    last_applied_at TIMESTAMPTZ,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_instructions_user_active
+    ON agent_instructions (user_id, active);
+
+CREATE INDEX IF NOT EXISTS idx_agent_instructions_embedding
+    ON agent_instructions USING hnsw (embedding vector_cosine_ops);
+
+-- ---------- add_agent_instruction ----------
+-- Insert + dedup blando (similitud >= 0.93 → bump priority en lugar de duplicar).
+-- Devuelve was_created=false cuando hizo dedup.
+CREATE OR REPLACE FUNCTION add_agent_instruction(
+    p_user_id      UUID,
+    p_instruction  TEXT,
+    p_embedding    vector(1536),
+    p_trigger_hint TEXT DEFAULT NULL,
+    p_priority     INT  DEFAULT 0,
+    p_metadata     JSONB DEFAULT '{}'::jsonb
+)
+RETURNS TABLE(id UUID, was_created BOOLEAN, instruction TEXT) AS $$
+DECLARE
+    v_id UUID;
+    v_existing UUID;
+BEGIN
+    IF p_user_id IS NULL OR p_instruction IS NULL OR length(trim(p_instruction)) = 0 THEN
+        RAISE EXCEPTION 'add_agent_instruction: user_id e instruction son requeridos';
+    END IF;
+
+    -- Dedup blando: si ya existe una lección casi idéntica, bumpeamos prioridad
+    SELECT ai.id INTO v_existing
+    FROM agent_instructions ai
+    WHERE ai.user_id = p_user_id
+      AND ai.active = TRUE
+      AND ai.embedding <=> p_embedding <= 0.07
+    ORDER BY ai.embedding <=> p_embedding
+    LIMIT 1;
+
+    IF v_existing IS NOT NULL THEN
+        UPDATE agent_instructions
+        SET priority = priority + 1,
+            metadata = metadata || COALESCE(p_metadata, '{}'::jsonb)
+        WHERE agent_instructions.id = v_existing
+        RETURNING agent_instructions.id INTO v_id;
+        RETURN QUERY
+        SELECT v_id, FALSE,
+               (SELECT ai.instruction FROM agent_instructions ai WHERE ai.id = v_id);
+        RETURN;
+    END IF;
+
+    INSERT INTO agent_instructions
+        (user_id, instruction, trigger_hint, embedding, priority, metadata)
+    VALUES (p_user_id, trim(p_instruction), NULLIF(trim(COALESCE(p_trigger_hint, '')), ''),
+            p_embedding, COALESCE(p_priority, 0), COALESCE(p_metadata, '{}'::jsonb))
+    RETURNING agent_instructions.id INTO v_id;
+
+    RETURN QUERY SELECT v_id, TRUE, trim(p_instruction);
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- search_agent_instructions ----------
+-- Devuelve top-K lecciones activas del usuario que matchean semánticamente
+-- el mensaje del turno. Bumpea times_applied + last_applied_at sobre las
+-- que devuelve (telemetría — sirve para detectar lecciones muertas).
+--
+-- Ranking: similitud (0.7) + priority normalizada (0.3). Recencia no
+-- aplica acá: una lección no se vuelve menos relevante con el tiempo
+-- (a diferencia de un fact biográfico).
+CREATE OR REPLACE FUNCTION search_agent_instructions(
+    p_user_id   UUID,
+    p_embedding vector(1536),
+    p_k         INT  DEFAULT 5,
+    p_min_score REAL DEFAULT 0.55
+)
+RETURNS TABLE(
+    id              UUID,
+    instruction     TEXT,
+    trigger_hint    TEXT,
+    priority        INT,
+    similarity      REAL,
+    final_score     REAL,
+    times_applied   INT,
+    metadata        JSONB
+) AS $$
+DECLARE
+    v_max_priority INT;
+BEGIN
+    -- Normalizar priority por el max del user (evita que un priority alto
+    -- en un user opaque la similitud).
+    SELECT COALESCE(MAX(ai.priority), 0) INTO v_max_priority
+    FROM agent_instructions ai
+    WHERE ai.user_id = p_user_id AND ai.active = TRUE;
+
+    RETURN QUERY
+    WITH matches AS (
+        SELECT ai.id, ai.instruction, ai.trigger_hint, ai.priority, ai.metadata, ai.times_applied,
+               (1 - (ai.embedding <=> p_embedding))::REAL AS sim
+        FROM agent_instructions ai
+        WHERE ai.user_id = p_user_id
+          AND ai.active = TRUE
+          AND (1 - (ai.embedding <=> p_embedding))::REAL >= p_min_score
+        ORDER BY ai.embedding <=> p_embedding
+        LIMIT GREATEST(COALESCE(p_k, 5), 1)
+    ),
+    scored AS (
+        SELECT m.id, m.instruction, m.trigger_hint, m.priority, m.metadata, m.times_applied, m.sim,
+               (m.sim * 0.7 +
+                CASE WHEN v_max_priority > 0
+                     THEN (m.priority::real / v_max_priority::real) * 0.3
+                     ELSE 0
+                END)::REAL AS fscore
+        FROM matches m
+    ),
+    bumped AS (
+        UPDATE agent_instructions ai
+        SET times_applied = ai.times_applied + 1,
+            last_applied_at = NOW()
+        FROM scored s
+        WHERE ai.id = s.id
+        RETURNING ai.id
+    )
+    SELECT s.id, s.instruction, s.trigger_hint, s.priority, s.sim, s.fscore,
+           s.times_applied + 1 AS times_applied, s.metadata
+    FROM scored s
+    ORDER BY s.fscore DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- list_agent_instructions ----------
+-- Lista lecciones activas para un user. Para "qué aprendiste de mí".
+CREATE OR REPLACE FUNCTION list_agent_instructions(
+    p_user_id UUID,
+    p_limit   INT DEFAULT 20
+)
+RETURNS TABLE(
+    id              UUID,
+    instruction     TEXT,
+    trigger_hint    TEXT,
+    priority        INT,
+    times_applied   INT,
+    last_applied_at TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT ai.id, ai.instruction, ai.trigger_hint, ai.priority,
+           ai.times_applied, ai.last_applied_at, ai.created_at
+    FROM agent_instructions ai
+    WHERE ai.user_id = p_user_id
+      AND ai.active = TRUE
+    ORDER BY ai.priority DESC, ai.times_applied DESC, ai.created_at DESC
+    LIMIT GREATEST(COALESCE(p_limit, 20), 1);
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- forget_agent_instruction ----------
+-- Soft-delete: marca active=false. No se borra física para preservar audit.
+CREATE OR REPLACE FUNCTION forget_agent_instruction(
+    p_user_id UUID,
+    p_id      UUID
+)
+RETURNS TABLE(id UUID, forgot BOOLEAN) AS $$
+DECLARE
+    v_found BOOLEAN;
+BEGIN
+    UPDATE agent_instructions ai
+    SET active = FALSE,
+        metadata = ai.metadata || jsonb_build_object('forgotten_at', NOW())
+    WHERE ai.id = p_id AND ai.user_id = p_user_id AND ai.active = TRUE
+    RETURNING TRUE INTO v_found;
+
+    RETURN QUERY SELECT p_id, COALESCE(v_found, FALSE);
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================================
+-- CORRECTION PATTERNS (auto-detección de lecciones aprendibles)
+-- =====================================================================
+-- Cada vez que el usuario corrige una categoría/tag/grupo de una transacción,
+-- guardamos el patrón. Cuando el mismo (from→to) se repite >= 3 veces,
+-- el agente se lo presenta al usuario y le ofrece aprender la regla.
+--
+-- Ejemplo: usuario corrige 3 cenas distintas de Comida → Trabajo.
+-- correction_patterns tendrá UNA fila (kind=category, from='Comida',
+-- to='Trabajo') con count=3 y descriptions_sample=['cena con José',
+-- 'cena clientes', 'cena con sponsors']. Al detectar count>=3 sin sugerencia
+-- previa, el sistema inyecta `sugerencia_pendiente=...` al [CONTEXTO]
+-- del próximo turno y el agente le ofrece al usuario "aprender" la regla.
+--
+-- Si el usuario acepta → teach_agent + mark_suggestion_responded(accepted).
+-- Si rechaza → mark_suggestion_responded(rejected) y no se vuelve a sugerir
+-- ese mismo (from→to) hasta que count suba 5 más.
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS correction_patterns (
+    id              SERIAL PRIMARY KEY,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL CHECK (kind IN ('category', 'tag', 'group', 'description')),
+    from_value      TEXT NOT NULL,
+    to_value        TEXT NOT NULL,
+    descriptions_sample JSONB NOT NULL DEFAULT '[]'::jsonb,  -- hasta 5 ejemplos
+    count           INT NOT NULL DEFAULT 1,
+    first_seen      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    suggested_at    TIMESTAMPTZ,
+    user_response   TEXT CHECK (user_response IN ('accepted', 'rejected')),
+    responded_at    TIMESTAMPTZ,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    UNIQUE (user_id, kind, from_value, to_value)
+);
+
+CREATE INDEX IF NOT EXISTS idx_correction_patterns_pending
+    ON correction_patterns (user_id, count DESC, last_seen DESC)
+    WHERE suggested_at IS NULL;
+
+-- ---------- record_correction ----------
+-- Upsert por (user_id, kind, from, to). Mantiene hasta 5 descriptions distintas
+-- como muestra. Devuelve count actualizado + flags de sugerencia.
+CREATE OR REPLACE FUNCTION record_correction(
+    p_user_id     UUID,
+    p_kind        TEXT,
+    p_from_value  TEXT,
+    p_to_value    TEXT,
+    p_description TEXT DEFAULT NULL
+)
+RETURNS TABLE(id INT, count INT, threshold_reached BOOLEAN, should_suggest BOOLEAN) AS $$
+DECLARE
+    v_id INT;
+    v_count INT;
+    v_suggested TIMESTAMPTZ;
+    v_response TEXT;
+    v_existing_descs JSONB;
+    v_new_descs JSONB;
+    v_clean_desc TEXT;
+BEGIN
+    -- Validaciones soft: si faltan datos, no rompemos el flujo principal.
+    IF p_user_id IS NULL OR p_from_value IS NULL OR p_to_value IS NULL
+       OR length(trim(p_from_value)) = 0 OR length(trim(p_to_value)) = 0
+       OR p_from_value = p_to_value
+    THEN
+        RETURN QUERY SELECT NULL::INT, 0, FALSE, FALSE;
+        RETURN;
+    END IF;
+
+    v_clean_desc := NULLIF(trim(COALESCE(p_description, '')), '');
+
+    -- Existing? Si sí, mergamos descriptions_sample (max 5 únicas).
+    SELECT cp.id, cp.descriptions_sample INTO v_id, v_existing_descs
+    FROM correction_patterns cp
+    WHERE cp.user_id = p_user_id
+      AND cp.kind = p_kind
+      AND cp.from_value = p_from_value
+      AND cp.to_value = p_to_value;
+
+    IF v_id IS NOT NULL THEN
+        -- Construimos array nuevo: existing + new (si no estaba), max 5
+        IF v_clean_desc IS NOT NULL AND NOT (v_existing_descs ? v_clean_desc) THEN
+            v_new_descs := (
+                SELECT jsonb_agg(d)
+                FROM (
+                    SELECT to_jsonb(v_clean_desc) AS d
+                    UNION ALL
+                    SELECT value FROM jsonb_array_elements(v_existing_descs)
+                    LIMIT 4
+                ) sub
+            );
+        ELSE
+            v_new_descs := v_existing_descs;
+        END IF;
+
+        UPDATE correction_patterns cp
+        SET count = cp.count + 1,
+            last_seen = NOW(),
+            descriptions_sample = COALESCE(v_new_descs, cp.descriptions_sample)
+        WHERE cp.id = v_id
+        RETURNING cp.count, cp.suggested_at, cp.user_response
+            INTO v_count, v_suggested, v_response;
+    ELSE
+        v_new_descs := CASE WHEN v_clean_desc IS NOT NULL
+                            THEN jsonb_build_array(v_clean_desc)
+                            ELSE '[]'::jsonb END;
+        INSERT INTO correction_patterns
+            (user_id, kind, from_value, to_value, descriptions_sample)
+        VALUES (p_user_id, p_kind, p_from_value, p_to_value, v_new_descs)
+        RETURNING correction_patterns.id, correction_patterns.count
+            INTO v_id, v_count;
+        v_suggested := NULL;
+        v_response := NULL;
+    END IF;
+
+    -- should_suggest = count>=3 Y nunca sugerimos antes
+    -- O bien (count >= prev_count_at_rejection + 5 si fue rejected antes —
+    -- damos otra chance al usuario si insiste mucho).
+    RETURN QUERY SELECT v_id, v_count,
+        v_count >= 3 AS threshold_reached,
+        (v_count >= 3 AND v_suggested IS NULL) OR
+        (v_response = 'rejected' AND v_count >= 8) AS should_suggest;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- get_pending_lesson_suggestion ----------
+-- Devuelve la sugerencia con mayor count que aún no se presentó al usuario.
+-- Ordena por count DESC (la corrección más insistente gana). Devuelve también
+-- las descriptions sample para que el agente pueda mostrarlas como ejemplos.
+CREATE OR REPLACE FUNCTION get_pending_lesson_suggestion(
+    p_user_id UUID
+)
+RETURNS TABLE(
+    id              INT,
+    kind            TEXT,
+    from_value      TEXT,
+    to_value        TEXT,
+    count           INT,
+    descriptions_sample JSONB,
+    last_seen       TIMESTAMPTZ
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT cp.id, cp.kind, cp.from_value, cp.to_value, cp.count,
+           cp.descriptions_sample, cp.last_seen
+    FROM correction_patterns cp
+    WHERE cp.user_id = p_user_id
+      AND cp.suggested_at IS NULL
+      AND cp.count >= 3
+    ORDER BY cp.count DESC, cp.last_seen DESC
+    LIMIT 1;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- mark_suggestion_responded ----------
+-- Cuando el agente le presenta la sugerencia al usuario, llamamos esto con
+-- 'presented' para marcar suggested_at (así no la repite). Cuando el usuario
+-- responde sí/no, se llama de nuevo con 'accepted' o 'rejected'.
+CREATE OR REPLACE FUNCTION mark_suggestion_responded(
+    p_user_id  UUID,
+    p_id       INT,
+    p_response TEXT  -- 'presented' | 'accepted' | 'rejected'
+)
+RETURNS TABLE(id INT, ok BOOLEAN) AS $$
+DECLARE v_found BOOLEAN;
+BEGIN
+    IF p_response = 'presented' THEN
+        UPDATE correction_patterns cp
+        SET suggested_at = NOW()
+        WHERE cp.id = p_id AND cp.user_id = p_user_id AND cp.suggested_at IS NULL
+        RETURNING TRUE INTO v_found;
+    ELSIF p_response IN ('accepted', 'rejected') THEN
+        UPDATE correction_patterns cp
+        SET user_response = p_response,
+            responded_at = NOW(),
+            suggested_at = COALESCE(cp.suggested_at, NOW())
+        WHERE cp.id = p_id AND cp.user_id = p_user_id
+        RETURNING TRUE INTO v_found;
+    ELSE
+        RETURN QUERY SELECT p_id, FALSE;
+        RETURN;
+    END IF;
+    RETURN QUERY SELECT p_id, COALESCE(v_found, FALSE);
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- Trigger: auto-record cuando cambia category_id ----------
+-- Dispara después de UPDATE de una transacción cuando category_id cambió.
+-- Sin esto, el agente tendría que llamar record_correction explícitamente,
+-- y se olvidaría. Trigger = registro garantizado.
+CREATE OR REPLACE FUNCTION trg_record_category_correction()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_old_name TEXT;
+    v_new_name TEXT;
+BEGIN
+    -- Solo nos interesa cuando ambas categorías existen y son distintas.
+    IF NEW.category_id IS NULL OR OLD.category_id IS NULL THEN RETURN NEW; END IF;
+    IF NEW.category_id = OLD.category_id THEN RETURN NEW; END IF;
+
+    SELECT name INTO v_old_name FROM categories WHERE id = OLD.category_id;
+    SELECT name INTO v_new_name FROM categories WHERE id = NEW.category_id;
+
+    IF v_old_name IS NULL OR v_new_name IS NULL THEN RETURN NEW; END IF;
+
+    PERFORM record_correction(
+        NEW.user_id,
+        'category',
+        v_old_name,
+        v_new_name,
+        COALESCE(NEW.description, OLD.description)
+    );
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_transactions_category_correction ON transactions;
+CREATE TRIGGER trg_transactions_category_correction
+    AFTER UPDATE OF category_id ON transactions
+    FOR EACH ROW
+    WHEN (OLD.category_id IS DISTINCT FROM NEW.category_id)
+    EXECUTE FUNCTION trg_record_category_correction();
+
+-- ---------- list_pending_corrections (debug + telemetría) ----------
+-- Útil para que el operador pueda ver "cuántos patrones detectados pero no
+-- sugeridos hay en sistema". También sirve si querés un cron que limpie
+-- patrones viejos sin acción.
+CREATE OR REPLACE FUNCTION list_correction_patterns(
+    p_user_id UUID,
+    p_only_pending BOOLEAN DEFAULT FALSE,
+    p_limit INT DEFAULT 50
+)
+RETURNS TABLE(
+    id INT, kind TEXT, from_value TEXT, to_value TEXT, count INT,
+    descriptions_sample JSONB, suggested_at TIMESTAMPTZ, user_response TEXT,
+    last_seen TIMESTAMPTZ
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT cp.id, cp.kind, cp.from_value, cp.to_value, cp.count,
+           cp.descriptions_sample, cp.suggested_at, cp.user_response, cp.last_seen
+    FROM correction_patterns cp
+    WHERE cp.user_id = p_user_id
+      AND (NOT p_only_pending OR cp.suggested_at IS NULL)
+    ORDER BY cp.count DESC, cp.last_seen DESC
+    LIMIT GREATEST(COALESCE(p_limit, 50), 1);
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- =====================================================================
+-- TRANSACTION EMBEDDINGS (auto-categorización por similitud semántica)
+-- =====================================================================
+-- Cada transacción con descripción no-trivial recibe un embedding del
+-- description (no del monto, ni de la categoría — solo el texto libre).
+-- Lo usamos para sugerir categoría cuando el usuario loguea algo nuevo:
+-- "brunch en Crisol" → similar a "almuerzo en Crisol" (Comida) → sugiere
+-- Comida.
+--
+-- Decisiones:
+--   • Tabla SEPARADA de transactions — embedding es 1536 floats que casi
+--     nunca se leen junto con el resto de columnas. Si lo metíamos en
+--     transactions, queries simples como "totales del mes" se inflaban.
+--   • Backfill ASYNC vía cron cada 5min — no slow-down en log_transaction.
+--   • TTL implícito: cuando el usuario borra una tx, ON DELETE CASCADE
+--     limpia su embedding. No re-embedeamos nunca (description rara vez
+--     cambia y si cambia, el viejo embedding sigue siendo razonable).
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS transaction_embeddings (
+    transaction_id  UUID PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    embedding       vector(1536) NOT NULL,
+    embedding_model TEXT NOT NULL DEFAULT 'text-embedding-3-small',
+    description_hash TEXT NOT NULL,    -- md5 del description al embed (para detectar cambios)
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- HNSW index — filtramos por user_id + por NOT en transactions excluidas (group)
+CREATE INDEX IF NOT EXISTS idx_tx_embeddings_user
+    ON transaction_embeddings (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_embeddings_vec
+    ON transaction_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- ---------- pending_embedding_backlog ----------
+-- Devuelve transacciones que aún NO tienen embedding y tienen description
+-- no-trivial (>= 8 chars). El cron las procesa en lotes.
+-- Filtra a las últimas 90 días — backlogs viejos no valen la pena.
+CREATE OR REPLACE FUNCTION pending_embedding_backlog(p_limit INT DEFAULT 50)
+RETURNS TABLE(transaction_id UUID, user_id UUID, description TEXT) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT t.id, t.user_id, t.description
+    FROM transactions t
+    LEFT JOIN transaction_embeddings te ON te.transaction_id = t.id
+    WHERE te.transaction_id IS NULL
+      AND t.description IS NOT NULL
+      AND length(trim(t.description)) >= 8
+      AND t.created_at >= NOW() - INTERVAL '90 days'
+    ORDER BY t.created_at DESC
+    LIMIT GREATEST(COALESCE(p_limit, 50), 1);
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- save_transaction_embedding ----------
+-- Upsert. El cron llama esto después de embedear el description.
+CREATE OR REPLACE FUNCTION save_transaction_embedding(
+    p_transaction_id UUID,
+    p_user_id        UUID,
+    p_embedding      vector(1536),
+    p_description    TEXT,
+    p_model          TEXT DEFAULT 'text-embedding-3-small'
+)
+RETURNS BOOLEAN AS $$
+BEGIN
+    INSERT INTO transaction_embeddings
+        (transaction_id, user_id, embedding, embedding_model, description_hash)
+    VALUES (
+        p_transaction_id, p_user_id, p_embedding,
+        COALESCE(NULLIF(p_model, ''), 'text-embedding-3-small'),
+        md5(COALESCE(p_description, ''))
+    )
+    ON CONFLICT (transaction_id) DO UPDATE
+        SET embedding = EXCLUDED.embedding,
+            embedding_model = EXCLUDED.embedding_model,
+            description_hash = EXCLUDED.description_hash,
+            created_at = NOW();
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------- find_similar_transactions ----------
+-- KNN search dentro de las transactions del usuario. Por default mira los
+-- últimos 180 días — el comportamiento del usuario hace 2 años no es buen
+-- predictor. Excluye __forgotten__ y txs sin categoría.
+CREATE OR REPLACE FUNCTION find_similar_transactions(
+    p_user_id   UUID,
+    p_embedding vector(1536),
+    p_k         INT  DEFAULT 5,
+    p_days_back INT  DEFAULT 180,
+    p_min_score REAL DEFAULT 0.65
+)
+RETURNS TABLE(
+    transaction_id UUID,
+    description    TEXT,
+    category_id    UUID,
+    category_name  TEXT,
+    amount         NUMERIC,
+    transaction_date DATE,
+    similarity     REAL
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT t.id, t.description, t.category_id,
+           c.name AS category_name,
+           t.amount, t.transaction_date,
+           (1 - (te.embedding <=> p_embedding))::REAL AS similarity
+    FROM transaction_embeddings te
+    JOIN transactions t ON t.id = te.transaction_id
+    LEFT JOIN categories c ON c.id = t.category_id
+    WHERE te.user_id = p_user_id
+      AND t.transaction_date >= CURRENT_DATE - (p_days_back || ' days')::INTERVAL
+      AND t.category_id IS NOT NULL
+      AND (1 - (te.embedding <=> p_embedding))::REAL >= p_min_score
+    ORDER BY te.embedding <=> p_embedding
+    LIMIT GREATEST(COALESCE(p_k, 5), 1);
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ---------- suggest_category_by_similarity ----------
+-- El consumidor principal. Encuentra los top-K similares, agrega por
+-- category_id, devuelve la moda con su confidence (= proporción del top-K
+-- que tiene la categoría ganadora, ponderada por similitud).
+--
+-- Devuelve null/empty si no hay similares con sim >= min_score.
+CREATE OR REPLACE FUNCTION suggest_category_by_similarity(
+    p_user_id   UUID,
+    p_embedding vector(1536),
+    p_k         INT  DEFAULT 5,
+    p_min_score REAL DEFAULT 0.65
+)
+RETURNS TABLE(
+    category_id     UUID,
+    category_name   TEXT,
+    confidence      REAL,
+    matches_count   INT,
+    top_k_count     INT,
+    sample_descriptions TEXT[]
+) AS $$
+DECLARE
+    v_top_k INT;
+BEGIN
+    WITH similar AS (
+        SELECT * FROM find_similar_transactions(p_user_id, p_embedding, p_k, 180, p_min_score)
+    ),
+    counted AS (
+        SELECT s.category_id, s.category_name,
+               COUNT(*)::INT AS hits,
+               SUM(s.similarity)::REAL AS sim_sum,
+               array_agg(LEFT(s.description, 60) ORDER BY s.similarity DESC) AS samples
+        FROM similar s
+        GROUP BY s.category_id, s.category_name
+    ),
+    total AS (
+        SELECT COALESCE(SUM(hits), 0) AS total_hits, COALESCE(SUM(sim_sum), 0) AS total_sim
+        FROM counted
+    )
+    SELECT c.category_id, c.category_name,
+           CASE WHEN t.total_sim > 0 THEN (c.sim_sum / t.total_sim)::REAL ELSE 0::REAL END AS confidence,
+           c.hits AS matches_count,
+           t.total_hits::INT AS top_k_count,
+           c.samples[1:3] AS sample_descriptions
+    FROM counted c CROSS JOIN total t
+    WHERE t.total_hits > 0
+    ORDER BY confidence DESC, c.hits DESC
+    LIMIT 1;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- =====================================================================
+-- AUTO-GROUPS (detección de candidatos de grupo/viaje)
+-- =====================================================================
+-- Heurística simple para v1: contar palabras "significativas" (>=5 chars,
+-- no en stopwords, no numéricas) que aparecen en transactions sin group_id
+-- de los últimos N días. Si una palabra aparece en >= min_count txs y NO
+-- coincide con un grupo existente, es candidato.
+--
+-- Limitaciones conocidas (asumidas):
+--   • Falsos positivos: "Starbucks" si tomás café 5 días → sugerirá grupo
+--     "starbucks". El usuario simplemente dice "no". Costo bajo.
+--   • Stopwords cortos hardcodeados en español argentino. Se puede mejorar
+--     con dict de país, pero no vale la complejidad.
+--   • Groups inactive (closed) se incluyen en el match — si ya cerraste
+--     "Brasil" no te resugiere viaje a Brasil aunque haya nuevas tx con esa
+--     palabra. Comportamiento intencional.
+-- =====================================================================
+CREATE OR REPLACE FUNCTION detect_potential_groups(
+    p_user_id   UUID,
+    p_days      INT DEFAULT 14,
+    p_min_count INT DEFAULT 5
+)
+RETURNS TABLE(
+    keyword       TEXT,
+    tx_count      INT,
+    total_amount  NUMERIC,
+    earliest_date DATE,
+    latest_date   DATE,
+    sample_descriptions TEXT[]
+) AS $$
+DECLARE
+    -- Stopwords: español rioplatense + finance común. Podés ampliar.
+    v_stopwords TEXT[] := ARRAY[
+        'pago','pague','compre','compré','de','del','la','las','los','el','un','una',
+        'con','para','por','sin','en','al','que','este','esta','mi','tu','su',
+        'transferencia','tarjeta','débito','debito','crédito','credito','efectivo',
+        'mercado','mercadopago','modo','santander','galicia','brubank','naranja',
+        'visa','master','mastercard','americanexpress','amex',
+        'comida','almuerzo','cena','desayuno','café','cafe','super','supermercado',
+        'uber','rappi','pedidosya','didi','cabify',
+        'enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre',
+        'octubre','noviembre','diciembre'
+    ];
+BEGIN
+    RETURN QUERY
+    WITH words AS (
+        SELECT t.id, t.amount, t.description, t.transaction_date,
+               lower(unnest(string_to_array(
+                   regexp_replace(t.description, '[^[:alpha:][:space:]]', ' ', 'g'),
+                   ' '))) AS w
+        FROM transactions t
+        WHERE t.user_id = p_user_id
+          AND t.group_id IS NULL
+          AND t.transaction_date >= CURRENT_DATE - (p_days || ' days')::INTERVAL
+          AND t.description IS NOT NULL
+          AND t.type = 'expense'
+    ),
+    filtered AS (
+        SELECT w.id, w.amount, w.description, w.transaction_date, w.w
+        FROM words w
+        WHERE length(w.w) >= 5
+          AND NOT (w.w = ANY(v_stopwords))
+    ),
+    counts AS (
+        SELECT f.w,
+               COUNT(DISTINCT f.id)::INT AS tx_count,
+               SUM(f.amount)::NUMERIC AS total_amount,
+               MIN(f.transaction_date) AS earliest_date,
+               MAX(f.transaction_date) AS latest_date,
+               array_agg(DISTINCT LEFT(f.description, 60)) FILTER (WHERE f.description IS NOT NULL) AS samples
+        FROM filtered f
+        GROUP BY f.w
+    )
+    SELECT c.w, c.tx_count, c.total_amount, c.earliest_date, c.latest_date,
+           c.samples[1:5]
+    FROM counts c
+    -- Excluir palabras que ya son nombres de grupos (activos o cerrados)
+    LEFT JOIN groups g ON g.user_id = p_user_id AND lower(g.name) = c.w
+    WHERE c.tx_count >= p_min_count
+      AND g.id IS NULL
+    ORDER BY c.tx_count DESC, c.total_amount DESC;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- Log de propuestas — separado de anomaly_alert_log que tiene CHECK constraint
+-- restrictivo. Mismo patrón pero scope distinto.
+CREATE TABLE IF NOT EXISTS group_proposal_log (
+    id          SERIAL PRIMARY KEY,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    keyword     TEXT NOT NULL,
+    notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    user_response TEXT CHECK (user_response IN ('accepted','rejected')),
+    responded_at TIMESTAMPTZ,
+    UNIQUE (user_id, keyword)
+);
+CREATE INDEX IF NOT EXISTS idx_group_proposal_log_user ON group_proposal_log(user_id, notified_at DESC);
+
+-- ---------- claim_group_candidates_for_cron ----------
+-- Para todos los users activos, devuelve hasta 1 candidato top de grupo no
+-- propuesto en últimos 30 días. Marca el ofrecimiento para no spammear.
+CREATE OR REPLACE FUNCTION claim_group_candidates_for_cron()
+RETURNS TABLE(
+    user_id      UUID,
+    phone        TEXT,
+    keyword      TEXT,
+    tx_count     INT,
+    total_amount NUMERIC,
+    earliest_date DATE,
+    latest_date   DATE,
+    sample_descriptions TEXT[]
+) AS $$
+DECLARE
+    v_uid UUID;
+    v_phone TEXT;
+    v_row RECORD;
+BEGIN
+    FOR v_uid, v_phone IN
+        SELECT u.id, u.phone_number FROM users u WHERE u.is_active = TRUE
+    LOOP
+        SELECT g.* INTO v_row
+        FROM detect_potential_groups(v_uid, 14, 5) g
+        WHERE NOT EXISTS (
+            SELECT 1 FROM group_proposal_log gpl
+            WHERE gpl.user_id = v_uid
+              AND gpl.keyword = g.keyword
+              AND gpl.notified_at >= NOW() - INTERVAL '30 days'
+        )
+        ORDER BY g.tx_count DESC, g.total_amount DESC
+        LIMIT 1;
+
+        IF v_row.keyword IS NULL THEN CONTINUE; END IF;
+
+        INSERT INTO group_proposal_log (user_id, keyword)
+        VALUES (v_uid, v_row.keyword)
+        ON CONFLICT (user_id, keyword) DO UPDATE SET notified_at = NOW();
+
+        user_id      := v_uid;
+        phone        := v_phone;
+        keyword      := v_row.keyword;
+        tx_count     := v_row.tx_count;
+        total_amount := v_row.total_amount;
+        earliest_date := v_row.earliest_date;
+        latest_date   := v_row.latest_date;
+        sample_descriptions := v_row.sample_descriptions;
+        RETURN NEXT;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+-- =====================================================================
+-- OBSERVABILITY VIEWS (consumibles por Metabase, psql, cron-watchdog)
+-- =====================================================================
+-- Vistas materializadas-on-demand sobre tablas operativas — no materializadas
+-- porque los datos cambian frecuentemente y no las consultamos millones de
+-- veces. Cada una es una consulta de < 1s en escala chefin (~1k tx/user).
+
+-- v_cron_health_24h: estado de los cron jobs en últimas 24h.
+-- Útil para responder "cuántos jobs corrieron, cuántos fallaron, el último
+-- run de cada job". Es el query base del watchdog.
+CREATE OR REPLACE VIEW v_cron_health_24h AS
+WITH recent AS (
+    SELECT
+        job_name,
+        started_at,
+        finished_at,
+        success,
+        error_msg,
+        items_processed,
+        items_sent,
+        EXTRACT(EPOCH FROM (COALESCE(finished_at, NOW()) - started_at)) AS duration_seconds
+    FROM cron_runs
+    WHERE started_at > NOW() - INTERVAL '24 hours'
+)
+SELECT
+    job_name,
+    COUNT(*)::INT AS runs,
+    COUNT(*) FILTER (WHERE success = TRUE)::INT AS succeeded,
+    COUNT(*) FILTER (WHERE success = FALSE)::INT AS failed,
+    COUNT(*) FILTER (WHERE finished_at IS NULL AND started_at < NOW() - INTERVAL '1 hour')::INT AS zombies,
+    MAX(started_at) AS last_run_at,
+    AVG(duration_seconds)::NUMERIC(10,2) AS avg_duration_s,
+    SUM(items_processed)::INT AS total_items_processed,
+    SUM(items_sent)::INT AS total_items_sent
+FROM recent
+GROUP BY job_name
+ORDER BY last_run_at DESC;
+
+-- v_lesson_health: estado del sistema de lecciones por usuario.
+CREATE OR REPLACE VIEW v_lesson_health AS
+SELECT
+    u.id AS user_id,
+    u.phone_number AS phone,
+    COUNT(ai.id) FILTER (WHERE ai.active = TRUE)::INT AS active_lessons,
+    COUNT(ai.id) FILTER (WHERE ai.active = FALSE)::INT AS forgotten_lessons,
+    COUNT(ai.id) FILTER (WHERE ai.active = TRUE AND ai.times_applied = 0
+        AND ai.created_at < NOW() - INTERVAL '30 days')::INT AS dead_lessons,
+    COUNT(ai.id) FILTER (WHERE ai.active = TRUE
+        AND (ai.metadata->>'flagged_dead_at') IS NOT NULL)::INT AS flagged_dead,
+    SUM(ai.times_applied)::INT AS total_applications,
+    MAX(ai.last_applied_at) AS last_applied_at
+FROM users u
+LEFT JOIN agent_instructions ai ON ai.user_id = u.id
+WHERE u.is_active = TRUE
+GROUP BY u.id, u.phone_number;
+
+-- v_correction_patterns_status: visión global del pipeline de auto-sugerencias.
+CREATE OR REPLACE VIEW v_correction_patterns_status AS
+SELECT
+    u.id AS user_id,
+    u.phone_number AS phone,
+    COUNT(cp.id)::INT AS total_patterns,
+    COUNT(cp.id) FILTER (WHERE cp.suggested_at IS NULL AND cp.count >= 3)::INT AS pending_suggestions,
+    COUNT(cp.id) FILTER (WHERE cp.user_response = 'accepted')::INT AS accepted,
+    COUNT(cp.id) FILTER (WHERE cp.user_response = 'rejected')::INT AS rejected,
+    COUNT(cp.id) FILTER (WHERE cp.suggested_at IS NOT NULL AND cp.user_response IS NULL)::INT AS presented_no_response,
+    MAX(cp.last_seen) AS last_correction_at
+FROM users u
+LEFT JOIN correction_patterns cp ON cp.user_id = u.id
+WHERE u.is_active = TRUE
+GROUP BY u.id, u.phone_number;
+
+-- v_user_engagement_7d: actividad de cada user en últimos 7 días.
+CREATE OR REPLACE VIEW v_user_engagement_7d AS
+SELECT
+    u.id AS user_id,
+    u.phone_number AS phone,
+    COUNT(t.id)::INT AS transactions_logged,
+    COUNT(DISTINCT t.transaction_date)::INT AS active_days,
+    SUM(t.amount) FILTER (WHERE t.type = 'expense')::NUMERIC AS expense_total,
+    SUM(t.amount) FILTER (WHERE t.type = 'income')::NUMERIC AS income_total,
+    COUNT(ch.id)::INT AS chat_turns,
+    MAX(t.created_at) AS last_tx_at,
+    MAX(ch.created_at) AS last_chat_at
+FROM users u
+LEFT JOIN transactions t ON t.user_id = u.id
+    AND t.created_at >= NOW() - INTERVAL '7 days'
+LEFT JOIN n8n_chat_histories ch ON ch.session_id = u.id::text
+    AND ch.created_at >= NOW() - INTERVAL '7 days'
+WHERE u.is_active = TRUE
+GROUP BY u.id, u.phone_number;
+
+-- v_top_categories_30d: top categorías por gasto en últimos 30 días por user.
+CREATE OR REPLACE VIEW v_top_categories_30d AS
+SELECT
+    t.user_id,
+    c.name AS category_name,
+    COUNT(t.id)::INT AS tx_count,
+    SUM(t.amount)::NUMERIC AS total_amount,
+    AVG(t.amount)::NUMERIC(12,2) AS avg_amount,
+    RANK() OVER (PARTITION BY t.user_id ORDER BY SUM(t.amount) DESC)::INT AS rank
+FROM transactions t
+LEFT JOIN categories c ON c.id = t.category_id
+WHERE t.type = 'expense'
+  AND t.transaction_date >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY t.user_id, c.name;
+
+-- v_embedding_coverage: cuántas tx tienen embedding vs total. Útil para ver
+-- si el cron embed_transactions está al día.
+CREATE OR REPLACE VIEW v_embedding_coverage AS
+SELECT
+    u.id AS user_id,
+    u.phone_number AS phone,
+    COUNT(t.id) FILTER (WHERE length(trim(COALESCE(t.description, ''))) >= 8)::INT AS eligible_txs,
+    COUNT(te.transaction_id)::INT AS embedded_txs,
+    CASE WHEN COUNT(t.id) FILTER (WHERE length(trim(COALESCE(t.description, ''))) >= 8) > 0
+         THEN ROUND(100.0 * COUNT(te.transaction_id) /
+              NULLIF(COUNT(t.id) FILTER (WHERE length(trim(COALESCE(t.description, ''))) >= 8), 0), 1)
+         ELSE NULL END AS coverage_pct,
+    MIN(t.created_at) FILTER (WHERE te.transaction_id IS NULL
+                              AND length(trim(COALESCE(t.description, ''))) >= 8) AS oldest_pending
+FROM users u
+LEFT JOIN transactions t ON t.user_id = u.id
+    AND t.created_at >= NOW() - INTERVAL '90 days'
+LEFT JOIN transaction_embeddings te ON te.transaction_id = t.id
+WHERE u.is_active = TRUE
+GROUP BY u.id, u.phone_number;
+
+-- ---------- flag_dead_lessons (mantenimiento de agent_instructions) ----------
+-- Marca lecciones que cumplen alguno de estos criterios:
+--   • Nunca se aplicaron Y se crearon hace > p_min_age_days días
+--   • Last_applied_at hace > p_min_idle_days días
+-- "Marca" significa setear metadata.flagged_dead_at = NOW(). NO desactivamos —
+-- queda para que un operador (o el agente, en un próximo turno) decida.
+-- Devuelve count + sample para telemetría.
+--
+-- Idempotente: si una lección ya está flagged, no la re-procesa.
+CREATE OR REPLACE FUNCTION flag_dead_lessons(
+    p_min_age_days  INT DEFAULT 30,
+    p_min_idle_days INT DEFAULT 60
+)
+RETURNS TABLE(
+    flagged_count INT,
+    sample_ids    UUID[],
+    sample_instructions TEXT[]
+) AS $$
+DECLARE
+    v_count INT;
+    v_ids UUID[];
+    v_instructions TEXT[];
+BEGIN
+    WITH dead AS (
+        SELECT ai.id
+        FROM agent_instructions ai
+        WHERE ai.active = TRUE
+          AND (ai.metadata->>'flagged_dead_at') IS NULL
+          AND (
+            (ai.times_applied = 0 AND ai.created_at < NOW() - (p_min_age_days || ' days')::INTERVAL)
+            OR
+            (ai.last_applied_at IS NOT NULL
+             AND ai.last_applied_at < NOW() - (p_min_idle_days || ' days')::INTERVAL)
+          )
+    ),
+    flagged AS (
+        UPDATE agent_instructions ai
+        SET metadata = ai.metadata || jsonb_build_object('flagged_dead_at', NOW()::TEXT)
+        WHERE ai.id IN (SELECT id FROM dead)
+        RETURNING ai.id, ai.instruction
+    )
+    SELECT COUNT(*)::INT,
+           ARRAY_AGG(f.id) FILTER (WHERE f.id IS NOT NULL),
+           ARRAY_AGG(LEFT(f.instruction, 120)) FILTER (WHERE f.id IS NOT NULL)
+      INTO v_count, v_ids, v_instructions
+    FROM flagged f;
+
+    RETURN QUERY SELECT
+        COALESCE(v_count, 0),
+        COALESCE(v_ids, ARRAY[]::UUID[]),
+        COALESCE(v_instructions, ARRAY[]::TEXT[]);
+END;
+$$ LANGUAGE plpgsql;

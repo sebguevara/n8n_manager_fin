@@ -354,6 +354,30 @@
             {
               "name": "new_content",
               "type": "string"
+            },
+            {
+              "name": "instruction",
+              "type": "string"
+            },
+            {
+              "name": "trigger_hint",
+              "type": "string"
+            },
+            {
+              "name": "priority",
+              "type": "number"
+            },
+            {
+              "name": "lesson_id",
+              "type": "string"
+            },
+            {
+              "name": "suggestion_id",
+              "type": "number"
+            },
+            {
+              "name": "response",
+              "type": "string"
             }
           ]
         }
@@ -1648,6 +1672,121 @@
               },
               "renameOutput": true,
               "outputKey": "list_memories"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r55",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "teach_agent"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "teach_agent"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r56",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "list_lessons"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "list_lessons"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r57",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "forget_lesson"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "forget_lesson"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r58",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "mark_suggestion_responded"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "mark_suggestion_responded"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r59",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "suggest_category"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "suggest_category"
             }
           ]
         },
@@ -3566,7 +3705,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM add_memory_chunk(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),\n        $2::jsonb->>'content',\n        $3::vector(1536),\n        COALESCE(\n            CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL\n                 AND length(trim($2::jsonb->>'metadata')) > 0\n                 AND ($2::jsonb->>'metadata') <> '{}'\n            THEN ($2::jsonb->>'metadata')::jsonb\n            ELSE '{}'::jsonb END,\n            '{}'::jsonb\n        ),\n        -- source: 'user' por default — los facts que guarda el agente vienen\n        -- de algo que el usuario dijo. El cron usa 'cron:session_summary'.\n        'user',\n        'text-embedding-3-small'\n    );",
+        "query": "SELECT * FROM add_memory_chunk(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'kind',''), 'fact'),\n        $2::jsonb->>'content',\n        $3::vector(1536),\n        CASE WHEN jsonb_typeof($2::jsonb->'metadata') = 'object'\n             THEN ($2::jsonb->'metadata')\n             ELSE '{}'::jsonb END,\n        -- source: 'user' por default — los facts que guarda el agente vienen\n        -- de algo que el usuario dijo. El cron usa 'cron:session_summary'.\n        'user',\n        'text-embedding-3-small'\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
@@ -3651,7 +3790,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM update_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid,\n        $2::jsonb->>'new_content',\n        $3::vector(1536),\n        NULLIF($2::jsonb->>'kind',''),\n        CASE WHEN ($2::jsonb->>'metadata') IS NOT NULL\n             AND length(trim($2::jsonb->>'metadata')) > 0\n             AND ($2::jsonb->>'metadata') <> '{}'\n        THEN ($2::jsonb->>'metadata')::jsonb\n        ELSE NULL END,\n        'user'\n    );",
+        "query": "SELECT * FROM update_memory_chunk(\n        $1::uuid,\n        ($2::jsonb->>'memory_id')::uuid,\n        $2::jsonb->>'new_content',\n        $3::vector(1536),\n        NULLIF($2::jsonb->>'kind',''),\n        CASE WHEN jsonb_typeof($2::jsonb->'metadata') = 'object'\n             AND ($2::jsonb->'metadata') <> '{}'::jsonb\n        THEN ($2::jsonb->'metadata')\n        ELSE NULL END,\n        'user'\n    );",
         "options": {
           "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
         }
@@ -3846,22 +3985,303 @@
     },
     {
       "parameters": {
-        "jsCode": "const inp = $input.first().json;\nreturn [{ json: { ok: false, tool: inp.tool_name, error: 'Unknown tool: ' + inp.tool_name } }];"
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.params.instruction || '') }},\n  \"encoding_format\": \"float\"\n}",
+        "options": {}
       },
       "id": "t120",
+      "name": "Embed teach_agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        5800
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst inp = $('Normalize Input').first().json;\nconst emb = resp?.data?.[0]?.embedding;\nif (!Array.isArray(emb)) {\n  return [{ json: { ok: false, tool: 'teach_agent', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];\n}\n// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)\nconst embStr = '[' + emb.join(',') + ']';\nreturn [{ json: { ...inp, embedding: embStr } }];"
+      },
+      "id": "t121",
+      "name": "Pack Embedding teach_agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        5800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM add_agent_instruction(\n        $1::uuid,\n        $2::jsonb->>'instruction',\n        $3::vector(1536),\n        NULLIF($2::jsonb->>'trigger_hint',''),\n        COALESCE(NULLIF($2::jsonb->>'priority','')::int, 0),\n        '{}'::jsonb\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
+        }
+      },
+      "id": "t122",
+      "name": "PG teach_agent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        5800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'teach_agent', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nreturn [{ json: { ok: true, tool: 'teach_agent', data: {\n  id: r.id,\n  was_created: !!r.was_created,\n  instruction: r.instruction,\n  // Cuando was_created=false significa que ya existía una lección parecida y\n  // bumpeamos su priority — el agente puede mencionar al usuario \"ya tenía\n  // una regla parecida, le subí la prioridad\".\n  reused_existing: !r.was_created\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'teach_agent', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t123",
+      "name": "Fmt teach_agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        5800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM list_agent_instructions(\n        $1::uuid,\n        COALESCE(NULLIF($2::jsonb->>'limit','')::int, 20)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t124",
+      "name": "PG list_lessons",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        5920
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'list_lessons', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst rows = $input.all().map(i => i.json);\nreturn [{ json: { ok: true, tool: 'list_lessons', data: {\n  lessons: rows.map(r => ({\n    id: r.id,\n    instruction: r.instruction,\n    trigger_hint: r.trigger_hint || '',\n    priority: Number(r.priority || 0),\n    times_applied: Number(r.times_applied || 0),\n    last_applied_at: r.last_applied_at,\n    created_at: r.created_at\n  })),\n  count: rows.length\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'list_lessons', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t125",
+      "name": "Fmt list_lessons",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        5920
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM forget_agent_instruction(\n        $1::uuid,\n        ($2::jsonb->>'lesson_id')::uuid\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t126",
+      "name": "PG forget_lesson",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        6040
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'forget_lesson', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.forgot) {\n  return [{ json: { ok: false, tool: 'forget_lesson', error: 'No encontré esa lección o ya estaba olvidada' } }];\n}\nreturn [{ json: { ok: true, tool: 'forget_lesson', data: { id: r.id, forgot: true } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'forget_lesson', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t127",
+      "name": "Fmt forget_lesson",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        6040
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.params.description || '') }},\n  \"encoding_format\": \"float\"\n}",
+        "options": {}
+      },
+      "id": "t128",
+      "name": "Embed suggest_category",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        6280
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "0ErbOR5W4QIYaohV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst inp = $('Normalize Input').first().json;\nconst emb = resp?.data?.[0]?.embedding;\nif (!Array.isArray(emb)) {\n  return [{ json: { ok: false, tool: 'suggest_category', error: 'embedding API failed: ' + JSON.stringify(resp).slice(0, 200) } }];\n}\n// Formato literal de pgvector: '[1.2,3.4,...]' (sin espacios para no inflar SQL)\nconst embStr = '[' + emb.join(',') + ']';\nreturn [{ json: { ...inp, embedding: embStr } }];"
+      },
+      "id": "t129",
+      "name": "Pack Embedding suggest_category",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        6280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM suggest_category_by_similarity(\n        $1::uuid,\n        $3::vector(1536),\n        COALESCE(NULLIF($2::jsonb->>'k','')::int, 5),\n        COALESCE(NULLIF($2::jsonb->>'min_score','')::real, 0.65)\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }},={{ $json.embedding }}"
+        }
+      },
+      "id": "t130",
+      "name": "PG suggest_category",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        6280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.ok === false && first.error) return [{ json: first }];\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'suggest_category', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.category_id) {\n  return [{ json: { ok: true, tool: 'suggest_category', data: {\n    has_suggestion: false,\n    matches_count: 0,\n    note: 'No hay transacciones similares para inferir categoría'\n  } } }];\n}\nreturn [{ json: { ok: true, tool: 'suggest_category', data: {\n  has_suggestion: true,\n  category_id: r.category_id,\n  category_name: r.category_name,\n  confidence: Number(r.confidence || 0),\n  matches_count: Number(r.matches_count || 0),\n  top_k_count: Number(r.top_k_count || 0),\n  sample_descriptions: Array.isArray(r.sample_descriptions) ? r.sample_descriptions : []\n} } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'suggest_category', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t131",
+      "name": "Fmt suggest_category",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        6280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM mark_suggestion_responded(\n        $1::uuid,\n        ($2::jsonb->>'suggestion_id')::int,\n        COALESCE(NULLIF($2::jsonb->>'response',''), 'presented')\n    );",
+        "options": {
+          "queryReplacement": "={{ $json.user_id }},={{ $json.params_json }}"
+        }
+      },
+      "id": "t132",
+      "name": "PG mark_suggestion_responded",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        660,
+        6160
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "f8CCpjEZRkcHEaJI",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const first = $input.first()?.json || {};\n  if (first.error || first.message?.includes?.('error')) {\n    return [{ json: { ok: false, tool: 'mark_suggestion_responded', error: String(first.error || first.message || 'SQL error') } }];\n  }\nconst r = $input.first().json;\nif (!r || !r.ok) {\n  return [{ json: { ok: false, tool: 'mark_suggestion_responded', error: 'No pude marcar la sugerencia (id no existe o no es del usuario)' } }];\n}\nreturn [{ json: { ok: true, tool: 'mark_suggestion_responded', data: { id: r.id, marked: true } } }];\n} catch (e) {\n  return [{ json: { ok: false, tool: 'mark_suggestion_responded', error: 'Format error: ' + (e?.message || String(e)) } }];\n}"
+      },
+      "id": "t133",
+      "name": "Fmt mark_suggestion_responded",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        6160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inp = $input.first().json;\nreturn [{ json: { ok: false, tool: inp.tool_name, error: 'Unknown tool: ' + inp.tool_name } }];"
+      },
+      "id": "t134",
       "name": "Unknown Tool",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         660,
-        5920
+        6520
       ]
     },
     {
       "parameters": {
         "jsCode": "const out = $input.first().json;\nreturn [{ json: out }];"
       },
-      "id": "t121",
+      "id": "t135",
       "name": "Wrap Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -4277,6 +4697,41 @@
         [
           {
             "node": "PG list_memories",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embed teach_agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG list_lessons",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG forget_lesson",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG mark_suggestion_responded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embed suggest_category",
             "type": "main",
             "index": 0
           }
@@ -4976,6 +5431,115 @@
         ]
       ]
     },
+    "Embed teach_agent": {
+      "main": [
+        [
+          {
+            "node": "Pack Embedding teach_agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack Embedding teach_agent": {
+      "main": [
+        [
+          {
+            "node": "PG teach_agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fmt teach_agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG teach_agent": {
+      "main": [
+        [
+          {
+            "node": "Fmt teach_agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG list_lessons": {
+      "main": [
+        [
+          {
+            "node": "Fmt list_lessons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG forget_lesson": {
+      "main": [
+        [
+          {
+            "node": "Fmt forget_lesson",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed suggest_category": {
+      "main": [
+        [
+          {
+            "node": "Pack Embedding suggest_category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack Embedding suggest_category": {
+      "main": [
+        [
+          {
+            "node": "PG suggest_category",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fmt suggest_category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG suggest_category": {
+      "main": [
+        [
+          {
+            "node": "Fmt suggest_category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG mark_suggestion_responded": {
+      "main": [
+        [
+          {
+            "node": "Fmt mark_suggestion_responded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Fmt query_transactions": {
       "main": [
         [
@@ -5571,6 +6135,61 @@
       ]
     },
     "Fmt list_memories": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt teach_agent": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt list_lessons": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt forget_lesson": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt suggest_category": {
+      "main": [
+        [
+          {
+            "node": "Wrap Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fmt mark_suggestion_responded": {
       "main": [
         [
           {
