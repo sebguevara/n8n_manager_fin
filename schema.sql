@@ -5122,7 +5122,7 @@ RETURNS TABLE(
 DECLARE
     v_top_k INT;
 BEGIN
-    WITH similar AS (
+    WITH similar_txs AS (
         SELECT * FROM find_similar_transactions(p_user_id, p_embedding, p_k, 180, p_min_score)
     ),
     counted AS (
@@ -5130,7 +5130,7 @@ BEGIN
                COUNT(*)::INT AS hits,
                SUM(s.similarity)::REAL AS sim_sum,
                array_agg(LEFT(s.description, 60) ORDER BY s.similarity DESC) AS samples
-        FROM similar s
+        FROM similar_txs s
         GROUP BY s.category_id, s.category_name
     ),
     total AS (
@@ -5226,7 +5226,7 @@ BEGIN
            c.samples[1:5]
     FROM counts c
     -- Excluir palabras que ya son nombres de grupos (activos o cerrados)
-    LEFT JOIN groups g ON g.user_id = p_user_id AND lower(g.name) = c.w
+    LEFT JOIN expense_groups g ON g.user_id = p_user_id AND lower(g.name) = c.w
     WHERE c.tx_count >= p_min_count
       AND g.id IS NULL
     ORDER BY c.tx_count DESC, c.total_amount DESC;
