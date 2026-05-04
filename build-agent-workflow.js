@@ -1887,9 +1887,12 @@ try { console.error(JSON.stringify({
 
 return [{ json: { ...ctx, lessonsText, lessonsCount } }];`
 }, 4840, 0, { always: true });
+// SOLO una conexión a Format Lessons. Search Lessons tiene cof:true + always:true,
+// así que SIEMPRE emite un item (sea rows o un error item) — no necesitamos
+// fallback desde Pack User Embedding. Tener 2 conexiones hacía que Format Lessons
+// corra 2 veces en el caso normal y duplicaba todo el pipeline (= 2 mensajes
+// WhatsApp idénticos al usuario).
 connect('Search Lessons', 'Format Lessons');
-// Si Pack falló (no hay embedding), conectamos directo también para no quedarnos sin item
-connect('Pack User Embedding', 'Format Lessons');
 
 // =========================================================================
 // SUGGESTION CHECK — auto-detección de patrones de corrección
